@@ -12,8 +12,8 @@ export default function TransactionsPage() {
         const walletsData = await client.getWallets();
         const wallets = walletsData.wallets || [];
         const allTxs: any[] = [];
-        for (const w of wallets) {
-          for (const a of w.accounts || []) {
+        for (const w of wallets as any[]) {
+          for (const a of (w as any).accounts || []) {
             try {
               const txs = await client.getAccountTransactions(a.id);
               allTxs.push(...(txs.transactions || []));

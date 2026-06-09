@@ -481,9 +481,9 @@ export async function authRoutes(app: FastifyInstance) {
         expectedChallenge,
         expectedOrigin: EXPECTED_ORIGIN,
         expectedRPID: RP_ID,
-        authenticator: {
-          credentialID: Buffer.from(passkey.credentialId!, "base64url"),
-          credentialPublicKey: Buffer.from(credentialData.publicKey, "base64url"),
+        credential: {
+          id: passkey.credentialId!,
+          publicKey: Buffer.from(credentialData.publicKey, "base64url"),
           counter: credentialData.counter || 0,
           transports: credentialData.transports || ["internal", "hybrid"],
         },
