@@ -4,6 +4,7 @@ import { config } from "../../config.js";
 import { authMiddleware } from "../../middleware/auth.js";
 import { sendSuccess, sendError, ValidationError, NotFoundError, ForbiddenError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
+import { parsePagination } from "../../utils/pagination.js";
 import {
   generateHdWallet,
   generateHdWalletFromMnemonic,
@@ -11,6 +12,8 @@ import {
   decryptSeedFromStorage,
   deriveAccount,
 } from "../../utils/enclave.js";
+import { triggerWebhookEvents } from "../webhook/routes.js";
+import { ethers } from "ethers";
 
 export async function walletRoutes(app: FastifyInstance) {
   // Create wallet
@@ -60,6 +63,14 @@ export async function walletRoutes(app: FastifyInstance) {
         request.userId,
         request
       );
+
+      triggerWebhookEvents(request.orgId, "wallet.created", {
+        walletId: wallet.id,
+        name,
+        address: hdNode.address,
+        ownerType: wallet.ownerType,
+        ownerId: wallet.ownerId,
+      });
 
       return sendSuccess(reply, {
         walletId: wallet.id,
@@ -115,6 +126,12 @@ export async function walletRoutes(app: FastifyInstance) {
 
       await createAuditLog(request.orgId, "WALLET_IMPORT", { walletId: wallet.id, name }, request.userId, request);
 
+      triggerWebhookEvents(request.orgId, "wallet.imported", {
+        walletId: wallet.id,
+        name,
+        address: hdNode.address,
+      });
+
       return sendSuccess(reply, {
         walletId: wallet.id,
         name: wallet.name,
@@ -133,14 +150,20 @@ export async function walletRoutes(app: FastifyInstance) {
   // List wallets
   app.get("/wallets", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
-      const wallets = await prisma.wallet.findMany({
-        where: { orgId: request.orgId, status: "ACTIVE" },
-        include: {
-          accounts: { select: { id: true, chain: true, address: true, derivationPath: true, index: true } },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-      return sendSuccess(reply, { wallets });
+      const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const [wallets, total] = await Promise.all([
+        prisma.wallet.findMany({
+          where: { orgId: request.orgId, status: "ACTIVE" },
+          include: {
+            accounts: { select: { id: true, chain: true, address: true, derivationPath: true, index: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+          skip: offset,
+        }),
+        prisma.wallet.count({ where: { orgId: request.orgId, status: "ACTIVE" } }),
+      ]);
+      return sendSuccess(reply, { wallets, total, limit, offset });
     } catch (err) {
       return sendError(reply, err);
     }
@@ -172,6 +195,7 @@ export async function walletRoutes(app: FastifyInstance) {
         data: { status: "DELETED" },
       });
       await createAuditLog(request.orgId, "WALLET_DELETE", { walletId }, request.userId, request);
+      triggerWebhookEvents(request.orgId, "wallet.deleted", { walletId });
       return sendSuccess(reply, { message: "Wallet deleted" });
     } catch (err) {
       return sendError(reply, err);
@@ -226,6 +250,15 @@ export async function walletRoutes(app: FastifyInstance) {
 
       await createAuditLog(request.orgId, "ACCOUNT_CREATE", { walletId, accountId: account.id, address: account.address }, request.userId, request);
 
+      triggerWebhookEvents(request.orgId, "account.created", {
+        walletId,
+        accountId: account.id,
+        chain: account.chain,
+        address: account.address,
+        derivationPath: account.derivationPath,
+        index: account.index,
+      });
+
       return sendSuccess(reply, account, 201);
     } catch (err) {
       return sendError(reply, err);
@@ -236,11 +269,17 @@ export async function walletRoutes(app: FastifyInstance) {
   app.get("/wallets/:walletId/accounts", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { walletId } = request.params as { walletId: string };
-      const accounts = await prisma.walletAccount.findMany({
-        where: { walletId },
-        orderBy: { index: "asc" },
-      });
-      return sendSuccess(reply, { accounts });
+      const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const [accounts, total] = await Promise.all([
+        prisma.walletAccount.findMany({
+          where: { walletId },
+          orderBy: { index: "asc" },
+          take: limit,
+          skip: offset,
+        }),
+        prisma.walletAccount.count({ where: { walletId } }),
+      ]);
+      return sendSuccess(reply, { accounts, total, limit, offset });
     } catch (err) {
       return sendError(reply, err);
     }
@@ -253,6 +292,22 @@ export async function walletRoutes(app: FastifyInstance) {
       const { getNonce } = await import("../../utils/enclave.js");
       const nonce = await getNonce(address, config.arcRpcUrl);
       return sendSuccess(reply, { address, nonce });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Get balance for account
+  app.get("/accounts/:address/balance", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { address } = request.params as { address: string };
+      const provider = new ethers.JsonRpcProvider(config.arcRpcUrl);
+      const balance = await provider.getBalance(address);
+      return sendSuccess(reply, {
+        address,
+        balance: balance.toString(),
+        balanceFormatted: ethers.formatEther(balance),
+      });
     } catch (err) {
       return sendError(reply, err);
     }

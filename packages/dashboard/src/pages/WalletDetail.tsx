@@ -14,6 +14,8 @@ export default function WalletDetailPage() {
   const [txValue, setTxValue] = useState("");
   const [signResult, setSignResult] = useState<any>(null);
   const [signError, setSignError] = useState("");
+  const [showExport, setShowExport] = useState(false);
+  const [exportedMnemonic, setExportedMnemonic] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -48,6 +50,16 @@ export default function WalletDetailPage() {
     }
   };
 
+  const handleExport = async () => {
+    try {
+      const result = await client.exportWallet(id!);
+      setExportedMnemonic(result.mnemonic);
+      setShowExport(true);
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  };
+
   if (loading) return <p className="text-gray-500">Loading...</p>;
   if (!wallet) return <p className="text-gray-500">Wallet not found</p>;
 
@@ -57,7 +69,18 @@ export default function WalletDetailPage() {
         &larr; Back
       </button>
       <h2 className="text-2xl font-bold mb-1">{wallet.name}</h2>
-      <p className="text-sm text-gray-500 mb-6">Owner: {wallet.ownerType} | Status: {wallet.status}</p>
+      <p className="text-sm text-gray-500 mb-4">Owner: {wallet.ownerType} | Status: {wallet.status}</p>
+
+      {showExport && (
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <p className="text-sm font-medium text-yellow-800 mb-2">Seed Phrase (keep this private!)</p>
+          <p className="text-sm font-mono text-yellow-900 break-all">{exportedMnemonic}</p>
+          <button onClick={() => { setShowExport(false); setExportedMnemonic(""); }} className="mt-2 text-sm text-yellow-700 underline">Hide</button>
+        </div>
+      )}
+      <button onClick={handleExport} className="mb-6 px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">
+        Export Seed
+      </button>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white border border-gray-200 rounded-xl p-6">

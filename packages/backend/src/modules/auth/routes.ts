@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { nanoid } from "nanoid";
 import bcrypt from "bcrypt";
 import { verifyMessage } from "ethers";
+import { createTransport } from "nodemailer";
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -14,6 +15,8 @@ import { authMiddleware } from "../../middleware/auth.js";
 import { sendSuccess, sendError, ValidationError, NotFoundError, AppError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
 import { getRedis } from "../../redis.js";
+import { triggerWebhookEvents } from "../webhook/routes.js";
+import { parsePagination } from "../../utils/pagination.js";
 
 const OTP_PREFIX = "otp:";
 const WEBAUTHN_CHALLENGE_PREFIX = "webauthn:challenge:";
@@ -90,7 +93,20 @@ export async function authRoutes(app: FastifyInstance) {
       const key = `${OTP_PREFIX}${email}`;
       await redis.setex(key, config.otpExpirySeconds, otp);
 
-      // In production, send email via nodemailer
+      // Send email via nodemailer if configured
+      if (config.smtp.host && config.smtp.user) {
+        const transporter = createTransport({
+          host: config.smtp.host,
+          port: config.smtp.port,
+          auth: { user: config.smtp.user, pass: config.smtp.pass },
+        });
+        await transporter.sendMail({
+          from: config.smtp.from,
+          to: email,
+          subject: "ArKey - Your Login Code",
+          text: `Your verification code is: ${otp}\n\nThis code expires in ${config.otpExpirySeconds} seconds.`,
+        }).catch(() => {});
+      }
       console.log(`[DEV] OTP for ${email}: ${otp}`);
 
       return sendSuccess(reply, {
@@ -146,9 +162,11 @@ export async function authRoutes(app: FastifyInstance) {
 
       if (isNewUser) {
         await createAuditLog(organization.id, "SIGNUP", { email }, user.id, request);
+        triggerWebhookEvents(organization.id, "user.signup", { userId: user.id, email, method: "EMAIL" });
       }
       await createAuditLog(organization.id, "LOGIN", { method: "EMAIL" }, user.id, request);
       await createAuditLog(organization.id, "SESSION_CREATE", { sessionId: session.id }, user.id, request);
+      triggerWebhookEvents(organization.id, "user.login", { userId: user.id, email, method: "EMAIL" });
 
       return sendSuccess(reply, {
         sessionToken: token,
@@ -172,27 +190,56 @@ export async function authRoutes(app: FastifyInstance) {
       };
       if (!provider || !code) throw new ValidationError("Provider and code are required");
 
-      const mockProfile = {
-        email: `user_${nanoid(6)}@gmail.com`,
-        name: `${provider} User`,
-      };
+      let email: string;
+      let name: string;
 
-      const organization = await findOrCreateOrg(mockProfile.email, undefined, `${mockProfile.email}'s Org`);
-      let user = await findOrCreateUser(organization.id, mockProfile.email);
+      // Real Google OAuth token exchange
+      if (provider === "google" && config.oauth.googleClientId && config.oauth.googleClientSecret) {
+        const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_id: config.oauth.googleClientId,
+            client_secret: config.oauth.googleClientSecret,
+            code,
+            grant_type: "authorization_code",
+            redirect_uri: redirectUri || config.corsOrigin,
+          }),
+        });
+        const tokenData = await tokenRes.json() as any;
+        if (tokenData.error) {
+          throw new ValidationError("OAuth token exchange failed: " + tokenData.error_description);
+        }
+        const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        });
+        const userData = await userRes.json() as any;
+        email = userData.email;
+        name = userData.name || email;
+      } else {
+        // Mock for development
+        email = `user_${nanoid(6)}@gmail.com`;
+        name = `${provider} User`;
+      }
+
+      const organization = await findOrCreateOrg(email, undefined, `${email}'s Org`);
+      let user = await findOrCreateUser(organization.id, email);
       const isNewUser = !user.name;
       if (isNewUser) {
         user = await prisma.user.update({
           where: { id: user.id },
-          data: { name: mockProfile.name },
+          data: { name },
         });
       }
 
       const { token, session } = await createUserSession(user, organization.id);
 
       if (isNewUser) {
-        await createAuditLog(organization.id, "SIGNUP", { provider }, user.id, request);
+        await createAuditLog(organization.id, "SIGNUP", { email, provider }, user.id, request);
+        triggerWebhookEvents(organization.id, "user.signup", { userId: user.id, email, method: `OAUTH_${provider}` });
       }
       await createAuditLog(organization.id, "LOGIN", { method: `OAUTH_${provider}` }, user.id, request);
+      triggerWebhookEvents(organization.id, "user.login", { userId: user.id, email, method: `OAUTH_${provider}` });
 
       return sendSuccess(reply, {
         sessionToken: token,
@@ -253,8 +300,10 @@ export async function authRoutes(app: FastifyInstance) {
 
       if (isNewUser) {
         await createAuditLog(organization.id, "SIGNUP", { address }, user.id, request);
+        triggerWebhookEvents(organization.id, "user.signup", { userId: user.id, address, method: "WALLET" });
       }
       await createAuditLog(organization.id, "LOGIN", { method: "WALLET" }, user.id, request);
+      triggerWebhookEvents(organization.id, "user.login", { userId: user.id, address, method: "WALLET" });
 
       return sendSuccess(reply, {
         sessionToken: token,
@@ -349,9 +398,11 @@ export async function authRoutes(app: FastifyInstance) {
 
       if (isNewUser) {
         await createAuditLog(organization.id, "SIGNUP", { email, method: "PASSKEY" }, user.id, request);
+        triggerWebhookEvents(organization.id, "user.signup", { userId: user.id, email, method: "PASSKEY" });
       }
       await createAuditLog(organization.id, "LOGIN", { method: "PASSKEY" }, user.id, request);
       await createAuditLog(organization.id, "SESSION_CREATE", { sessionId: session.id }, user.id, request);
+      triggerWebhookEvents(organization.id, "user.login", { userId: user.id, email, method: "PASSKEY" });
 
       return sendSuccess(reply, {
         sessionToken: token,
@@ -464,6 +515,7 @@ export async function authRoutes(app: FastifyInstance) {
 
       await createAuditLog(organization.id, "LOGIN", { method: "PASSKEY" }, user.id, request);
       await createAuditLog(organization.id, "SESSION_CREATE", { sessionId: session.id }, user.id, request);
+      triggerWebhookEvents(organization.id, "user.login", { userId: user.id, email, method: "PASSKEY" });
 
       return sendSuccess(reply, {
         sessionToken: token,
@@ -518,9 +570,11 @@ export async function authRoutes(app: FastifyInstance) {
 
       if (isNewUser) {
         await createAuditLog(organization.id, "SIGNUP", { email, method: "PASSWORD" }, user.id, request);
+        triggerWebhookEvents(organization.id, "user.signup", { userId: user.id, email, method: "PASSWORD" });
       }
       await createAuditLog(organization.id, "LOGIN", { method: "PASSWORD" }, user.id, request);
       await createAuditLog(organization.id, "SESSION_CREATE", { sessionId: session.id }, user.id, request);
+      triggerWebhookEvents(organization.id, "user.login", { userId: user.id, email, method: "PASSWORD" });
 
       return sendSuccess(reply, {
         sessionToken: token,
@@ -561,6 +615,7 @@ export async function authRoutes(app: FastifyInstance) {
 
       await createAuditLog(organization.id, "LOGIN", { method: "PASSWORD" }, user.id, request);
       await createAuditLog(organization.id, "SESSION_CREATE", { sessionId: session.id }, user.id, request);
+      triggerWebhookEvents(organization.id, "user.login", { userId: user.id, email, method: "PASSWORD" });
 
       return sendSuccess(reply, {
         sessionToken: token,
@@ -587,8 +642,23 @@ export async function authRoutes(app: FastifyInstance) {
       const key = `${OTP_PREFIX}${phone}`;
       await redis.setex(key, config.otpExpirySeconds, otp);
 
-      // In production, send SMS via Twilio
-      // if (config.twilio.accountSid) { ... }
+      // Send SMS via Twilio if configured
+      if (config.twilio.accountSid && config.twilio.authToken) {
+        const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${config.twilio.accountSid}/Messages.json`;
+        const auth = Buffer.from(`${config.twilio.accountSid}:${config.twilio.authToken}`).toString("base64");
+        await fetch(twilioUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Authorization: `Basic ${auth}`,
+          },
+          body: new URLSearchParams({
+            To: phone,
+            From: config.twilio.phoneNumber,
+            Body: `ArKey verification code: ${otp}`,
+          }),
+        }).catch(() => {});
+      }
       console.log(`[DEV] OTP for phone ${phone}: ${otp}`);
 
       return sendSuccess(reply, {
@@ -631,6 +701,7 @@ export async function authRoutes(app: FastifyInstance) {
           data: { orgId: organization.id, email: phoneEmail, phone, role: "DEVELOPER" },
         });
         await createAuditLog(organization.id, "SIGNUP", { phone }, user.id, request);
+        triggerWebhookEvents(organization.id, "user.signup", { userId: user.id, phone, method: "PHONE" });
       }
 
       // Upsert phone authenticator
@@ -652,6 +723,7 @@ export async function authRoutes(app: FastifyInstance) {
 
       await createAuditLog(organization.id, "LOGIN", { method: "PHONE" }, user.id, request);
       await createAuditLog(organization.id, "SESSION_CREATE", { sessionId: session.id }, user.id, request);
+      triggerWebhookEvents(organization.id, "user.login", { userId: user.id, phone, method: "PHONE" });
 
       return sendSuccess(reply, {
         sessionToken: token,
@@ -691,12 +763,18 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.get("/sessions", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
-      const sessions = await prisma.session.findMany({
-        where: { userId: request.userId, expiresAt: { gt: new Date() } },
-        select: { id: true, type: true, createdAt: true, expiresAt: true },
-        orderBy: { createdAt: "desc" },
-      });
-      return sendSuccess(reply, { sessions });
+      const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const [sessions, total] = await Promise.all([
+        prisma.session.findMany({
+          where: { userId: request.userId, expiresAt: { gt: new Date() } },
+          select: { id: true, type: true, createdAt: true, expiresAt: true },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+          skip: offset,
+        }),
+        prisma.session.count({ where: { userId: request.userId, expiresAt: { gt: new Date() } } }),
+      ]);
+      return sendSuccess(reply, { sessions, total, limit, offset });
     } catch (err) {
       return sendError(reply, err);
     }
@@ -787,12 +865,18 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.get("/api-keys", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
-      const keys = await prisma.apiKey.findMany({
-        where: { orgId: request.orgId },
-        select: { id: true, name: true, keyPrefix: true, permissions: true, allowedIps: true, createdAt: true, expiresAt: true },
-        orderBy: { createdAt: "desc" },
-      });
-      return sendSuccess(reply, { keys });
+      const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const [keys, total] = await Promise.all([
+        prisma.apiKey.findMany({
+          where: { orgId: request.orgId },
+          select: { id: true, name: true, keyPrefix: true, permissions: true, allowedIps: true, createdAt: true, expiresAt: true },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+          skip: offset,
+        }),
+        prisma.apiKey.count({ where: { orgId: request.orgId } }),
+      ]);
+      return sendSuccess(reply, { keys, total, limit, offset });
     } catch (err) {
       return sendError(reply, err);
     }

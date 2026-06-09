@@ -17,9 +17,12 @@ COPY packages/backend/tsconfig.json ./packages/backend/
 
 RUN npm run build -w packages/backend
 
+COPY packages/backend/docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
 EXPOSE 3001
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
   CMD curl -f http://localhost:3001/health || exit 1
 
-CMD ["node", "packages/backend/dist/server.js"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

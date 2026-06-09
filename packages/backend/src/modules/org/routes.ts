@@ -3,6 +3,7 @@ import prisma from "../../db.js";
 import { authMiddleware, adminMiddleware } from "../../middleware/auth.js";
 import { sendSuccess, sendError, ValidationError, NotFoundError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
+import { parsePagination } from "../../utils/pagination.js";
 
 export async function orgRoutes(app: FastifyInstance) {
   app.post("/orgs", { preHandler: [authMiddleware] }, async (request, reply) => {
@@ -63,12 +64,18 @@ export async function orgRoutes(app: FastifyInstance) {
 
   app.get("/users", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
-      const users = await prisma.user.findMany({
-        where: { orgId: request.orgId },
-        select: { id: true, name: true, email: true, phone: true, role: true, tags: true, createdAt: true },
-        orderBy: { createdAt: "desc" },
-      });
-      return sendSuccess(reply, { users });
+      const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const [users, total] = await Promise.all([
+        prisma.user.findMany({
+          where: { orgId: request.orgId },
+          select: { id: true, name: true, email: true, phone: true, role: true, tags: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+          skip: offset,
+        }),
+        prisma.user.count({ where: { orgId: request.orgId } }),
+      ]);
+      return sendSuccess(reply, { users, total, limit, offset });
     } catch (err) {
       return sendError(reply, err);
     }
@@ -116,14 +123,17 @@ export async function orgRoutes(app: FastifyInstance) {
   // Audit Logs
   app.get("/audit-logs", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
-      const { limit, offset } = request.query as { limit?: string; offset?: string };
-      const logs = await prisma.auditLog.findMany({
-        where: { orgId: request.orgId },
-        orderBy: { createdAt: "desc" },
-        take: parseInt(limit || "100"),
-        skip: parseInt(offset || "0"),
-      });
-      return sendSuccess(reply, { logs });
+      const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const [logs, total] = await Promise.all([
+        prisma.auditLog.findMany({
+          where: { orgId: request.orgId },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+          skip: offset,
+        }),
+        prisma.auditLog.count({ where: { orgId: request.orgId } }),
+      ]);
+      return sendSuccess(reply, { logs, total, limit, offset });
     } catch (err) {
       return sendError(reply, err);
     }

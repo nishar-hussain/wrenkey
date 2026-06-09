@@ -7,6 +7,8 @@ import { sendSuccess, sendError, ValidationError, NotFoundError } from "../../ut
 import { createAuditLog } from "../../utils/audit.js";
 import { decryptSeedFromStorage, signTransaction, broadcastTransaction, getTransactionStatus } from "../../utils/enclave.js";
 import { evaluatePolicies, EvaluationContext } from "../policy/engine.js";
+import { triggerWebhookEvents } from "../webhook/routes.js";
+import { parsePagination } from "../../utils/pagination.js";
 
 export async function transactionRoutes(app: FastifyInstance) {
   // Sign and send transaction
@@ -82,6 +84,13 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       if (!policyResult.allowed) {
         await createAuditLog(request.orgId, "POLICY_DENY", { walletId, to, value, reason: policyResult.reason }, request.userId, request);
+        triggerWebhookEvents(request.orgId, "policy.triggered", {
+          walletId,
+          to,
+          value,
+          allowed: false,
+          reason: policyResult.reason,
+        });
         throw new ValidationError("Transaction denied by policy: " + (policyResult.reason || "Not allowed"));
       }
 
@@ -132,6 +141,15 @@ export async function transactionRoutes(app: FastifyInstance) {
         request
       );
 
+      triggerWebhookEvents(request.orgId, "transaction.submitted", {
+        transactionId: transaction.id,
+        txHash: broadcastResult.hash,
+        walletId,
+        to,
+        value,
+        chain: chain || "arc",
+      });
+
       return sendSuccess(reply, {
         id: transaction.id,
         txHash: broadcastResult.hash,
@@ -163,6 +181,10 @@ export async function transactionRoutes(app: FastifyInstance) {
           });
           tx.status = "CONFIRMED";
           await createAuditLog(request.orgId, "TX_CONFIRMED", { txHash: tx.txHash }, request.userId, request);
+          triggerWebhookEvents(request.orgId, "transaction.confirmed", {
+            txHash: tx.txHash,
+            transactionId: tx.id,
+          });
         } else if (status.status === "FAILED") {
           await prisma.transaction.update({
             where: { id: tx.id },
@@ -170,6 +192,10 @@ export async function transactionRoutes(app: FastifyInstance) {
           });
           tx.status = "FAILED";
           await createAuditLog(request.orgId, "TX_FAILED", { txHash: tx.txHash }, request.userId, request);
+          triggerWebhookEvents(request.orgId, "transaction.failed", {
+            txHash: tx.txHash,
+            transactionId: tx.id,
+          });
         }
       }
 
@@ -183,11 +209,49 @@ export async function transactionRoutes(app: FastifyInstance) {
   app.get("/accounts/:accountId/transactions", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { accountId } = request.params as { accountId: string };
-      const transactions = await prisma.transaction.findMany({
-        where: { accountId, orgId: request.orgId },
-        orderBy: { createdAt: "desc" },
+      const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const [transactions, total] = await Promise.all([
+        prisma.transaction.findMany({
+          where: { accountId, orgId: request.orgId },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+          skip: offset,
+        }),
+        prisma.transaction.count({ where: { accountId, orgId: request.orgId } }),
+      ]);
+      return sendSuccess(reply, { transactions, total, limit, offset });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Estimate gas for a transaction
+  app.post("/transactions/estimate", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { to, value, data } = request.body as {
+        to: string;
+        value?: string;
+        data?: string;
+      };
+      if (!to) throw new ValidationError("to address is required");
+
+      const provider = new ethers.JsonRpcProvider(config.arcRpcUrl);
+      const feeData = await provider.getFeeData();
+
+      const tx: ethers.TransactionRequest = {
+        to,
+        value: value ? ethers.parseUnits(value, 0) : undefined,
+        data: data || "0x",
+      };
+
+      const gasLimit = await provider.estimateGas(tx);
+
+      return sendSuccess(reply, {
+        gasLimit: gasLimit.toString(),
+        maxFeePerGas: feeData.maxFeePerGas?.toString() || "0",
+        maxPriorityFeePerGas: feeData.maxPriorityFeePerGas?.toString() || "0",
+        estimatedTotalGas: (gasLimit * (feeData.maxFeePerGas || 0n)).toString(),
       });
-      return sendSuccess(reply, { transactions });
     } catch (err) {
       return sendError(reply, err);
     }

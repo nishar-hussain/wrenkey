@@ -6,6 +6,7 @@ import { authMiddleware } from "../../middleware/auth.js";
 import { sendSuccess, sendError, ValidationError, NotFoundError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
 import { generateRandomToken } from "../../utils/crypto.js";
+import { parsePagination } from "../../utils/pagination.js";
 
 const WEBHOOK_EVENTS = [
   "user.signup",
@@ -73,12 +74,18 @@ export async function webhookRoutes(app: FastifyInstance) {
 
   app.get("/webhooks", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
-      const webhooks = await prisma.webhook.findMany({
-        where: { orgId: request.orgId },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, url: true, events: true, active: true, createdAt: true },
-      });
-      return sendSuccess(reply, { webhooks });
+      const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const [webhooks, total] = await Promise.all([
+        prisma.webhook.findMany({
+          where: { orgId: request.orgId },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, url: true, events: true, active: true, createdAt: true },
+          take: limit,
+          skip: offset,
+        }),
+        prisma.webhook.count({ where: { orgId: request.orgId } }),
+      ]);
+      return sendSuccess(reply, { webhooks, total, limit, offset });
     } catch (err) {
       return sendError(reply, err);
     }

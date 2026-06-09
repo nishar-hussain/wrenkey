@@ -7,7 +7,10 @@ export default function WalletsPage() {
   const [wallets, setWallets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [walletName, setWalletName] = useState("");
+  const [importName, setImportName] = useState("");
+  const [mnemonic, setMnemonic] = useState("");
   const [error, setError] = useState("");
 
   const loadWallets = async () => {
@@ -36,16 +39,38 @@ export default function WalletsPage() {
     }
   };
 
+  const handleImport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    try {
+      await client.importWallet({ name: importName, mnemonic });
+      setImportName("");
+      setMnemonic("");
+      setShowImport(false);
+      loadWallets();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Wallets</h2>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700"
-        >
-          + Create Wallet
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"
+          >
+            Import Wallet
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700"
+          >
+            + Create Wallet
+          </button>
+        </div>
       </div>
 
       {showCreate && (
@@ -67,6 +92,37 @@ export default function WalletsPage() {
               <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 text-gray-500">
                 Cancel
               </button>
+            </div>
+            {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+          </form>
+        </div>
+      )}
+
+      {showImport && (
+        <div className="mb-6 bg-white border border-gray-200 rounded-xl p-6">
+          <h3 className="text-lg font-semibold mb-4">Import Wallet</h3>
+          <form onSubmit={handleImport}>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Wallet Name</label>
+            <input
+              type="text"
+              value={importName}
+              onChange={(e) => setImportName(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-3 focus:ring-2 focus:ring-primary-500"
+              placeholder="My Imported Wallet"
+              required
+            />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Mnemonic Phrase</label>
+            <textarea
+              value={mnemonic}
+              onChange={(e) => setMnemonic(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-3 focus:ring-2 focus:ring-primary-500"
+              placeholder="Enter 12-word recovery phrase"
+              rows={3}
+              required
+            />
+            <div className="flex gap-3">
+              <button type="submit" className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium">Import</button>
+              <button type="button" onClick={() => { setShowImport(false); setError(""); }} className="px-4 py-2 text-gray-500">Cancel</button>
             </div>
             {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
           </form>

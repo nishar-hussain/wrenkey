@@ -14,7 +14,7 @@ const navItems = [
 ];
 
 export default function Layout() {
-  const { isAuthenticated, session } = useArKey();
+  const { isAuthenticated, session, logout } = useArKey();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -58,6 +58,13 @@ export default function Layout() {
               <p className="text-sm font-medium truncate">{session.user?.email || "User"}</p>
               <p className="text-xs text-gray-500">{session.user?.role}</p>
             </div>
+            <button
+              onClick={logout}
+              className="text-gray-400 hover:text-red-500 text-lg leading-none cursor-pointer p-1"
+              title="Sign out"
+            >
+              ⏻
+            </button>
           </div>
         </div>
       </aside>

@@ -49,7 +49,7 @@ jobs:
 
       - run: npx prisma generate -w packages/backend
 
-      - run: npx prisma db push -w packages/backend
+      - run: npx prisma migrate deploy -w packages/backend
 
       - run: npm test
 
