@@ -5,6 +5,7 @@ import rateLimit from "@fastify/rate-limit";
 import { config } from "./config.js";
 import { connectRedis } from "./redis.js";
 import { authMiddleware } from "./middleware/auth.js";
+import { securityHeaders } from "./middleware/security.js";
 import { AppError } from "./utils/errors.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { orgRoutes } from "./modules/org/routes.js";
@@ -25,6 +26,7 @@ const app = Fastify({
       },
     },
   },
+  bodyLimit: 1048576,
 });
 
 async function start() {
@@ -40,6 +42,9 @@ async function start() {
     max: 1000,
     timeWindow: "1 minute",
   });
+
+  // Security headers
+  await app.register(securityHeaders);
 
   // Global error handler
   app.setErrorHandler((error: any, request, reply) => {
@@ -80,6 +85,14 @@ async function start() {
       "/api/v1/auth/email/verify",
       "/api/v1/auth/oauth",
       "/api/v1/auth/wallet",
+      "/api/v1/auth/webauthn/register",
+      "/api/v1/auth/webauthn/register/verify",
+      "/api/v1/auth/webauthn/authenticate",
+      "/api/v1/auth/webauthn/authenticate/verify",
+      "/api/v1/auth/password/signup",
+      "/api/v1/auth/password/login",
+      "/api/v1/auth/phone/send",
+      "/api/v1/auth/phone/verify",
     ];
 
     if (!request.url.startsWith("/api/v1/") || publicPaths.includes(request.url)) {

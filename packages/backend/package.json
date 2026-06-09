@@ -12,7 +12,8 @@
     "lint": "eslint src/",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:push": "prisma db push"
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.1",
@@ -37,12 +38,13 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.10.1",
     "@types/nodemailer": "^6.4.17",
+    "@types/supertest": "^6.0.2",
     "eslint": "^9.16.0",
     "prisma": "^6.1.0",
     "supertest": "^7.0.0",
-    "@types/supertest": "^6.0.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.61.0",
     "vitest": "^2.1.8"
   }
 }

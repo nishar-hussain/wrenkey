@@ -1,26 +1,92 @@
 import { FastifyInstance } from "fastify";
 import { nanoid } from "nanoid";
+import bcrypt from "bcrypt";
+import { verifyMessage } from "ethers";
+import {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  generateAuthenticationOptions,
+  verifyAuthenticationResponse,
+} from "@simplewebauthn/server";
 import prisma from "../../db.js";
 import { config } from "../../config.js";
 import { authMiddleware } from "../../middleware/auth.js";
-import { sendSuccess, sendError, ValidationError, NotFoundError } from "../../utils/errors.js";
+import { sendSuccess, sendError, ValidationError, NotFoundError, AppError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
 import { getRedis } from "../../redis.js";
 
 const OTP_PREFIX = "otp:";
+const WEBAUTHN_CHALLENGE_PREFIX = "webauthn:challenge:";
+const RATELIMIT_PREFIX = "ratelimit:otp:";
+const RP_NAME = "ArKey";
+const RP_ID = process.env.WEBAUTHN_RP_ID || "localhost";
+const EXPECTED_ORIGIN = config.corsOrigin;
+const OTP_RATE_LIMIT = 3;
+const OTP_RATE_WINDOW = 300;
 
 function generateOtp(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+async function checkOtpRateLimit(redis: ReturnType<typeof getRedis>, keyType: string, identifier: string): Promise<void> {
+  const rateLimitKey = `${RATELIMIT_PREFIX}${keyType}:${identifier}`;
+  const attempts = await redis.incr(rateLimitKey);
+  if (attempts === 1) {
+    await redis.expire(rateLimitKey, OTP_RATE_WINDOW);
+  }
+  if (attempts > OTP_RATE_LIMIT) {
+    throw new AppError(429, "Too many OTP requests. Please try again in 5 minutes.", "RATE_LIMITED");
+  }
+}
+
+async function findOrCreateOrg(email: string, orgId?: string, orgName?: string) {
+  let organization = orgId
+    ? await prisma.organization.findUnique({ where: { id: orgId } })
+    : null;
+  if (!organization) {
+    organization = await prisma.organization.create({
+      data: { name: orgName || `${email}'s Org` },
+    });
+  }
+  return organization;
+}
+
+async function findOrCreateUser(orgId: string, email: string) {
+  let user = await prisma.user.findFirst({ where: { orgId, email } });
+  if (!user) {
+    user = await prisma.user.create({
+      data: { orgId, email, role: "DEVELOPER" },
+    });
+  }
+  return user;
+}
+
+async function createUserSession(user: { id: string; role: string }, orgId: string) {
+  const { signToken } = await import("../../utils/jwt.js");
+  const token = signToken({ sub: user.id, orgId, role: user.role });
+  const session = await prisma.session.create({
+    data: {
+      userId: user.id,
+      token,
+      type: "READ_WRITE",
+      expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000),
+    },
+  });
+  return { token, session };
+}
+
 export async function authRoutes(app: FastifyInstance) {
+  // ─── Email OTP ───────────────────────────────────────────────
+
   app.post("/auth/email/send", async (request, reply) => {
     try {
       const { email, orgId } = request.body as { email: string; orgId?: string };
       if (!email) throw new ValidationError("Email is required");
 
-      const otp = generateOtp();
       const redis = getRedis();
+      await checkOtpRateLimit(redis, "email", email);
+
+      const otp = generateOtp();
       const key = `${OTP_PREFIX}${email}`;
       await redis.setex(key, config.otpExpirySeconds, otp);
 
@@ -57,38 +123,11 @@ export async function authRoutes(app: FastifyInstance) {
 
       await redis.del(key);
 
-      // Find or create org
-      let organization = orgId
-        ? await prisma.organization.findUnique({ where: { id: orgId } })
-        : null;
-      if (!organization) {
-        organization = await prisma.organization.create({
-          data: { name: orgName || `${email}'s Org` },
-        });
-      }
+      const organization = await findOrCreateOrg(email, orgId, orgName);
+      let user = await findOrCreateUser(organization.id, email);
+      const isNewUser = user.createdAt.getTime() === user.updatedAt.getTime();
 
-      // Find or create user
-      let user = await prisma.user.findFirst({
-        where: { orgId: organization.id, email },
-      });
-      if (!user) {
-        user = await prisma.user.create({
-          data: {
-            orgId: organization.id,
-            email,
-            role: "DEVELOPER",
-          },
-        });
-        await createAuditLog(organization.id, "SIGNUP", { email }, user.id, request);
-      }
-
-      // Find or create authenticator
-      await prisma.authenticator.upsert({
-        where: { id: "" }, // can't use id, use findFirst
-        update: { verified: true },
-        create: { userId: user.id, type: "EMAIL", verified: true },
-      });
-      // Handle upsert properly
+      // Upsert email authenticator
       const existingAuth = await prisma.authenticator.findFirst({
         where: { userId: user.id, type: "EMAIL" },
       });
@@ -103,18 +142,11 @@ export async function authRoutes(app: FastifyInstance) {
         });
       }
 
-      // Create session
-      const { signToken } = await import("../../utils/jwt.js");
-      const token = signToken({ sub: user.id, orgId: organization.id, role: user.role });
-      const session = await prisma.session.create({
-        data: {
-          userId: user.id,
-          token,
-          type: "READ_WRITE",
-          expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000),
-        },
-      });
+      const { token, session } = await createUserSession(user, organization.id);
 
+      if (isNewUser) {
+        await createAuditLog(organization.id, "SIGNUP", { email }, user.id, request);
+      }
       await createAuditLog(organization.id, "LOGIN", { method: "EMAIL" }, user.id, request);
       await createAuditLog(organization.id, "SESSION_CREATE", { sessionId: session.id }, user.id, request);
 
@@ -129,6 +161,8 @@ export async function authRoutes(app: FastifyInstance) {
     }
   });
 
+  // ─── OAuth ───────────────────────────────────────────────────
+
   app.post("/auth/oauth", async (request, reply) => {
     try {
       const { provider, code, redirectUri } = request.body as {
@@ -138,48 +172,26 @@ export async function authRoutes(app: FastifyInstance) {
       };
       if (!provider || !code) throw new ValidationError("Provider and code are required");
 
-      // OAuth exchange (simplified - in production, exchange code for token + profile)
-      // For MVP, we simulate OAuth verification
       const mockProfile = {
         email: `user_${nanoid(6)}@gmail.com`,
         name: `${provider} User`,
       };
 
-      let organization = await prisma.organization.findFirst({
-        where: { name: `${mockProfile.email}'s Org` },
-      });
-      if (!organization) {
-        organization = await prisma.organization.create({
-          data: { name: `${mockProfile.email}'s Org` },
+      const organization = await findOrCreateOrg(mockProfile.email, undefined, `${mockProfile.email}'s Org`);
+      let user = await findOrCreateUser(organization.id, mockProfile.email);
+      const isNewUser = !user.name;
+      if (isNewUser) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { name: mockProfile.name },
         });
       }
 
-      let user = await prisma.user.findFirst({
-        where: { orgId: organization.id, email: mockProfile.email },
-      });
-      if (!user) {
-        user = await prisma.user.create({
-          data: {
-            orgId: organization.id,
-            email: mockProfile.email,
-            name: mockProfile.name,
-            role: "DEVELOPER",
-          },
-        });
+      const { token, session } = await createUserSession(user, organization.id);
+
+      if (isNewUser) {
         await createAuditLog(organization.id, "SIGNUP", { provider }, user.id, request);
       }
-
-      const { signToken } = await import("../../utils/jwt.js");
-      const token = signToken({ sub: user.id, orgId: organization.id, role: user.role });
-      const session = await prisma.session.create({
-        data: {
-          userId: user.id,
-          token,
-          type: "READ_WRITE",
-          expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000),
-        },
-      });
-
       await createAuditLog(organization.id, "LOGIN", { method: `OAUTH_${provider}` }, user.id, request);
 
       return sendSuccess(reply, {
@@ -193,6 +205,8 @@ export async function authRoutes(app: FastifyInstance) {
     }
   });
 
+  // ─── Wallet / SIWE ──────────────────────────────────────────
+
   app.post("/auth/wallet", async (request, reply) => {
     try {
       const { address, signature, message } = request.body as {
@@ -201,43 +215,45 @@ export async function authRoutes(app: FastifyInstance) {
         message: string;
       };
       if (!address || !signature) throw new ValidationError("Address and signature are required");
+      if (!message) throw new ValidationError("Message is required for signature verification");
 
-      // Verify SIWE signature (simplified)
-      // In production, use SIWE library to verify
-
-      let organization = await prisma.organization.findFirst({
-        where: { name: `${address.slice(0, 8)}'s Org` },
-      });
-      if (!organization) {
-        organization = await prisma.organization.create({
-          data: { name: `${address.slice(0, 8)}'s Org` },
-        });
+      const recoveredAddress = verifyMessage(message, signature);
+      if (recoveredAddress.toLowerCase() !== address.toLowerCase()) {
+        throw new ValidationError("Signature verification failed - address mismatch");
       }
 
-      let user = await prisma.user.findFirst({
-        where: { orgId: organization.id, email: `${address.slice(0, 8)}@wallet.local` },
+      const walletEmail = `${address.slice(0, 8)}@wallet.local`;
+      const orgName = `${address.slice(0, 8)}'s Org`;
+
+      const organization = await findOrCreateOrg(walletEmail, undefined, orgName);
+      let user = await findOrCreateUser(organization.id, walletEmail);
+      const isNewUser = user.createdAt.getTime() === user.updatedAt.getTime();
+
+      // Upsert wallet authenticator
+      const existingAuth = await prisma.authenticator.findFirst({
+        where: { userId: user.id, type: "WALLET" },
       });
-      if (!user) {
-        user = await prisma.user.create({
+      if (existingAuth) {
+        await prisma.authenticator.update({
+          where: { id: existingAuth.id },
+          data: { verified: true },
+        });
+      } else {
+        await prisma.authenticator.create({
           data: {
-            orgId: organization.id,
-            email: `${address.slice(0, 8)}@wallet.local`,
-            role: "DEVELOPER",
+            userId: user.id,
+            type: "WALLET",
+            credentialId: address.toLowerCase(),
+            verified: true,
           },
         });
       }
 
-      const { signToken } = await import("../../utils/jwt.js");
-      const token = signToken({ sub: user.id, orgId: organization.id, role: user.role });
-      const session = await prisma.session.create({
-        data: {
-          userId: user.id,
-          token,
-          type: "READ_WRITE",
-          expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000),
-        },
-      });
+      const { token, session } = await createUserSession(user, organization.id);
 
+      if (isNewUser) {
+        await createAuditLog(organization.id, "SIGNUP", { address }, user.id, request);
+      }
       await createAuditLog(organization.id, "LOGIN", { method: "WALLET" }, user.id, request);
 
       return sendSuccess(reply, {
@@ -251,7 +267,428 @@ export async function authRoutes(app: FastifyInstance) {
     }
   });
 
-  // Session management
+  // ─── WebAuthn / Passkey ──────────────────────────────────────
+
+  app.post("/auth/webauthn/register", async (request, reply) => {
+    try {
+      const { email, orgId } = request.body as { email: string; orgId?: string };
+      if (!email) throw new ValidationError("Email is required");
+
+      const options = await generateRegistrationOptions({
+        rpName: RP_NAME,
+        rpID: RP_ID,
+        userName: email,
+        userDisplayName: email,
+        attestationType: "none",
+        authenticatorSelection: {
+          residentKey: "preferred",
+          userVerification: "preferred",
+        },
+      });
+
+      const redis = getRedis();
+      const challengeKey = `${WEBAUTHN_CHALLENGE_PREFIX}${email}`;
+      await redis.setex(challengeKey, 300, options.challenge);
+
+      return sendSuccess(reply, { options });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  app.post("/auth/webauthn/register/verify", async (request, reply) => {
+    try {
+      const { email, response, orgId, orgName } = request.body as {
+        email: string;
+        response: any;
+        orgId?: string;
+        orgName?: string;
+      };
+      if (!email || !response) throw new ValidationError("Email and response are required");
+
+      const redis = getRedis();
+      const challengeKey = `${WEBAUTHN_CHALLENGE_PREFIX}${email}`;
+      const expectedChallenge = await redis.get(challengeKey);
+      if (!expectedChallenge) throw new ValidationError("Registration challenge expired or not found");
+
+      const verification = await verifyRegistrationResponse({
+        response,
+        expectedChallenge,
+        expectedOrigin: EXPECTED_ORIGIN,
+        expectedRPID: RP_ID,
+      });
+
+      if (!verification.verified || !verification.registrationInfo) {
+        throw new ValidationError("Passkey registration verification failed");
+      }
+
+      await redis.del(challengeKey);
+
+      const { registrationInfo } = verification;
+
+      const organization = await findOrCreateOrg(email, orgId, orgName);
+      let user = await findOrCreateUser(organization.id, email);
+      const isNewUser = user.createdAt.getTime() === user.updatedAt.getTime();
+
+      await prisma.authenticator.create({
+        data: {
+          userId: user.id,
+          type: "PASSKEY",
+          credentialId: registrationInfo.credential.id,
+          credentialData: {
+            publicKey: Buffer.from(registrationInfo.credential.publicKey).toString("base64url"),
+            counter: registrationInfo.credential.counter,
+            deviceType: registrationInfo.credentialDeviceType,
+            backedUp: registrationInfo.credentialBackedUp,
+          },
+          verified: true,
+        },
+      });
+
+      const { token, session } = await createUserSession(user, organization.id);
+
+      if (isNewUser) {
+        await createAuditLog(organization.id, "SIGNUP", { email, method: "PASSKEY" }, user.id, request);
+      }
+      await createAuditLog(organization.id, "LOGIN", { method: "PASSKEY" }, user.id, request);
+      await createAuditLog(organization.id, "SESSION_CREATE", { sessionId: session.id }, user.id, request);
+
+      return sendSuccess(reply, {
+        sessionToken: token,
+        user: { id: user.id, email: user.email, role: user.role },
+        org: { id: organization.id, name: organization.name },
+        expiresAt: session.expiresAt,
+      }, 201);
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  app.post("/auth/webauthn/authenticate", async (request, reply) => {
+    try {
+      const { email, orgId } = request.body as { email: string; orgId?: string };
+      if (!email) throw new ValidationError("Email is required");
+
+      const user = await prisma.user.findFirst({ where: { email } });
+      if (!user) throw new NotFoundError("User");
+
+      const passkeys = await prisma.authenticator.findMany({
+        where: { userId: user.id, type: "PASSKEY", verified: true },
+      });
+
+      if (passkeys.length === 0) {
+        throw new NotFoundError("Passkey credential");
+      }
+
+      const allowCredentials = passkeys.map((pk) => ({
+        id: pk.credentialId!,
+        type: "public-key" as const,
+        transports: (pk.credentialData as any)?.transports || ["internal", "hybrid"],
+      }));
+
+      const options = await generateAuthenticationOptions({
+        rpID: RP_ID,
+        allowCredentials,
+        userVerification: "preferred",
+      });
+
+      const redis = getRedis();
+      const challengeKey = `${WEBAUTHN_CHALLENGE_PREFIX}${email}`;
+      await redis.setex(challengeKey, 300, options.challenge);
+
+      return sendSuccess(reply, { options });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  app.post("/auth/webauthn/authenticate/verify", async (request, reply) => {
+    try {
+      const { email, response } = request.body as { email: string; response: any };
+      if (!email || !response) throw new ValidationError("Email and response are required");
+
+      const redis = getRedis();
+      const challengeKey = `${WEBAUTHN_CHALLENGE_PREFIX}${email}`;
+      const expectedChallenge = await redis.get(challengeKey);
+      if (!expectedChallenge) throw new ValidationError("Authentication challenge expired or not found");
+
+      const user = await prisma.user.findFirst({ where: { email } });
+      if (!user) throw new NotFoundError("User");
+
+      const passkeys = await prisma.authenticator.findMany({
+        where: { userId: user.id, type: "PASSKEY", verified: true },
+      });
+
+      const credentialId = response.id;
+      const passkey = passkeys.find((pk) => pk.credentialId === credentialId);
+      if (!passkey) throw new ValidationError("Unknown passkey credential");
+
+      const credentialData = passkey.credentialData as any;
+
+      const verification = await verifyAuthenticationResponse({
+        response,
+        expectedChallenge,
+        expectedOrigin: EXPECTED_ORIGIN,
+        expectedRPID: RP_ID,
+        authenticator: {
+          credentialID: Buffer.from(passkey.credentialId!, "base64url"),
+          credentialPublicKey: Buffer.from(credentialData.publicKey, "base64url"),
+          counter: credentialData.counter || 0,
+          transports: credentialData.transports || ["internal", "hybrid"],
+        },
+      });
+
+      if (!verification.verified) {
+        throw new ValidationError("Passkey authentication verification failed");
+      }
+
+      await redis.del(challengeKey);
+
+      // Update counter
+      if (verification.authenticationInfo) {
+        await prisma.authenticator.update({
+          where: { id: passkey.id },
+          data: {
+            credentialData: {
+              ...credentialData,
+              counter: verification.authenticationInfo.newCounter,
+            },
+          },
+        });
+      }
+
+      const organization = await prisma.organization.findUnique({ where: { id: user.orgId } });
+      if (!organization) throw new NotFoundError("Organization");
+
+      const { token, session } = await createUserSession(user, organization.id);
+
+      await createAuditLog(organization.id, "LOGIN", { method: "PASSKEY" }, user.id, request);
+      await createAuditLog(organization.id, "SESSION_CREATE", { sessionId: session.id }, user.id, request);
+
+      return sendSuccess(reply, {
+        sessionToken: token,
+        user: { id: user.id, email: user.email, role: user.role },
+        org: { id: organization.id, name: organization.name },
+        expiresAt: session.expiresAt,
+      }, 201);
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // ─── Password-Based Auth ─────────────────────────────────────
+
+  app.post("/auth/password/signup", async (request, reply) => {
+    try {
+      const { email, password, orgId, orgName } = request.body as {
+        email: string;
+        password: string;
+        orgId?: string;
+        orgName?: string;
+      };
+      if (!email || !password) throw new ValidationError("Email and password are required");
+      if (password.length < 8) throw new ValidationError("Password must be at least 8 characters");
+
+      const existingUser = await prisma.user.findFirst({ where: { email } });
+      if (existingUser) {
+        const existingPwAuth = await prisma.authenticator.findFirst({
+          where: { userId: existingUser.id, type: "PASSWORD" },
+        });
+        if (existingPwAuth) {
+          throw new ValidationError("User already exists with this email");
+        }
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      const organization = await findOrCreateOrg(email, orgId, orgName);
+      let user = existingUser || await findOrCreateUser(organization.id, email);
+      const isNewUser = !existingUser;
+
+      await prisma.authenticator.create({
+        data: {
+          userId: user.id,
+          type: "PASSWORD",
+          credentialData: { hash: passwordHash },
+          verified: true,
+        },
+      });
+
+      const { token, session } = await createUserSession(user, organization.id);
+
+      if (isNewUser) {
+        await createAuditLog(organization.id, "SIGNUP", { email, method: "PASSWORD" }, user.id, request);
+      }
+      await createAuditLog(organization.id, "LOGIN", { method: "PASSWORD" }, user.id, request);
+      await createAuditLog(organization.id, "SESSION_CREATE", { sessionId: session.id }, user.id, request);
+
+      return sendSuccess(reply, {
+        sessionToken: token,
+        user: { id: user.id, email: user.email, role: user.role },
+        org: { id: organization.id, name: organization.name },
+        expiresAt: session.expiresAt,
+      }, 201);
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  app.post("/auth/password/login", async (request, reply) => {
+    try {
+      const { email, password } = request.body as { email: string; password: string };
+      if (!email || !password) throw new ValidationError("Email and password are required");
+
+      const user = await prisma.user.findFirst({ where: { email } });
+      if (!user) throw new ValidationError("Invalid email or password");
+
+      const pwAuth = await prisma.authenticator.findFirst({
+        where: { userId: user.id, type: "PASSWORD", verified: true },
+      });
+      if (!pwAuth || !pwAuth.credentialData) {
+        throw new ValidationError("Invalid email or password");
+      }
+
+      const credentialData = pwAuth.credentialData as { hash: string };
+      const valid = await bcrypt.compare(password, credentialData.hash);
+      if (!valid) {
+        throw new ValidationError("Invalid email or password");
+      }
+
+      const organization = await prisma.organization.findUnique({ where: { id: user.orgId } });
+      if (!organization) throw new NotFoundError("Organization");
+
+      const { token, session } = await createUserSession(user, organization.id);
+
+      await createAuditLog(organization.id, "LOGIN", { method: "PASSWORD" }, user.id, request);
+      await createAuditLog(organization.id, "SESSION_CREATE", { sessionId: session.id }, user.id, request);
+
+      return sendSuccess(reply, {
+        sessionToken: token,
+        user: { id: user.id, email: user.email, role: user.role },
+        org: { id: organization.id, name: organization.name },
+        expiresAt: session.expiresAt,
+      }, 201);
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // ─── Phone / SMS OTP ─────────────────────────────────────────
+
+  app.post("/auth/phone/send", async (request, reply) => {
+    try {
+      const { phone, orgId } = request.body as { phone: string; orgId?: string };
+      if (!phone) throw new ValidationError("Phone number is required");
+
+      const redis = getRedis();
+      await checkOtpRateLimit(redis, "phone", phone);
+
+      const otp = generateOtp();
+      const key = `${OTP_PREFIX}${phone}`;
+      await redis.setex(key, config.otpExpirySeconds, otp);
+
+      // In production, send SMS via Twilio
+      // if (config.twilio.accountSid) { ... }
+      console.log(`[DEV] OTP for phone ${phone}: ${otp}`);
+
+      return sendSuccess(reply, {
+        message: "OTP sent",
+        expiresIn: config.otpExpirySeconds,
+        otp: process.env.NODE_ENV === "development" ? otp : undefined,
+      });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  app.post("/auth/phone/verify", async (request, reply) => {
+    try {
+      const { phone, otp, orgId, orgName } = request.body as {
+        phone: string;
+        otp: string;
+        orgId?: string;
+        orgName?: string;
+      };
+      if (!phone || !otp) throw new ValidationError("Phone and OTP are required");
+
+      const redis = getRedis();
+      const key = `${OTP_PREFIX}${phone}`;
+      const storedOtp = await redis.get(key);
+
+      if (!storedOtp || storedOtp !== otp) {
+        throw new ValidationError("Invalid or expired OTP");
+      }
+
+      await redis.del(key);
+
+      const phoneEmail = `${phone.replace(/[^0-9]/g, "")}@phone.local`;
+      const organization = await findOrCreateOrg(phoneEmail, orgId, orgName);
+      let user = await prisma.user.findFirst({
+        where: { orgId: organization.id, phone },
+      });
+      if (!user) {
+        user = await prisma.user.create({
+          data: { orgId: organization.id, email: phoneEmail, phone, role: "DEVELOPER" },
+        });
+        await createAuditLog(organization.id, "SIGNUP", { phone }, user.id, request);
+      }
+
+      // Upsert phone authenticator
+      const existingAuth = await prisma.authenticator.findFirst({
+        where: { userId: user.id, type: "PHONE" },
+      });
+      if (existingAuth) {
+        await prisma.authenticator.update({
+          where: { id: existingAuth.id },
+          data: { verified: true },
+        });
+      } else {
+        await prisma.authenticator.create({
+          data: { userId: user.id, type: "PHONE", verified: true },
+        });
+      }
+
+      const { token, session } = await createUserSession(user, organization.id);
+
+      await createAuditLog(organization.id, "LOGIN", { method: "PHONE" }, user.id, request);
+      await createAuditLog(organization.id, "SESSION_CREATE", { sessionId: session.id }, user.id, request);
+
+      return sendSuccess(reply, {
+        sessionToken: token,
+        user: { id: user.id, email: user.email, phone: user.phone, role: user.role },
+        org: { id: organization.id, name: organization.name },
+        expiresAt: session.expiresAt,
+      }, 201);
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // ─── Logout ──────────────────────────────────────────────────
+
+  app.post("/auth/logout", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const authHeader = request.headers.authorization;
+      if (!authHeader?.startsWith("Bearer ")) {
+        throw new ValidationError("Bearer token required");
+      }
+      const token = authHeader.slice(7);
+
+      const deleted = await prisma.session.deleteMany({ where: { token } });
+      if (deleted.count === 0) {
+        throw new NotFoundError("Session");
+      }
+
+      await createAuditLog(request.orgId, "LOGOUT", { token }, request.userId, request);
+
+      return sendSuccess(reply, { message: "Logged out successfully" });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // ─── Session Management ──────────────────────────────────────
+
   app.get("/sessions", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const sessions = await prisma.session.findMany({
@@ -304,7 +741,8 @@ export async function authRoutes(app: FastifyInstance) {
     }
   });
 
-  // API Keys
+  // ─── API Keys ────────────────────────────────────────────────
+
   app.post("/api-keys", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { name, permissions, allowedIps } = request.body as {

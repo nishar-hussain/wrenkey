@@ -4,4 +4,3 @@ dist/
 *.log
 .turbo/
 coverage/
-prisma/migrations/
