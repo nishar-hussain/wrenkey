@@ -1,0 +1,101 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/providers/Providers";
+import { apiFetch } from "@/lib/api";
+import { Card, CardHeader, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Table } from "@/components/ui/Table";
+import { Pagination } from "@/components/ui/Pagination";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Modal } from "@/components/ui/Modal";
+
+interface Wallet {
+  id: string;
+  name: string;
+  ownerType: string;
+  status: string;
+  accounts: Array<{ address: string; chain: string }>;
+  createdAt: string;
+}
+
+export default function WalletsPage() {
+  const router = useRouter();
+  const { isAuthenticated, token } = useAuth();
+  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [limit, setLimit] = useState(20);
+  const [offset, setOffset] = useState(0);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [createLoading, setCreateLoading] = useState(false);
+
+  const fetchWallets = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const res: any = await apiFetch(`/wallets?limit=${limit}&offset=${offset}`, { token });
+      setWallets(res.data);
+      setTotal(res.total);
+    } catch {} finally { setLoading(false); }
+  }, [token, limit, offset]);
+
+  useEffect(() => {
+    if (!isAuthenticated) { router.push("/login"); return; }
+    fetchWallets();
+  }, [isAuthenticated, fetchWallets, router]);
+
+  const createWallet = async () => {
+    if (!newName.trim()) return;
+    setCreateLoading(true);
+    try {
+      await apiFetch("/wallets", { method: "POST", body: JSON.stringify({ name: newName, ownerType: "USER" }), token: token! });
+      setShowCreate(false);
+      setNewName("");
+      fetchWallets();
+    } catch {} finally { setCreateLoading(false); }
+  };
+
+  if (!isAuthenticated) return null;
+
+  const columns = [
+    { key: "name", header: "Name" },
+    { key: "ownerType", header: "Owner Type" },
+    {
+      key: "address", header: "Address",
+      render: (w: Wallet) => <span className="font-mono text-xs">{w.accounts?.[0]?.address?.slice(0, 12)}...{w.accounts?.[0]?.address?.slice(-6)}</span>,
+    },
+    { key: "chain", header: "Chain", render: (w: Wallet) => w.accounts?.[0]?.chain || "arc" },
+    { key: "status", header: "Status", render: (w: Wallet) => <StatusBadge status={w.status} /> },
+    {
+      key: "createdAt", header: "Created",
+      render: (w: Wallet) => new Date(w.createdAt).toLocaleDateString(),
+    },
+  ];
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Wallets</h1>
+        <Button onClick={() => setShowCreate(true)}>Create Wallet</Button>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table columns={columns} data={wallets} loading={loading} emptyMessage="No wallets found. Create your first wallet." />
+          <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => { setLimit(l); setOffset(o); }} />
+        </CardContent>
+      </Card>
+
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create Wallet">
+        <div className="space-y-4">
+          <Input label="Wallet Name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="My Wallet" />
+          <Button onClick={createWallet} loading={createLoading} className="w-full">Create</Button>
+        </div>
+      </Modal>
+    </div>
+  );
+}

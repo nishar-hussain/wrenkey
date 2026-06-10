@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: wrankey
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/wrankey
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: wrankey-jwt-secret-change-in-production
+      ENCRYPTION_KEY: wrankey-encryption-key-change-in-production-32chars
+      PORT: 3001
+      HOST: 0.0.0.0
+      ARC_RPC_URL: https://rpc.arc.network
+      ARC_CHAIN_ID: 1234
+      SESSION_EXPIRY_SECONDS: 3600
+      API_KEY_EXPIRY_DAYS: 365
+      OTP_EXPIRY_SECONDS: 300
+      CORS_ORIGIN: http://localhost:5173
+      SMTP_HOST: ""
+      SMTP_PORT: "587"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      FROM_EMAIL: no-reply@wrankey.io
+      TWILIO_ACCOUNT_SID: ""
+      TWILIO_AUTH_TOKEN: ""
+      TWILIO_PHONE_NUMBER: ""
+      OAUTH_GOOGLE_CLIENT_ID: ""
+      OAUTH_GOOGLE_CLIENT_SECRET: ""
+      WEBHOOK_HMAC_SECRET: wrankey-webhook-secret-change-in-production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: packages/dashboard/Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      NEXT_PUBLIC_API_BASE: http://backend:3001
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
