@@ -1,1 +1,0 @@
-{"root":["./src/main.tsx","./src/components/layout.tsx","./src/pages/agents.tsx","./src/pages/auditlogs.tsx","./src/pages/dashboard.tsx","./src/pages/login.tsx","./src/pages/policies.tsx","./src/pages/transactions.tsx","./src/pages/users.tsx","./src/pages/walletdetail.tsx","./src/pages/wallets.tsx","./src/pages/webhooks.tsx"],"version":"5.9.3"}
