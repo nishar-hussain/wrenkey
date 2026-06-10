@@ -74,6 +74,8 @@ services:
       dockerfile: packages/dashboard/Dockerfile
     ports:
       - "8080:80"
+    environment:
+      NEXT_PUBLIC_API_BASE: http://backend:3001
     depends_on:
       - backend
 

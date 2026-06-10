@@ -2,27 +2,25 @@
   "name": "@wrankey/dashboard",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "lint": "eslint src/"
+    "dev": "next dev -p 5173",
+    "build": "next build",
+    "start": "next start -p 80",
+    "lint": "next lint"
   },
   "dependencies": {
     "@wrankey/sdk": "*",
+    "next": "^15.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "react-router-dom": "^7.1.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@types/node": "^22.10.1",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.1",
-    "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.3"
+    "typescript": "^5.7.2"
   }
 }
