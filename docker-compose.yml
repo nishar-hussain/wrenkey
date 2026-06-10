@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: arkey
+      POSTGRES_DB: wrankey
     ports:
       - "5432:5432"
     volumes:
@@ -34,10 +34,10 @@ services:
     ports:
       - "3001:3001"
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/arkey
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/wrankey
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: arkey-jwt-secret-change-in-production
-      ENCRYPTION_KEY: arkey-encryption-key-change-in-production-32chars
+      JWT_SECRET: wrankey-jwt-secret-change-in-production
+      ENCRYPTION_KEY: wrankey-encryption-key-change-in-production-32chars
       PORT: 3001
       HOST: 0.0.0.0
       ARC_RPC_URL: https://rpc.arc.network
@@ -50,13 +50,13 @@ services:
       SMTP_PORT: 587
       SMTP_USER: ""
       SMTP_PASS: ""
-      FROM_EMAIL: no-reply@arkey.io
+      FROM_EMAIL: no-reply@wrankey.io
       TWILIO_ACCOUNT_SID: ""
       TWILIO_AUTH_TOKEN: ""
       TWILIO_PHONE_NUMBER: ""
       OAUTH_GOOGLE_CLIENT_ID: ""
       OAUTH_GOOGLE_CLIENT_SECRET: ""
-      WEBHOOK_HMAC_SECRET: arkey-webhook-secret-change-in-production
+      WEBHOOK_HMAC_SECRET: wrankey-webhook-secret-change-in-production
     depends_on:
       postgres:
         condition: service_healthy

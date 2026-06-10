@@ -1,5 +1,5 @@
 {
-  "name": "@arkey/dashboard",
+  "name": "@wrankey/dashboard",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "@arkey/sdk": "*",
+    "@wrankey/sdk": "*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.0"

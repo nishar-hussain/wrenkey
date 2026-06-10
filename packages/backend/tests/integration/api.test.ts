@@ -194,7 +194,7 @@ describe("API Integration Tests", () => {
   describe("Agent CRUD", () => {
     it("POST /api/v1/agents creates an agent", async () => {
       (prisma.user.create as any).mockResolvedValue({ ...mockPrismaData.user, role: "AGENT" });
-      (prisma.apiKey.create as any).mockResolvedValue({ id: "apikey-1", keyHash: "hash", keyPrefix: "arkey_abc" });
+      (prisma.apiKey.create as any).mockResolvedValue({ id: "apikey-1", keyHash: "hash", keyPrefix: "wrankey_abc" });
       (prisma.agent.create as any).mockResolvedValue(mockPrismaData.agent);
       const res = await app.inject({ method: "POST", url: "/api/v1/agents", headers: authHeader(), payload: { name: "Test Agent", permissions: ["wallet:sign"] } });
       expect(res.statusCode).toBe(201);
@@ -271,13 +271,13 @@ describe("API Integration Tests", () => {
     });
 
     it("POST /api/v1/api-keys creates an API key", async () => {
-      (prisma.apiKey.create as any).mockResolvedValue({ id: "k1", name: "Key", keyPrefix: "arkey_abc", permissions: ["*"], expiresAt: new Date() });
+      (prisma.apiKey.create as any).mockResolvedValue({ id: "k1", name: "Key", keyPrefix: "wrankey_abc", permissions: ["*"], expiresAt: new Date() });
       const res = await app.inject({ method: "POST", url: "/api/v1/api-keys", headers: authHeader(), payload: { name: "Key" } });
       expect(res.statusCode).toBe(201);
     });
 
     it("GET /api/v1/api-keys lists API keys", async () => {
-      (prisma.apiKey.findMany as any).mockResolvedValue([{ id: "k1", name: "Key", keyPrefix: "arkey_abc", permissions: ["*"], allowedIps: [], createdAt: new Date(), expiresAt: new Date() }]);
+      (prisma.apiKey.findMany as any).mockResolvedValue([{ id: "k1", name: "Key", keyPrefix: "wrankey_abc", permissions: ["*"], allowedIps: [], createdAt: new Date(), expiresAt: new Date() }]);
       (prisma.apiKey.count as any).mockResolvedValue(1);
       const res = await app.inject({ method: "GET", url: "/api/v1/api-keys", headers: authHeader() });
       expect(res.statusCode).toBe(200);

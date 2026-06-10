@@ -1,4 +1,4 @@
-export interface ArKeyConfig {
+export interface WranKeyConfig {
   apiBase: string;
   orgId?: string;
 }

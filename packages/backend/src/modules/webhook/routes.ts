@@ -129,8 +129,8 @@ export async function triggerWebhookEvents(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-ArKey-Signature": signature,
-          "X-ArKey-Event": event,
+          "X-WranKey-Signature": signature,
+          "X-WranKey-Event": event,
         },
         body,
       }).catch((err) => {

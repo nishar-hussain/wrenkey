@@ -4,5 +4,5 @@ set -e
 echo "Running database migrations..."
 npx prisma migrate deploy --schema=packages/backend/prisma/schema.prisma
 
-echo "Starting ArKey server..."
+echo "Starting WranKey server..."
 exec node packages/backend/dist/server.js

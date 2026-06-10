@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { ArKeyProvider } from "@arkey/sdk/react";
+import { WranKeyProvider } from "@wrankey/sdk/react";
 import Layout from "./components/Layout";
 import DashboardPage from "./pages/Dashboard";
 import LoginPage from "./pages/Login";
@@ -21,7 +21,7 @@ const config = {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ArKeyProvider config={config}>
+    <WranKeyProvider config={config}>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -38,6 +38,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           </Route>
         </Routes>
       </BrowserRouter>
-    </ArKeyProvider>
+    </WranKeyProvider>
   </React.StrictMode>
 );

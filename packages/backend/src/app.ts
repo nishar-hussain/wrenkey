@@ -42,7 +42,7 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
   await app.register(swagger, {
     openapi: {
       info: {
-        title: "ArKey API",
+        title: "WranKey API",
         description: "AI-Native Wallet & Agent Platform on Arc",
         version: "0.1.0",
       },
@@ -92,7 +92,7 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
     status: "ok",
     timestamp: new Date().toISOString(),
     version: "0.1.0",
-    service: "ArKey",
+    service: "WranKey",
   }));
 
   app.addHook("onRequest", async (request, reply) => {

@@ -21,7 +21,7 @@ import { parsePagination } from "../../utils/pagination.js";
 const OTP_PREFIX = "otp:";
 const WEBAUTHN_CHALLENGE_PREFIX = "webauthn:challenge:";
 const RATELIMIT_PREFIX = "ratelimit:otp:";
-const RP_NAME = "ArKey";
+const RP_NAME = "WranKey";
 const RP_ID = process.env.WEBAUTHN_RP_ID || "localhost";
 const EXPECTED_ORIGIN = config.corsOrigin;
 const OTP_RATE_LIMIT = 3;
@@ -103,7 +103,7 @@ export async function authRoutes(app: FastifyInstance) {
         await transporter.sendMail({
           from: config.smtp.from,
           to: email,
-          subject: "ArKey - Your Login Code",
+          subject: "WranKey - Your Login Code",
           text: `Your verification code is: ${otp}\n\nThis code expires in ${config.otpExpirySeconds} seconds.`,
         }).catch(() => {});
       }
@@ -655,7 +655,7 @@ export async function authRoutes(app: FastifyInstance) {
           body: new URLSearchParams({
             To: phone,
             From: config.twilio.phoneNumber,
-            Body: `ArKey verification code: ${otp}`,
+            Body: `WranKey verification code: ${otp}`,
           }),
         }).catch(() => {});
       }
@@ -831,7 +831,7 @@ export async function authRoutes(app: FastifyInstance) {
       if (!name) throw new ValidationError("Name is required");
 
       const { generateRandomToken, hashSha256 } = await import("../../utils/crypto.js");
-      const rawKey = `arkey_${generateRandomToken()}`;
+      const rawKey = `wrankey_${generateRandomToken()}`;
       const keyHash = hashSha256(rawKey);
       const keyPrefix = rawKey.slice(0, 12);
 

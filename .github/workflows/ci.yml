@@ -12,7 +12,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: arkey_test
+          POSTGRES_DB: wrankey_test
         ports:
           - 5432:5432
         options: >-
@@ -32,7 +32,7 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/arkey_test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wrankey_test
       REDIS_URL: redis://localhost:6379
       JWT_SECRET: test-secret
       ENCRYPTION_KEY: test-encryption-key-32chars-xx
@@ -71,6 +71,6 @@ jobs:
 
       - run: npm run build
 
-      - run: docker build -f packages/backend/Dockerfile -t arkey-backend .
+      - run: docker build -f packages/backend/Dockerfile -t wrankey-backend .
 
-      - run: docker build -f packages/dashboard/Dockerfile -t arkey-dashboard .
+      - run: docker build -f packages/dashboard/Dockerfile -t wrankey-dashboard .

@@ -1,9 +1,9 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
-import { ArKeyClient } from "../client.js";
-import type { ArKeyConfig, SessionState } from "../types.js";
+import { WranKeyClient } from "../client.js";
+import type { WranKeyConfig, SessionState } from "../types.js";
 
-interface ArKeyContextValue {
-  client: ArKeyClient;
+interface WranKeyContextValue {
+  client: WranKeyClient;
   session: SessionState;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -14,16 +14,16 @@ interface ArKeyContextValue {
   refreshSession: () => Promise<void>;
 }
 
-const ArKeyContext = createContext<ArKeyContextValue | null>(null);
+const WranKeyContext = createContext<WranKeyContextValue | null>(null);
 
-export function ArKeyProvider({
+export function WranKeyProvider({
   config,
   children,
 }: {
-  config: ArKeyConfig;
+  config: WranKeyConfig;
   children: ReactNode;
 }) {
-  const [client] = useState(() => new ArKeyClient(config));
+  const [client] = useState(() => new WranKeyClient(config));
   const [session, setSession] = useState<SessionState>(client.getSession());
   const [isLoading, setIsLoading] = useState(false);
 
@@ -87,7 +87,7 @@ export function ArKeyProvider({
   }, [refreshSession]);
 
   return (
-    <ArKeyContext.Provider
+    <WranKeyContext.Provider
       value={{
         client,
         session,
@@ -101,20 +101,20 @@ export function ArKeyProvider({
       }}
     >
       {children}
-    </ArKeyContext.Provider>
+    </WranKeyContext.Provider>
   );
 }
 
-export function useArKey(): ArKeyContextValue {
-  const context = useContext(ArKeyContext);
+export function useWranKey(): WranKeyContextValue {
+  const context = useContext(WranKeyContext);
   if (!context) {
-    throw new Error("useArKey must be used within ArKeyProvider");
+    throw new Error("useWranKey must be used within WranKeyProvider");
   }
   return context;
 }
 
 export function useWallet() {
-  const { client } = useArKey();
+  const { client } = useWranKey();
 
   const createWallet = useCallback(
     (params: { name: string; ownerType?: string; ownerId?: string; tags?: string[] }) =>
@@ -138,7 +138,7 @@ export function useWallet() {
 }
 
 export function useTransaction() {
-  const { client } = useArKey();
+  const { client } = useWranKey();
 
   const signAndSend = useCallback(
     (params: {
@@ -162,7 +162,7 @@ export function useTransaction() {
 }
 
 export function useAgent() {
-  const { client } = useArKey();
+  const { client } = useWranKey();
 
   const createAgent = useCallback(
     (params: { name: string; email?: string; permissions?: string[]; tags?: string[] }) =>
@@ -178,7 +178,7 @@ export function useAgent() {
 }
 
 export function usePolicy() {
-  const { client } = useArKey();
+  const { client } = useWranKey();
 
   const createPolicy = useCallback(
     (params: {

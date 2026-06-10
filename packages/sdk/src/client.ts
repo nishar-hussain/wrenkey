@@ -1,5 +1,5 @@
 import type {
-  ArKeyConfig,
+  WranKeyConfig,
   SessionState,
   SignTransactionParams,
   CreateWalletParams,
@@ -8,11 +8,11 @@ import type {
   CreateWebhookParams,
 } from "./types.js";
 
-export class ArKeyClient {
-  private config: ArKeyConfig;
+export class WranKeyClient {
+  private config: WranKeyConfig;
   private session: SessionState;
 
-  constructor(config: ArKeyConfig) {
+  constructor(config: WranKeyConfig) {
     this.config = { apiBase: config.apiBase.replace(/\/$/, ""), orgId: config.orgId };
     this.session = { sessionToken: null, user: null, org: null, expiresAt: null };
   }
@@ -216,4 +216,4 @@ export class ArKeyClient {
   }
 }
 
-export default ArKeyClient;
+export default WranKeyClient;

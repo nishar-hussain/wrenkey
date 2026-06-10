@@ -1,8 +1,8 @@
 {
-  "name": "arkey",
+  "name": "wrankey",
   "version": "0.1.0",
   "private": true,
-  "description": "ArKey - AI-Native Wallet & Agent Platform on Arc",
+  "description": "WranKey - AI-Native Wallet & Agent Platform on Arc",
   "workspaces": [
     "packages/*"
   ],

@@ -13,7 +13,7 @@ async function start() {
 
   try {
     await app.listen({ port: config.port, host: config.host });
-    console.log(`\n🚀 ArKey API server running at http://${config.host}:${config.port}`);
+    console.log(`\n🚀 WranKey API server running at http://${config.host}:${config.port}`);
     console.log(`   Health check: http://${config.host}:${config.port}/health`);
     console.log(`   API base:     http://${config.host}:${config.port}/api/v1\n`);
   } catch (err) {

@@ -24,14 +24,14 @@ export async function agentRoutes(app: FastifyInstance) {
         data: {
           orgId: request.orgId,
           name,
-          email: email || `agent_${name.toLowerCase().replace(/\s+/g, "_")}@arkey.internal`,
+          email: email || `agent_${name.toLowerCase().replace(/\s+/g, "_")}@wrankey.internal`,
           role: "AGENT",
           tags: tags || [],
         },
       });
 
       // Create API key for the agent
-      const rawKey = `arkey_${generateRandomToken()}`;
+      const rawKey = `wrankey_${generateRandomToken()}`;
       const keyHash = hashSha256(rawKey);
       const keyPrefix = rawKey.slice(0, 12);
 

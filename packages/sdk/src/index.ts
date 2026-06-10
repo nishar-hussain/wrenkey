@@ -1,6 +1,6 @@
-export { ArKeyClient, default } from "./client.js";
+export { WranKeyClient, default } from "./client.js";
 export type {
-  ArKeyConfig,
+  WranKeyConfig,
   SessionState,
   SignTransactionParams,
   CreateWalletParams,

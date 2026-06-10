@@ -116,7 +116,7 @@ async function main() {
       id: "seed-webhook-001",
       orgId: org.id,
       userId: admin.id,
-      url: "https://webhook.acme.com/arkey-events",
+      url: "https://webhook.acme.com/wrankey-events",
       events: ["transaction.confirmed", "policy.evaluated"],
       hmacSecret: "seed-webhook-hmac-secret",
     },
