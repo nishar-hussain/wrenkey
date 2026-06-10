@@ -21,6 +21,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [devOtp, setDevOtp] = useState(""); // Shows OTP in dev mode
 
   // Password
   const [pwEmail, setPwEmail] = useState("");
@@ -35,8 +36,12 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true); setError("");
     try {
-      await apiFetch("/auth/email/send", { method: "POST", body: JSON.stringify({ email }) });
+      const res: any = await apiFetch("/auth/email/send", { method: "POST", body: JSON.stringify({ email }) });
       setOtpSent(true);
+      // Show OTP in dev mode (when backend returns it in response)
+      if (res.otp) {
+        setDevOtp(res.otp);
+      }
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
   };
@@ -106,9 +111,16 @@ export default function LoginPage() {
           {tab === "email" && otpSent && (
             <form onSubmit={verifyOtp} className="space-y-4">
               <p className="text-sm text-slate-500">Code sent to <strong>{email}</strong></p>
+              {devOtp && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm">
+                  <p className="font-medium text-amber-700">Dev Mode - Your OTP:</p>
+                  <p className="text-2xl font-mono font-bold text-amber-600 tracking-widest mt-1">{devOtp}</p>
+                  <p className="text-xs text-amber-500 mt-1">SMTP not configured. Use this code to sign in.</p>
+                </div>
+              )}
               <Input label="Verification Code" value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="123456" required maxLength={6} />
               <Button type="submit" loading={loading} className="w-full">Verify & Sign In</Button>
-              <button type="button" onClick={() => setOtpSent(false)} className="text-sm text-brand-600 hover:underline w-full text-center">Back</button>
+              <button type="button" onClick={() => { setOtpSent(false); setDevOtp(""); }} className="text-sm text-brand-600 hover:underline w-full text-center">Back</button>
             </form>
           )}
 

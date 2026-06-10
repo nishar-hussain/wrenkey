@@ -67,25 +67,51 @@ export async function authRoutes(app: FastifyInstance) {
       const otp = generateOtp();
       await redis.setex(`${OTP_PREFIX}${email}`, config.otpExpirySeconds, otp);
 
-      if (config.smtp.host && config.smtp.user) {
-        const transporter = createTransport({
-          host: config.smtp.host,
-          port: config.smtp.port,
-          auth: { user: config.smtp.user, pass: config.smtp.pass },
-        });
-        await transporter.sendMail({
-          from: config.smtp.from,
-          to: email,
-          subject: "WranKey - Login Code",
-          text: `Your code: ${otp}\nExpires in ${config.otpExpirySeconds}s.`,
-        }).catch(() => {});
+      // Attempt to send email if SMTP is configured
+      let emailSent = false;
+      if (config.smtp.host) {
+        try {
+          const isSecure = config.smtp.port === 465;
+          const transporter = createTransport({
+            host: config.smtp.host,
+            port: config.smtp.port,
+            secure: isSecure,
+            requireTLS: !isSecure,
+            ...(config.smtp.user
+              ? { auth: { user: config.smtp.user, pass: config.smtp.pass } }
+              : {}),
+          });
+
+          const info = await transporter.sendMail({
+            from: config.smtp.from,
+            to: email,
+            subject: "WranKey - Login Code",
+            text: `Your code: ${otp}\n\nExpires in ${Math.floor(config.otpExpirySeconds / 60)} minutes.`,
+            html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+              <h2 style="color:#1e3a8a;">WranKey</h2>
+              <p>Your verification code is:</p>
+              <h1 style="font-size:32px;letter-spacing:4px;color:#2563eb;margin:16px 0;">${otp}</h1>
+              <p style="color:#64748b;font-size:14px;">This code expires in ${Math.floor(config.otpExpirySeconds / 60)} minutes.</p>
+              <p style="color:#94a3b8;font-size:12px;">If you didn't request this, ignore this email.</p>
+            </div>`,
+          });
+          emailSent = true;
+          console.log(`[EMAIL] Sent OTP to ${email}, messageId: ${info.messageId}`);
+        } catch (smtpErr: any) {
+          console.error(`[EMAIL] Failed to send OTP to ${email}:`, smtpErr.message);
+        }
       }
 
-      console.log(`[DEV] OTP for ${email}: ${otp}`);
+      if (!emailSent) {
+        console.log(`[DEV] OTP for ${email}: ${otp}`);
+      }
+
+      // In development, always return OTP in response for testing
+      const isDev = process.env.NODE_ENV !== "production";
       return sendSuccess(reply, {
-        message: "OTP sent",
+        message: emailSent ? "OTP sent to your email" : `OTP generated${isDev ? " (dev mode - check server logs)" : ""}`,
         expiresIn: config.otpExpirySeconds,
-        otp: process.env.NODE_ENV === "development" ? otp : undefined,
+        otp: isDev ? otp : undefined,
       });
     } catch (err) {
       return sendError(reply, err);
