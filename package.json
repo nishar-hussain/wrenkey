@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w packages/backend",
+    "dev": "concurrently \"npm run dev -w packages/backend\" \"npm run dev -w packages/dashboard\"",
     "build": "npm run build -w packages/backend && npm run build -w packages/sdk",
     "test": "npm run test -w packages/backend",
     "lint": "npm run lint -w packages/backend",
@@ -19,5 +19,8 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
   }
 }
