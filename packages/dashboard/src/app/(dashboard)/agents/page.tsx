@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
-import { Card, CardHeader, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -77,7 +77,7 @@ export default function AgentsPage() {
     {
       key: "actions", header: "",
       render: (a: Agent) => (
-        <Button variant="danger" size="sm" onClick={() => deleteAgent(a.id)}>Revoke</Button>
+        <Button variant="destructive" size="sm" onClick={() => deleteAgent(a.id)}>Revoke</Button>
       ),
     },
   ];
@@ -99,8 +99,11 @@ export default function AgentsPage() {
       <Modal open={showCreate} onClose={() => { setShowCreate(false); setCredentials(null); }} title="Create Agent">
         {!credentials ? (
           <div className="space-y-4">
-            <Input label="Agent Name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Trading Bot" />
-            <Button onClick={createAgent} loading={createLoading} className="w-full">Create</Button>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Agent Name</label>
+              <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Trading Bot" />
+            </div>
+            <Button onClick={createAgent} disabled={createLoading} className="w-full">Create</Button>
           </div>
         ) : (
           <div className="space-y-4">
@@ -109,9 +112,18 @@ export default function AgentsPage() {
               <p className="text-green-600 mt-1">Save the API key - it won&apos;t be shown again.</p>
             </div>
             <div className="space-y-2">
-              <Input label="User ID" value={credentials.userId} readOnly />
-              <Input label="API Key" value={credentials.apiKey} readOnly className="font-mono text-xs" />
-              <Input label="Key Prefix" value={credentials.keyPrefix} readOnly />
+              <div className="space-y-1">
+                <label className="text-sm font-medium">User ID</label>
+                <Input value={credentials.userId} readOnly />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">API Key</label>
+                <Input value={credentials.apiKey} readOnly className="font-mono text-xs" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Key Prefix</label>
+                <Input value={credentials.keyPrefix} readOnly />
+              </div>
             </div>
             <Button onClick={() => { setShowCreate(false); setCredentials(null); setNewName(""); }} variant="secondary" className="w-full">Close</Button>
           </div>

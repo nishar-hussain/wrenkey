@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
-import { Card, CardHeader, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -92,8 +92,11 @@ export default function WalletsPage() {
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create Wallet">
         <div className="space-y-4">
-          <Input label="Wallet Name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="My Wallet" />
-          <Button onClick={createWallet} loading={createLoading} className="w-full">Create</Button>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Wallet Name</label>
+            <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="My Wallet" />
+          </div>
+          <Button onClick={createWallet} disabled={createLoading} className="w-full">Create</Button>
         </div>
       </Modal>
     </div>

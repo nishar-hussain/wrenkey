@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Card, CardHeader, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
 
 type AuthTab = "email" | "password" | "wallet";
 
@@ -130,8 +130,11 @@ export default function LoginPage() {
 
           {tab === "email" && !otpSent && (
             <form onSubmit={sendOtp} className="space-y-4">
-              <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
-              <Button type="submit" loading={loading} className="w-full">Send Code</Button>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Email</label>
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
+              </div>
+              <Button type="submit" disabled={loading} className="w-full">Send Code</Button>
             </form>
           )}
           {tab === "email" && otpSent && (
@@ -144,18 +147,27 @@ export default function LoginPage() {
                   <p className="text-xs text-amber-500 mt-1">SMTP not configured. Use this code to sign in.</p>
                 </div>
               )}
-              <Input label="Verification Code" value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="123456" required maxLength={6} />
-              <Button type="submit" loading={loading} className="w-full">Verify & Sign In</Button>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Verification Code</label>
+                <Input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="123456" required maxLength={6} />
+              </div>
+              <Button type="submit" disabled={loading} className="w-full">Verify & Sign In</Button>
               <button type="button" onClick={() => { setOtpSent(false); setDevOtp(""); }} className="text-sm text-brand-600 hover:underline w-full text-center">Back</button>
             </form>
           )}
 
           {tab === "password" && (
             <form onSubmit={handlePassword} className="space-y-4">
-              {isSignup && <Input label="Name" value={pwName} onChange={(e) => setPwName(e.target.value)} placeholder="Your name" />}
-              <Input label="Email" type="email" value={pwEmail} onChange={(e) => setPwEmail(e.target.value)} placeholder="you@example.com" required />
-              <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min 8 characters" required minLength={8} />
-              <Button type="submit" loading={loading} className="w-full">{isSignup ? "Create Account" : "Sign In"}</Button>
+              {isSignup && <div className="space-y-1"><label className="text-sm font-medium">Name</label><Input value={pwName} onChange={(e) => setPwName(e.target.value)} placeholder="Your name" /></div>}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Email</label>
+                <Input type="email" value={pwEmail} onChange={(e) => setPwEmail(e.target.value)} placeholder="you@example.com" required />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Password</label>
+                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min 8 characters" required minLength={8} />
+              </div>
+              <Button type="submit" disabled={loading} className="w-full">{isSignup ? "Create Account" : "Sign In"}</Button>
               <button type="button" onClick={() => setIsSignup(!isSignup)} className="text-sm text-brand-600 hover:underline w-full text-center">
                 {isSignup ? "Already have an account? Sign in" : "Don't have an account? Sign up"}
               </button>
@@ -165,7 +177,7 @@ export default function LoginPage() {
           {tab === "wallet" && (
             <div className="space-y-4">
               {!walletConnected ? (
-                <Button onClick={connectWallet} loading={loading} className="w-full">
+                <Button onClick={connectWallet} disabled={loading} className="w-full">
                   Connect MetaMask
                 </Button>
               ) : (
@@ -174,7 +186,7 @@ export default function LoginPage() {
                     <p className="font-medium text-green-700">Wallet Connected</p>
                     <p className="font-mono text-xs text-green-600 mt-1 break-all">{walletAddress}</p>
                   </div>
-                  <Button onClick={handleWallet} loading={loading} className="w-full">
+                  <Button onClick={handleWallet} disabled={loading} className="w-full">
                     Sign In with Wallet
                   </Button>
                   <button type="button" onClick={() => { setWalletConnected(false); setWalletAddress(""); }}

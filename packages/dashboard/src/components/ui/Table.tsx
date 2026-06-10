@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils";
+
 interface Column<T> {
   key: string;
   header: string;
@@ -21,30 +23,30 @@ export function Table<T>({
   emptyMessage = "No data found",
 }: TableProps<T>) {
   if (loading) {
-    return <div className="text-center py-12 text-slate-400">Loading...</div>;
+    return <div className="text-center py-12 text-muted-foreground text-sm">Loading...</div>;
   }
 
   if (!data || data.length === 0) {
-    return <div className="text-center py-12 text-slate-400">{emptyMessage}</div>;
+    return <div className="text-center py-12 text-muted-foreground text-sm">{emptyMessage}</div>;
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-slate-200 bg-slate-50">
+    <div className="relative w-full overflow-auto">
+      <table className="w-full caption-bottom text-sm">
+        <thead className="[&_tr]:border-b">
+          <tr className="border-b transition-colors">
             {columns.map((col) => (
-              <th key={col.key} className={`text-left px-4 py-3 font-medium text-slate-600 ${col.className || ""}`}>
+              <th key={col.key} className={cn("h-12 px-4 text-left align-middle font-medium text-muted-foreground", col.className)}>
                 {col.header}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="[&_tr:last-child]:border-0">
           {data.map((item) => (
-            <tr key={String((item as any)[keyField])} className="border-b border-slate-100 hover:bg-slate-50">
+            <tr key={String((item as any)[keyField])} className="border-b transition-colors hover:bg-muted/50">
               {columns.map((col) => (
-                <td key={col.key} className={`px-4 py-3 ${col.className || ""}`}>
+                <td key={col.key} className={cn("p-4 align-middle", col.className)}>
                   {col.render ? col.render(item) : String((item as any)[col.key] ?? "")}
                 </td>
               ))}

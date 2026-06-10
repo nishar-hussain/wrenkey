@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
-import { Card, CardHeader, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -94,7 +94,7 @@ export default function WebhooksPage() {
     {
       key: "actions", header: "",
       render: (w: Webhook) => (
-        <Button variant="danger" size="sm" onClick={() => deleteWebhook(w.id)}>Delete</Button>
+        <Button variant="destructive" size="sm" onClick={() => deleteWebhook(w.id)}>Delete</Button>
       ),
     },
   ];
@@ -120,12 +120,18 @@ export default function WebhooksPage() {
               <p className="font-medium text-green-700">Webhook created!</p>
               <p className="text-green-600 mt-1">Save the HMAC secret for verifying payloads.</p>
             </div>
-            <Input label="HMAC Secret" value={createdSecret} readOnly className="font-mono text-xs" />
+            <div className="space-y-1">
+              <label className="text-sm font-medium">HMAC Secret</label>
+              <Input value={createdSecret} readOnly className="font-mono text-xs" />
+            </div>
             <Button onClick={() => { setShowCreate(false); setCreatedSecret(""); setForm({ url: "", events: [] }); }} variant="secondary" className="w-full">Close</Button>
           </div>
         ) : (
           <div className="space-y-4">
-            <Input label="Callback URL" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://example.com/webhook" />
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Callback URL</label>
+              <Input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://example.com/webhook" />
+            </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Events</label>
               <div className="max-h-48 overflow-y-auto border rounded-md p-3 space-y-1">
@@ -142,7 +148,7 @@ export default function WebhooksPage() {
                 ))}
               </div>
             </div>
-            <Button onClick={createWebhook} loading={createLoading} className="w-full">Create</Button>
+            <Button onClick={createWebhook} disabled={createLoading} className="w-full">Create</Button>
           </div>
         )}
       </Modal>

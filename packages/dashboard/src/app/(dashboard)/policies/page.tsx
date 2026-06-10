@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
-import { Card, CardHeader, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -94,7 +94,10 @@ export default function PoliciesPage() {
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create Policy">
         <div className="space-y-4">
-          <Input label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Allow small transfers" />
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Name</label>
+            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Allow small transfers" />
+          </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Effect</label>
             <select value={form.effect} onChange={(e) => setForm({ ...form, effect: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm">
@@ -110,7 +113,7 @@ export default function PoliciesPage() {
               <option value="REQUIRES_CONSENSUS">Requires Consensus</option>
             </select>
           </div>
-          <Button onClick={createPolicy} loading={createLoading} className="w-full">Create</Button>
+          <Button onClick={createPolicy} disabled={createLoading} className="w-full">Create</Button>
         </div>
       </Modal>
     </div>

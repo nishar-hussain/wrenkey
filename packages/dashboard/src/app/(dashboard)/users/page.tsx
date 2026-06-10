@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
-import { Card, CardHeader, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
@@ -85,8 +85,14 @@ export default function UsersPage() {
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Add User">
         <div className="space-y-4">
-          <Input label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="John Doe" />
-          <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="john@example.com" />
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Name</label>
+            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="John Doe" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Email</label>
+            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="john@example.com" />
+          </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
             <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm">
@@ -96,7 +102,7 @@ export default function UsersPage() {
               <option value="AUDITOR">Auditor</option>
             </select>
           </div>
-          <Button onClick={createUser} loading={createLoading} className="w-full">Add User</Button>
+          <Button onClick={createUser} disabled={createLoading} className="w-full">Add User</Button>
         </div>
       </Modal>
     </div>

@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/Toast";
 
 interface WalletOption {
@@ -92,14 +92,29 @@ export default function SendTransactionPage() {
                 ))}
               </select>
             </div>
-            <Input label="To Address" value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} placeholder="0x..." required />
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Value (ARC units)" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} placeholder="0.01" required />
-              <Input label="Gas Limit" value={form.gasLimit} onChange={(e) => setForm({ ...form, gasLimit: e.target.value })} placeholder="21000" />
+            <div className="space-y-1">
+              <label className="text-sm font-medium">To Address</label>
+              <Input value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} placeholder="0x..." required />
             </div>
-            <Input label="Max Fee Per Gas (optional)" value={form.maxFeePerGas} onChange={(e) => setForm({ ...form, maxFeePerGas: e.target.value })} placeholder="Auto" />
-            <Input label="Data / Calldata (optional)" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} placeholder="0x..." />
-            <Button type="submit" loading={sending} className="w-full">Sign & Send</Button>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Value (ARC units)</label>
+                <Input value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} placeholder="0.01" required />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Gas Limit</label>
+                <Input value={form.gasLimit} onChange={(e) => setForm({ ...form, gasLimit: e.target.value })} placeholder="21000" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Max Fee Per Gas (optional)</label>
+              <Input value={form.maxFeePerGas} onChange={(e) => setForm({ ...form, maxFeePerGas: e.target.value })} placeholder="Auto" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Data / Calldata (optional)</label>
+              <Input value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} placeholder="0x..." />
+            </div>
+            <Button type="submit" disabled={sending} className="w-full">Sign & Send</Button>
           </form>
         </CardContent>
       </Card>

@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
-import { Card, CardHeader, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
@@ -85,7 +85,7 @@ export default function ApiKeysPage() {
     { key: "createdAt", header: "Created", render: (k: ApiKey) => new Date(k.createdAt).toLocaleDateString() },
     {
       key: "actions", header: "",
-      render: (k: ApiKey) => <Button variant="danger" size="sm" onClick={() => deleteKey(k.id)}>Delete</Button>,
+      render: (k: ApiKey) => <Button variant="destructive" size="sm" onClick={() => deleteKey(k.id)}>Delete</Button>,
     },
   ];
 
@@ -108,16 +108,31 @@ export default function ApiKeysPage() {
             <div className="p-3 bg-green-50 border border-green-200 rounded-md text-sm">
               <p className="font-medium text-green-700">Key created! Save it now.</p>
             </div>
-            <Input label="API Key" value={createdKey.apiKey} readOnly className="font-mono text-xs" />
-            <Input label="Prefix" value={createdKey.keyPrefix} readOnly />
+            <div className="space-y-1">
+              <label className="text-sm font-medium">API Key</label>
+              <Input value={createdKey.apiKey} readOnly className="font-mono text-xs" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Prefix</label>
+              <Input value={createdKey.keyPrefix} readOnly />
+            </div>
             <Button onClick={() => { setShowCreate(false); setCreatedKey(null); setForm({ name: "", permissions: "*", allowedIps: "" }); }} variant="secondary" className="w-full">Close</Button>
           </div>
         ) : (
           <div className="space-y-4">
-            <Input label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Production key" />
-            <Input label="Permissions (comma-separated, or * for all)" value={form.permissions} onChange={(e) => setForm({ ...form, permissions: e.target.value })} placeholder="wallet:sign, policy:read" />
-            <Input label="Allowed IPs (comma-separated, empty = any)" value={form.allowedIps} onChange={(e) => setForm({ ...form, allowedIps: e.target.value })} placeholder="10.0.0.1, 10.0.0.2" />
-            <Button onClick={createKey} loading={createLoading} className="w-full">Create</Button>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Name</label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Production key" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Permissions (comma-separated, or * for all)</label>
+              <Input value={form.permissions} onChange={(e) => setForm({ ...form, permissions: e.target.value })} placeholder="wallet:sign, policy:read" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Allowed IPs (comma-separated, empty = any)</label>
+              <Input value={form.allowedIps} onChange={(e) => setForm({ ...form, allowedIps: e.target.value })} placeholder="10.0.0.1, 10.0.0.2" />
+            </div>
+            <Button onClick={createKey} disabled={createLoading} className="w-full">Create</Button>
           </div>
         )}
       </Modal>
