@@ -31,6 +31,7 @@ export default function LoginPage() {
 
   // Wallet
   const [walletAddress, setWalletAddress] = useState("");
+  const [walletConnected, setWalletConnected] = useState(false);
 
   const sendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,17 +71,42 @@ export default function LoginPage() {
     finally { setLoading(false); }
   };
 
-  const handleWallet = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const connectWallet = async () => {
+    setError("");
+    try {
+      if (!(window as any).ethereum) {
+        setError("MetaMask not detected. Please install MetaMask extension.");
+        return;
+      }
+      const accounts: string[] = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
+      if (accounts.length > 0) {
+        setWalletAddress(accounts[0]);
+        setWalletConnected(true);
+      }
+    } catch (err: any) {
+      if (err.code === 4001) setError("Connection rejected by user.");
+      else setError(err.message || "Failed to connect wallet");
+    }
+  };
+
+  const handleWallet = async () => {
     setLoading(true); setError("");
     try {
+      const message = `Sign in to WranKey\n\nTimestamp: ${Date.now()}`;
+      const signature: string = await (window as any).ethereum.request({
+        method: "personal_sign",
+        params: [message, walletAddress],
+      });
       const res: any = await apiFetch("/auth/wallet", {
         method: "POST",
-        body: JSON.stringify({ address: walletAddress, signature: "0x", message: "Sign in to WranKey" }),
+        body: JSON.stringify({ address: walletAddress, signature, message }),
       });
-      login(res.sessionToken, { id: res.user.id, role: res.user.role }, { id: res.org.id, name: res.org.name });
+      login(res.sessionToken, { id: res.user.id, email: res.user.email, role: res.user.role }, { id: res.org.id, name: res.org.name });
       router.push("/");
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) {
+      if (err.code === 4001) setError("Signing rejected by user.");
+      else setError(err.message || "Wallet login failed");
+    }
     finally { setLoading(false); }
   };
 
@@ -137,11 +163,27 @@ export default function LoginPage() {
           )}
 
           {tab === "wallet" && (
-            <form onSubmit={handleWallet} className="space-y-4">
-              <Input label="Wallet Address" value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} placeholder="0x..." required />
-              <Button type="submit" loading={loading} className="w-full">Connect Wallet</Button>
-              <p className="text-xs text-slate-400 text-center">For full wallet login, use the SDK with MetaMask/Wagmi</p>
-            </form>
+            <div className="space-y-4">
+              {!walletConnected ? (
+                <Button onClick={connectWallet} loading={loading} className="w-full">
+                  Connect MetaMask
+                </Button>
+              ) : (
+                <>
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-md text-sm">
+                    <p className="font-medium text-green-700">Wallet Connected</p>
+                    <p className="font-mono text-xs text-green-600 mt-1 break-all">{walletAddress}</p>
+                  </div>
+                  <Button onClick={handleWallet} loading={loading} className="w-full">
+                    Sign In with Wallet
+                  </Button>
+                  <button type="button" onClick={() => { setWalletConnected(false); setWalletAddress(""); }}
+                    className="text-sm text-brand-600 hover:underline w-full text-center">
+                    Disconnect
+                  </button>
+                </>
+              )}
+            </div>
           )}
           <p className="text-xs text-slate-400 text-center mt-4">AI-Native Wallet & Agent Platform on Arc</p>
         </CardContent>

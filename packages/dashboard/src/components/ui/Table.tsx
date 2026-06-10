@@ -24,7 +24,7 @@ export function Table<T>({
     return <div className="text-center py-12 text-slate-400">Loading...</div>;
   }
 
-  if (data.length === 0) {
+  if (!data || data.length === 0) {
     return <div className="text-center py-12 text-slate-400">{emptyMessage}</div>;
   }
 

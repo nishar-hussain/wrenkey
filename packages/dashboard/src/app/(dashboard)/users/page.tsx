@@ -40,7 +40,7 @@ export default function UsersPage() {
       const res: any = await apiFetch(`/users?limit=${limit}&offset=${offset}`, { token });
       setUsers(res.data);
       setTotal(res.total);
-    } catch {} finally { setLoading(false); }
+    } catch { setUsers([]); setTotal(0); } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {

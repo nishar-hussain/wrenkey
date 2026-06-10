@@ -33,7 +33,7 @@ export default function AuditLogsPage() {
       const res: any = await apiFetch(`/audit-logs?limit=${limit}&offset=${offset}`, { token });
       setLogs(res.data);
       setTotal(res.total);
-    } catch {} finally { setLoading(false); }
+    } catch { setLogs([]); setTotal(0); } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {

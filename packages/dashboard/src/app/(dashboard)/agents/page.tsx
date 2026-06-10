@@ -40,7 +40,7 @@ export default function AgentsPage() {
       const res: any = await apiFetch(`/agents?limit=${limit}&offset=${offset}`, { token });
       setAgents(res.data);
       setTotal(res.total);
-    } catch {} finally { setLoading(false); }
+    } catch { setAgents([]); setTotal(0); } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {

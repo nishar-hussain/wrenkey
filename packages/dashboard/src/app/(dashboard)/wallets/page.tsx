@@ -40,7 +40,7 @@ export default function WalletsPage() {
       const res: any = await apiFetch(`/wallets?limit=${limit}&offset=${offset}`, { token });
       setWallets(res.data);
       setTotal(res.total);
-    } catch {} finally { setLoading(false); }
+    } catch { setWallets([]); setTotal(0); } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {

@@ -41,7 +41,7 @@ export default function PoliciesPage() {
       const res: any = await apiFetch(`/policies?limit=${limit}&offset=${offset}`, { token });
       setPolicies(res.data);
       setTotal(res.total);
-    } catch {} finally { setLoading(false); }
+    } catch { setPolicies([]); setTotal(0); } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {

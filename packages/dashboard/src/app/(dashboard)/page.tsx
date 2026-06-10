@@ -30,7 +30,7 @@ export default function DashboardPage() {
           users: users.total || 0,
           agents: agents.total || 0,
         });
-      } catch {}
+      } catch { setStats({ wallets: 0, transactions: 0, users: 0, agents: 0 }); }
     }
     loadStats();
   }, [isAuthenticated, token, router]);

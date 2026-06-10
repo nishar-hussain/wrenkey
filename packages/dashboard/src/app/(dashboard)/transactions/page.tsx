@@ -35,7 +35,7 @@ export default function TransactionsPage() {
       const res: any = await apiFetch(`/transactions?limit=${limit}&offset=${offset}`, { token });
       setTransactions(res.data);
       setTotal(res.total);
-    } catch {} finally { setLoading(false); }
+    } catch { setTransactions([]); setTotal(0); } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {

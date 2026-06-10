@@ -48,7 +48,7 @@ export default function WebhooksPage() {
       const res: any = await apiFetch(`/webhooks?limit=${limit}&offset=${offset}`, { token });
       setWebhooks(res.data);
       setTotal(res.total);
-    } catch {} finally { setLoading(false); }
+    } catch { setWebhooks([]); setTotal(0); } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {

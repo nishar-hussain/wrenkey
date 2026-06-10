@@ -39,7 +39,7 @@ export default function SendTransactionPage() {
     try {
       const res: any = await apiFetch("/wallets?limit=100", { token });
       setWallets(res.data);
-    } catch {} finally { setLoading(false); }
+    } catch { setWallets([]); } finally { setLoading(false); }
   }, [token]);
 
   useEffect(() => {
