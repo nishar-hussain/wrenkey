@@ -167,6 +167,25 @@ export async function walletRoutes(app: FastifyInstance) {
     }
   });
 
+  // Update wallet
+  app.patch("/wallets/:id", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { name, tags, status } = request.body as { name?: string; tags?: string[]; status?: string };
+      if (!name && !tags && !status) throw new ValidationError("No fields to update");
+
+      const result = await prisma.wallet.updateMany({
+        where: { id, orgId: request.orgId },
+        data: { ...(name && { name }), ...(tags && { tags }), ...(status && { status }) },
+      });
+      if (result.count === 0) throw new NotFoundError("Wallet");
+      const wallet = await prisma.wallet.findFirst({ where: { id }, include: { accounts: true } });
+      return sendSuccess(reply, wallet);
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
   // List accounts
   app.get("/wallets/:id/accounts", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {

@@ -8,72 +8,130 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, CardHeader, CardContent } from "@/components/ui/Card";
 
+type AuthTab = "email" | "password" | "wallet";
+
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
-  const [step, setStep] = useState<"email" | "otp">("email");
+  const [tab, setTab] = useState<AuthTab>("email");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Email OTP
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+
+  // Password
+  const [pwEmail, setPwEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSignup, setIsSignup] = useState(false);
+  const [pwName, setPwName] = useState("");
+
+  // Wallet
+  const [walletAddress, setWalletAddress] = useState("");
+
   const sendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
       await apiFetch("/auth/email/send", { method: "POST", body: JSON.stringify({ email }) });
-      setStep("otp");
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+      setOtpSent(true);
+    } catch (err: any) { setError(err.message); }
+    finally { setLoading(false); }
   };
 
   const verifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
-      const res: any = await apiFetch("/auth/email/verify", {
-        method: "POST",
-        body: JSON.stringify({ email, otp }),
-      });
+      const res: any = await apiFetch("/auth/email/verify", { method: "POST", body: JSON.stringify({ email, otp }) });
       login(res.sessionToken, { id: res.user.id, email: res.user.email, role: res.user.role }, { id: res.org.id, name: res.org.name });
       router.push("/");
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err: any) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+
+  const handlePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setError("");
+    try {
+      const path = isSignup ? "/auth/password/signup" : "/auth/password/login";
+      const body = isSignup ? { email: pwEmail, password, name: pwName } : { email: pwEmail, password };
+      const res: any = await apiFetch(path, { method: "POST", body: JSON.stringify(body) });
+      login(res.sessionToken, { id: res.user.id, email: res.user.email, role: res.user.role }, { id: res.org.id, name: res.org.name });
+      router.push("/");
+    } catch (err: any) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleWallet = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setError("");
+    try {
+      const res: any = await apiFetch("/auth/wallet", {
+        method: "POST",
+        body: JSON.stringify({ address: walletAddress, signature: "0x", message: "Sign in to WranKey" }),
+      });
+      login(res.sessionToken, { id: res.user.id, role: res.user.role }, { id: res.org.id, name: res.org.name });
+      router.push("/");
+    } catch (err: any) { setError(err.message); }
+    finally { setLoading(false); }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100">
+    <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
           <h1 className="text-xl font-bold text-center">WranKey</h1>
           <p className="text-sm text-slate-500 text-center mt-1">Sign in to your account</p>
+          <div className="flex border-b border-slate-200 mt-4">
+            {(["email", "password", "wallet"] as AuthTab[]).map((t) => (
+              <button key={t} onClick={() => { setTab(t); setError(""); setOtpSent(false); }}
+                className={`flex-1 pb-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? "border-brand-600 text-brand-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
+                {t === "email" ? "Email OTP" : t === "password" ? "Password" : "Wallet"}
+              </button>
+            ))}
+          </div>
         </CardHeader>
         <CardContent>
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">{error}</div>
-          )}
-          {step === "email" ? (
+          {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">{error}</div>}
+
+          {tab === "email" && !otpSent && (
             <form onSubmit={sendOtp} className="space-y-4">
               <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
               <Button type="submit" loading={loading} className="w-full">Send Code</Button>
             </form>
-          ) : (
+          )}
+          {tab === "email" && otpSent && (
             <form onSubmit={verifyOtp} className="space-y-4">
-              <p className="text-sm text-slate-500">Enter the code sent to <strong>{email}</strong></p>
+              <p className="text-sm text-slate-500">Code sent to <strong>{email}</strong></p>
               <Input label="Verification Code" value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="123456" required maxLength={6} />
               <Button type="submit" loading={loading} className="w-full">Verify & Sign In</Button>
-              <button type="button" onClick={() => setStep("email")} className="text-sm text-brand-600 hover:underline w-full text-center">Back</button>
+              <button type="button" onClick={() => setOtpSent(false)} className="text-sm text-brand-600 hover:underline w-full text-center">Back</button>
             </form>
           )}
-          <p className="text-xs text-slate-400 text-center mt-6">AI-Native Wallet & Agent Platform on Arc</p>
+
+          {tab === "password" && (
+            <form onSubmit={handlePassword} className="space-y-4">
+              {isSignup && <Input label="Name" value={pwName} onChange={(e) => setPwName(e.target.value)} placeholder="Your name" />}
+              <Input label="Email" type="email" value={pwEmail} onChange={(e) => setPwEmail(e.target.value)} placeholder="you@example.com" required />
+              <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min 8 characters" required minLength={8} />
+              <Button type="submit" loading={loading} className="w-full">{isSignup ? "Create Account" : "Sign In"}</Button>
+              <button type="button" onClick={() => setIsSignup(!isSignup)} className="text-sm text-brand-600 hover:underline w-full text-center">
+                {isSignup ? "Already have an account? Sign in" : "Don't have an account? Sign up"}
+              </button>
+            </form>
+          )}
+
+          {tab === "wallet" && (
+            <form onSubmit={handleWallet} className="space-y-4">
+              <Input label="Wallet Address" value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} placeholder="0x..." required />
+              <Button type="submit" loading={loading} className="w-full">Connect Wallet</Button>
+              <p className="text-xs text-slate-400 text-center">For full wallet login, use the SDK with MetaMask/Wagmi</p>
+            </form>
+          )}
+          <p className="text-xs text-slate-400 text-center mt-4">AI-Native Wallet & Agent Platform on Arc</p>
         </CardContent>
       </Card>
     </div>

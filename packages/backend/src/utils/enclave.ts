@@ -69,3 +69,11 @@ export async function getNonce(address: string, rpcUrl: string): Promise<number>
   const provider = new ethers.JsonRpcProvider(rpcUrl);
   return provider.getTransactionCount(address);
 }
+
+export async function estimateGas(
+  tx: ethers.TransactionRequest,
+  rpcUrl: string
+): Promise<bigint> {
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  return provider.estimateGas(tx);
+}

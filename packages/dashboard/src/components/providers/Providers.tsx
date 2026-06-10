@@ -15,6 +15,7 @@ interface AuthContextType extends AuthState {
 }
 
 import { createContext, useContext } from "react";
+import { ToastProvider } from "@/components/ui/Toast";
 
 const AuthContext = createContext<AuthContextType>({
   token: null,
@@ -74,7 +75,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{ token, user, org, login, logout, isAuthenticated: !!token }}>
-      {children}
+      <ToastProvider>
+        {children}
+      </ToastProvider>
     </AuthContext.Provider>
   );
 }

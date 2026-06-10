@@ -151,6 +151,23 @@ export async function authRoutes(app: FastifyInstance) {
       const otp = generateOtp();
       await redis.setex(`${OTP_PREFIX}phone:${phone}`, config.otpExpirySeconds, otp);
 
+      if (config.twilio.accountSid && config.twilio.authToken) {
+        try {
+          const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${config.twilio.accountSid}/Messages.json`;
+          const auth = Buffer.from(`${config.twilio.accountSid}:${config.twilio.authToken}`).toString("base64");
+          const params = new URLSearchParams({
+            To: phone, From: config.twilio.phoneNumber,
+            Body: `Your WranKey verification code: ${otp}`,
+          });
+          await fetch(twilioUrl, {
+            method: "POST",
+            headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+            body: params.toString(),
+          });
+        } catch (twilioErr) {
+          console.error("Twilio SMS send failed:", twilioErr);
+        }
+      }
       console.log(`[DEV] SMS OTP for ${phone}: ${otp}`);
       return sendSuccess(reply, { message: "OTP sent", expiresIn: config.otpExpirySeconds, otp: process.env.NODE_ENV === "development" ? otp : undefined });
     } catch (err) {
@@ -591,6 +608,63 @@ export async function authRoutes(app: FastifyInstance) {
         } catch {}
       }
       return sendSuccess(reply, { message: "Logged out" });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Password reset request
+  app.post("/auth/password/reset", async (request, reply) => {
+    try {
+      const { email } = request.body as { email: string };
+      if (!email) throw new ValidationError("Email required");
+
+      const user = await prisma.user.findFirst({ where: { email } });
+      if (!user) return sendSuccess(reply, { message: "If an account exists, a reset link has been sent" });
+
+      const redis = getRedis();
+      const resetToken = generateRandomToken();
+      await redis.setex(`pwd_reset:${resetToken}`, 900, user.id); // 15 min expiry
+
+      if (config.smtp.host && config.smtp.user) {
+        const { createTransport } = await import("nodemailer");
+        const transporter = createTransport({
+          host: config.smtp.host, port: config.smtp.port,
+          auth: { user: config.smtp.user, pass: config.smtp.pass },
+        });
+        await transporter.sendMail({
+          from: config.smtp.from, to: email,
+          subject: "WranKey - Reset Your Password",
+          text: `Reset your password: ${config.corsOrigin}/reset-password?token=${resetToken}\n\nExpires in 15 minutes.`,
+        }).catch(() => {});
+      }
+      console.log(`[DEV] Password reset token for ${email}: ${resetToken}`);
+
+      return sendSuccess(reply, { message: "If an account exists, a reset link has been sent" });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Password reset confirm
+  app.post("/auth/password/reset/confirm", async (request, reply) => {
+    try {
+      const { token, newPassword } = request.body as { token: string; newPassword: string };
+      if (!token || !newPassword) throw new ValidationError("Token and new password required");
+      if (newPassword.length < 8) throw new ValidationError("Password must be at least 8 characters");
+
+      const redis = getRedis();
+      const userId = await redis.get(`pwd_reset:${token}`);
+      if (!userId) throw new ValidationError("Invalid or expired reset token");
+
+      const passwordHash = await bcrypt.hash(newPassword, 12);
+      await prisma.authenticator.updateMany({
+        where: { userId, type: "PASSWORD" },
+        data: { credentialData: { hash: passwordHash } },
+      });
+      await redis.del(`pwd_reset:${token}`);
+
+      return sendSuccess(reply, { message: "Password reset successfully" });
     } catch (err) {
       return sendError(reply, err);
     }

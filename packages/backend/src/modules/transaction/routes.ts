@@ -128,16 +128,29 @@ export async function transactionRoutes(app: FastifyInstance) {
     }
   });
 
-  // List transactions
+  // List transactions with filters
   app.get("/transactions", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const { status, chain, walletId, search } = request.query as { status?: string; chain?: string; walletId?: string; search?: string };
+
+      let where: any = { orgId: request.orgId };
+      if (status) where.status = status;
+      if (chain) where.chain = chain;
+      if (walletId) {
+        const account = await prisma.walletAccount.findFirst({ where: { walletId } });
+        if (account) where.accountId = account.id;
+      }
+      if (search) {
+        where.OR = [
+          { txHash: { contains: search } },
+          { to: { contains: search } },
+        ];
+      }
+
       const [data, total] = await Promise.all([
-        prisma.transaction.findMany({
-          where: { orgId: request.orgId },
-          orderBy: { createdAt: "desc" }, take: limit, skip: offset,
-        }),
-        prisma.transaction.count({ where: { orgId: request.orgId } }),
+        prisma.transaction.findMany({ where, orderBy: { createdAt: "desc" }, take: limit, skip: offset }),
+        prisma.transaction.count({ where }),
       ]);
       return sendSuccess(reply, { data, total, limit, offset });
     } catch (err) {
@@ -152,6 +165,59 @@ export async function transactionRoutes(app: FastifyInstance) {
       const { getNonce } = await import("../../utils/enclave.js");
       const nonce = await getNonce(address, config.arcRpcUrl);
       return sendSuccess(reply, { address, nonce });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Fee estimation
+  app.post("/transactions/estimate-fee", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { to, value, data } = request.body as { to: string; value: string; data?: string };
+      if (!to) throw new ValidationError("to is required");
+
+      const { estimateGas } = await import("../../utils/enclave.js");
+      const tx: ethers.TransactionRequest = {
+        to, value: value ? ethers.parseEther(value) : 0n, data: data || undefined,
+      };
+      const gasLimit = await estimateGas(tx, config.arcRpcUrl);
+      // Fee estimation using Arc's stable USDC gas (default ~1 gwei)
+      const baseFee = 1_000_000_000n; // 1 gwei in wei
+      const estimatedFee = gasLimit * baseFee;
+
+      return sendSuccess(reply, {
+        gasLimit: gasLimit.toString(),
+        baseFeePerGas: baseFee.toString(),
+        estimatedFee: ethers.formatEther(estimatedFee),
+        estimatedFeeWei: estimatedFee.toString(),
+        chain: "arc",
+        currency: "USDC",
+      });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Get wallet balance
+  app.get("/wallets/:id/balance", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const wallet = await prisma.wallet.findFirst({
+        where: { id, orgId: request.orgId },
+        include: { accounts: { take: 1, where: { chain: "arc" } } },
+      });
+      if (!wallet) throw new NotFoundError("Wallet");
+      if (wallet.accounts.length === 0) throw new NotFoundError("Account");
+
+      const provider = new ethers.JsonRpcProvider(config.arcRpcUrl);
+      const balance = await provider.getBalance(wallet.accounts[0].address);
+      return sendSuccess(reply, {
+        walletId: id,
+        address: wallet.accounts[0].address,
+        balance: ethers.formatEther(balance),
+        balanceWei: balance.toString(),
+        chain: "arc",
+      });
     } catch (err) {
       return sendError(reply, err);
     }
