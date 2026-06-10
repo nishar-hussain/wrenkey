@@ -1,0 +1,13 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/login/page": "/login",
+  "/(dashboard)/page": "/",
+  "/(dashboard)/transactions/page": "/transactions",
+  "/(dashboard)/policies/page": "/policies",
+  "/(dashboard)/audit-logs/page": "/audit-logs",
+  "/(dashboard)/agents/page": "/agents",
+  "/(dashboard)/wallets/[id]/page": "/wallets/[id]",
+  "/(dashboard)/wallets/page": "/wallets",
+  "/(dashboard)/users/page": "/users",
+  "/(dashboard)/webhooks/page": "/webhooks"
+}
