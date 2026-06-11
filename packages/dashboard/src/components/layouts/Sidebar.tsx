@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import {
@@ -65,7 +66,7 @@ export function Sidebar() {
       {/* Logo */}
       <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200 shrink-0">
         <Link href="/" className="flex items-center gap-2 font-semibold text-lg" onClick={() => setMobileOpen(false)}>
-          <div className="h-7 w-7 rounded-md bg-gray-900 text-white flex items-center justify-center text-xs font-bold">W</div>
+          <Image src="/logo-icon.png" alt="WranKey" width={28} height={28} className="rounded-md" />
           WranKey
         </Link>
         <button onClick={() => setMobileOpen(false)} className="lg:hidden text-gray-400 hover:text-gray-600">

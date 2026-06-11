@@ -113,9 +113,12 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4">
       <Card className="w-full max-w-md">
-        <CardHeader>
-          <h1 className="text-xl font-bold text-center">WranKey</h1>
-          <p className="text-sm text-slate-500 text-center mt-1">Sign in to your account</p>
+        <CardHeader className="space-y-1">
+          <div className="flex items-center justify-center gap-2">
+            <img src="/logo-icon.png" alt="WranKey" className="w-8 h-8 rounded-md" />
+            <h1 className="text-2xl font-bold text-center">WranKey</h1>
+          </div>
+          <p className="text-sm text-slate-500 text-center">Sign in to your account</p>
           <div className="flex border-b border-slate-200 mt-4">
             {(["email", "password", "wallet"] as AuthTab[]).map((t) => (
               <button key={t} onClick={() => { setTab(t); setError(""); setOtpSent(false); }}
