@@ -4,12 +4,14 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 interface User {
   id: string;
@@ -24,6 +26,7 @@ interface User {
 export default function UsersPage() {
   const router = useRouter();
   const { isAuthenticated, token } = useAuth();
+  const { addToast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -40,7 +43,9 @@ export default function UsersPage() {
       const res: any = await apiFetch(`/users?limit=${limit}&offset=${offset}`, { token });
       setUsers(res.data);
       setTotal(res.total);
-    } catch { setUsers([]); setTotal(0); } finally { setLoading(false); }
+    } catch (err: any) {
+      addToast(err.message || "Failed to load users", "error");
+    } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {
@@ -49,14 +54,30 @@ export default function UsersPage() {
   }, [isAuthenticated, fetchData, router]);
 
   const createUser = async () => {
-    if (!form.email) return;
+    if (!form.email) {
+      addToast("Email is required", "error");
+      return;
+    }
     setCreateLoading(true);
     try {
       await apiFetch("/users", { method: "POST", body: JSON.stringify(form), token: token! });
       setShowCreate(false);
       setForm({ name: "", email: "", role: "DEVELOPER" });
+      addToast("User added", "success");
       fetchData();
-    } catch {} finally { setCreateLoading(false); }
+    } catch (err: any) {
+      addToast(err.message || "Failed to add user", "error");
+    } finally { setCreateLoading(false); }
+  };
+
+  const deleteUser = async (id: string) => {
+    try {
+      await apiFetch(`/users/${id}`, { method: "DELETE", token: token! });
+      addToast("User deleted", "success");
+      fetchData();
+    } catch (err: any) {
+      addToast(err.message || "Failed to delete user", "error");
+    }
   };
 
   if (!isAuthenticated) return null;
@@ -67,6 +88,10 @@ export default function UsersPage() {
     { key: "role", header: "Role" },
     { key: "tags", header: "Tags", render: (u: User) => u.tags.length > 0 ? u.tags.join(", ") : "-" },
     { key: "createdAt", header: "Created", render: (u: User) => new Date(u.createdAt).toLocaleDateString() },
+    {
+      key: "actions", header: "",
+      render: (u: User) => <Button variant="destructive" size="sm" onClick={() => deleteUser(u.id)}>Delete</Button>,
+    },
   ];
 
   return (
@@ -78,8 +103,16 @@ export default function UsersPage() {
 
       <Card>
         <CardContent className="p-0">
-          <Table columns={columns} data={users} loading={loading} emptyMessage="No users found." />
-          <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => { setLimit(l); setOffset(o); }} />
+          {loading ? (
+            <div className="p-6 space-y-3">
+              <Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" />
+            </div>
+          ) : (
+            <>
+              <Table columns={columns} data={users} loading={false} emptyMessage="No users found." />
+              <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => { setLimit(l); setOffset(o); }} />
+            </>
+          )}
         </CardContent>
       </Card>
 

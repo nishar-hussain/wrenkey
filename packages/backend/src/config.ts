@@ -35,4 +35,9 @@ export const config = {
     googleClientSecret: process.env.OAUTH_GOOGLE_CLIENT_SECRET || "",
   },
   webhookHmacSecret: process.env.WEBHOOK_HMAC_SECRET || "dev-webhook-secret",
+  gasSponsorship: {
+    enabled: process.env.GAS_SPONSORSHIP_ENABLED === "true",
+    maxSponsorAmount: process.env.GAS_SPONSORSHIP_MAX_AMOUNT || "0.01",
+    sponsorWalletId: process.env.GAS_SPONSORSHIP_WALLET_ID || "",
+  },
 };

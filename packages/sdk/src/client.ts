@@ -212,6 +212,24 @@ export class WranKeyClient {
     return this.request("GET", `/wallets/${walletId}/accounts`);
   }
 
+  async exportWallet(walletId: string): Promise<{
+    walletId: string;
+    mnemonic: string;
+    accounts: Array<{ chain: string; address: string; derivationPath: string; index: number }>;
+  }> {
+    return this.request("POST", `/wallets/${walletId}/export`);
+  }
+
+  async getWalletBalance(walletId: string): Promise<{
+    walletId: string;
+    address: string;
+    balance: string;
+    balanceWei: string;
+    chain: string;
+  }> {
+    return this.request("GET", `/wallets/${walletId}/balance`);
+  }
+
   // ─── Transactions ─────────────────────────────────
 
   async signAndSend(tx: {

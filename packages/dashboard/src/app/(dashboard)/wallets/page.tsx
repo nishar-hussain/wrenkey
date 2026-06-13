@@ -4,13 +4,15 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Modal } from "@/components/ui/Modal";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 interface Wallet {
   id: string;
@@ -24,6 +26,7 @@ interface Wallet {
 export default function WalletsPage() {
   const router = useRouter();
   const { isAuthenticated, token } = useAuth();
+  const { addToast } = useToast();
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -40,7 +43,11 @@ export default function WalletsPage() {
       const res: any = await apiFetch(`/wallets?limit=${limit}&offset=${offset}`, { token });
       setWallets(res.data);
       setTotal(res.total);
-    } catch { setWallets([]); setTotal(0); } finally { setLoading(false); }
+    } catch (err: any) {
+      addToast(err.message || "Failed to load wallets", "error");
+      setWallets([]);
+      setTotal(0);
+    } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {
@@ -55,8 +62,11 @@ export default function WalletsPage() {
       await apiFetch("/wallets", { method: "POST", body: JSON.stringify({ name: newName, ownerType: "USER" }), token: token! });
       setShowCreate(false);
       setNewName("");
+      addToast("Wallet created", "success");
       fetchWallets();
-    } catch {} finally { setCreateLoading(false); }
+    } catch (err: any) {
+      addToast(err.message || "Failed to create wallet", "error");
+    } finally { setCreateLoading(false); }
   };
 
   if (!isAuthenticated) return null;
@@ -74,6 +84,12 @@ export default function WalletsPage() {
       key: "createdAt", header: "Created",
       render: (w: Wallet) => new Date(w.createdAt).toLocaleDateString(),
     },
+    {
+      key: "actions", header: "",
+      render: (w: Wallet) => (
+        <Button size="sm" variant="secondary" onClick={() => router.push(`/wallets/${w.id}`)}>View</Button>
+      ),
+    },
   ];
 
   return (
@@ -85,8 +101,16 @@ export default function WalletsPage() {
 
       <Card>
         <CardContent className="p-0">
-          <Table columns={columns} data={wallets} loading={loading} emptyMessage="No wallets found. Create your first wallet." />
-          <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => { setLimit(l); setOffset(o); }} />
+          {loading ? (
+            <div className="p-6 space-y-3">
+              <Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" />
+            </div>
+          ) : (
+            <>
+              <Table columns={columns} data={wallets} loading={false} emptyMessage="No wallets found. Create your first wallet." />
+              <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => { setLimit(l); setOffset(o); }} />
+            </>
+          )}
         </CardContent>
       </Card>
 

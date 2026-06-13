@@ -4,13 +4,15 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Modal } from "@/components/ui/Modal";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 interface Webhook {
   id: string;
@@ -22,7 +24,7 @@ interface Webhook {
 
 const EVENT_OPTIONS = [
   "user.signup", "user.login",
-  "wallet.created", "wallet.imported", "wallet.deleted", "account.created",
+  "wallet.created", "wallet.imported", "wallet.deleted", "wallet.exported", "account.created",
   "transaction.submitted", "transaction.confirmed", "transaction.failed",
   "policy.created", "policy.deleted", "policy.triggered",
   "agent.created", "agent.revoked", "agent.login",
@@ -31,6 +33,7 @@ const EVENT_OPTIONS = [
 export default function WebhooksPage() {
   const router = useRouter();
   const { isAuthenticated, token } = useAuth();
+  const { addToast } = useToast();
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -48,7 +51,9 @@ export default function WebhooksPage() {
       const res: any = await apiFetch(`/webhooks?limit=${limit}&offset=${offset}`, { token });
       setWebhooks(res.data);
       setTotal(res.total);
-    } catch { setWebhooks([]); setTotal(0); } finally { setLoading(false); }
+    } catch (err: any) {
+      addToast(err.message || "Failed to load webhooks", "error");
+    } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {
@@ -57,7 +62,10 @@ export default function WebhooksPage() {
   }, [isAuthenticated, fetchData, router]);
 
   const createWebhook = async () => {
-    if (!form.url || form.events.length === 0) return;
+    if (!form.url || form.events.length === 0) {
+      addToast("URL and at least one event are required", "error");
+      return;
+    }
     setCreateLoading(true);
     try {
       const res: any = await apiFetch("/webhooks", {
@@ -66,13 +74,21 @@ export default function WebhooksPage() {
         token: token!,
       });
       setCreatedSecret(res.hmacSecret);
+      addToast("Webhook created", "success");
       fetchData();
-    } catch {} finally { setCreateLoading(false); }
+    } catch (err: any) {
+      addToast(err.message || "Failed to create webhook", "error");
+    } finally { setCreateLoading(false); }
   };
 
   const deleteWebhook = async (id: string) => {
-    await apiFetch(`/webhooks/${id}`, { method: "DELETE", token: token! });
-    fetchData();
+    try {
+      await apiFetch(`/webhooks/${id}`, { method: "DELETE", token: token! });
+      addToast("Webhook deleted", "success");
+      fetchData();
+    } catch (err: any) {
+      addToast(err.message || "Failed to delete webhook", "error");
+    }
   };
 
   const toggleEvent = (event: string) => {
@@ -81,6 +97,13 @@ export default function WebhooksPage() {
       events: prev.events.includes(event)
         ? prev.events.filter((e) => e !== event)
         : [...prev.events, event],
+    }));
+  };
+
+  const selectAllEvents = () => {
+    setForm((prev) => ({
+      ...prev,
+      events: prev.events.length === EVENT_OPTIONS.length ? [] : [...EVENT_OPTIONS],
     }));
   };
 
@@ -108,12 +131,20 @@ export default function WebhooksPage() {
 
       <Card>
         <CardContent className="p-0">
-          <Table columns={columns} data={webhooks} loading={loading} emptyMessage="No webhooks configured." />
-          <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => { setLimit(l); setOffset(o); }} />
+          {loading ? (
+            <div className="p-6 space-y-3">
+              <Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" />
+            </div>
+          ) : (
+            <>
+              <Table columns={columns} data={webhooks} loading={false} emptyMessage="No webhooks configured." />
+              <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => { setLimit(l); setOffset(o); }} />
+            </>
+          )}
         </CardContent>
       </Card>
 
-      <Modal open={showCreate} onClose={() => { setShowCreate(false); setCreatedSecret(""); }} title="Create Webhook">
+      <Modal open={showCreate} onClose={() => { setShowCreate(false); setCreatedSecret(""); setForm({ url: "", events: [] }); }} title="Create Webhook">
         {createdSecret ? (
           <div className="space-y-4">
             <div className="p-3 bg-green-50 border border-green-200 rounded-md text-sm">
@@ -133,7 +164,12 @@ export default function WebhooksPage() {
               <Input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://example.com/webhook" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Events</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-slate-700">Events</label>
+                <button onClick={selectAllEvents} className="text-xs text-blue-600 hover:text-blue-800">
+                  {form.events.length === EVENT_OPTIONS.length ? "Deselect All" : "Select All"}
+                </button>
+              </div>
               <div className="max-h-48 overflow-y-auto border rounded-md p-3 space-y-1">
                 {EVENT_OPTIONS.map((event) => (
                   <label key={event} className="flex items-center gap-2 text-sm cursor-pointer">

@@ -35,6 +35,7 @@ export async function transactionRoutes(app: FastifyInstance) {
         params: { walletId, accountId: account.id, to, value: parseFloat(value), chain: chain || "arc", gasLimit: gasLimit || "21000" },
         user: request.userId ? { id: request.userId, role: request.auth.role, tags: [] } : undefined,
         wallet: { id: walletId, ownerId: wallet.ownerId, ownerType: wallet.ownerType },
+        timestamp: Date.now(),
       };
 
       const isRootUser = request.auth.role === "ORG_ADMIN";

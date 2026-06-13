@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const ConditionSchema = z.object({
-  type: z.enum(["LESS_THAN", "GREATER_THAN", "EQUAL", "INCLUDE", "NOT_INCLUDE", "REGEX_MATCH"]),
+  type: z.enum(["LESS_THAN", "GREATER_THAN", "EQUAL", "INCLUDE", "NOT_INCLUDE", "REGEX_MATCH", "BEFORE", "AFTER", "WINDOW"]),
   field: z.string(),
   value: z.union([z.string(), z.number()]).optional(),
   values: z.array(z.union([z.string(), z.number()])).optional(),
@@ -20,6 +20,7 @@ export interface EvaluationContext {
   params: Record<string, unknown>;
   user?: { id: string; role: string; tags: string[] };
   wallet?: { id: string; ownerId: string; ownerType: string };
+  timestamp?: number;
 }
 
 export interface EvaluationResult {
@@ -31,6 +32,7 @@ export interface EvaluationResult {
 
 function evaluateCondition(condition: Condition, context: EvaluationContext): boolean {
   const fieldValue = resolveFieldPath(condition.field, context);
+  const now = context.timestamp || Date.now();
 
   switch (condition.type) {
     case "LESS_THAN":
@@ -53,6 +55,16 @@ function evaluateCondition(condition: Condition, context: EvaluationContext): bo
       return !condition.values.includes(String(fieldValue));
     case "REGEX_MATCH":
       return new RegExp(String(condition.value)).test(String(fieldValue));
+    case "BEFORE":
+      return now < new Date(String(condition.value)).getTime();
+    case "AFTER":
+      return now > new Date(String(condition.value)).getTime();
+    case "WINDOW": {
+      if (!condition.values || condition.values.length !== 2) return false;
+      const start = new Date(String(condition.values[0])).getTime();
+      const end = new Date(String(condition.values[1])).getTime();
+      return now >= start && now <= end;
+    }
     default:
       return false;
   }

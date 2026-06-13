@@ -241,4 +241,87 @@ describe("evaluatePolicies", () => {
     );
     expect(result.allowed).toBe(true);
   });
+
+  it("should validate time-based BEFORE condition", () => {
+    const result = PolicyRuleSchema.safeParse({
+      effect: "EFFECT_ALLOW",
+      conditions: [{ type: "BEFORE", field: "timestamp", value: "2027-01-01T00:00:00Z" }],
+      consensus: "ANY",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should validate time-based AFTER condition", () => {
+    const result = PolicyRuleSchema.safeParse({
+      effect: "EFFECT_DENY",
+      conditions: [{ type: "AFTER", field: "timestamp", value: "2025-01-01T00:00:00Z" }],
+      consensus: "ALL",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should validate time-based WINDOW condition", () => {
+    const result = PolicyRuleSchema.safeParse({
+      effect: "EFFECT_ALLOW",
+      conditions: [{ type: "WINDOW", field: "timestamp", values: ["2025-01-01T00:00:00Z", "2027-01-01T00:00:00Z"] }],
+      consensus: "ANY",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should allow when BEFORE future date", () => {
+    const result = evaluatePolicies(
+      [
+        {
+          effect: "EFFECT_ALLOW",
+          conditions: [{ type: "BEFORE", field: "timestamp", value: "2099-01-01T00:00:00Z" }],
+          consensus: "ANY",
+        },
+      ],
+      { ...baseContext, timestamp: Date.now() }
+    );
+    expect(result.allowed).toBe(true);
+  });
+
+  it("should deny when AFTER future date", () => {
+    const result = evaluatePolicies(
+      [
+        {
+          effect: "EFFECT_DENY",
+          conditions: [{ type: "AFTER", field: "timestamp", value: "2099-01-01T00:00:00Z" }],
+          consensus: "ANY",
+        },
+      ],
+      { ...baseContext, timestamp: Date.now() }
+    );
+    expect(result.allowed).toBe(false);
+  });
+
+  it("should allow when timestamp within WINDOW", () => {
+    const result = evaluatePolicies(
+      [
+        {
+          effect: "EFFECT_ALLOW",
+          conditions: [{ type: "WINDOW", field: "timestamp", values: ["2020-01-01T00:00:00Z", "2099-01-01T00:00:00Z"] }],
+          consensus: "ANY",
+        },
+      ],
+      { ...baseContext, timestamp: Date.now() }
+    );
+    expect(result.allowed).toBe(true);
+  });
+
+  it("should deny when timestamp outside WINDOW", () => {
+    const result = evaluatePolicies(
+      [
+        {
+          effect: "EFFECT_ALLOW",
+          conditions: [{ type: "WINDOW", field: "timestamp", values: ["2020-01-01T00:00:00Z", "2021-01-01T00:00:00Z"] }],
+          consensus: "ANY",
+        },
+      ],
+      { ...baseContext, timestamp: Date.now() }
+    );
+    expect(result.allowed).toBe(false);
+  });
 });

@@ -8,6 +8,7 @@ import {
   generateHdWallet,
   generateHdWalletFromMnemonic,
   encryptSeedForStorage,
+  decryptSeedFromStorage,
   deriveAccount,
 } from "../../utils/enclave.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
@@ -192,6 +193,32 @@ export async function walletRoutes(app: FastifyInstance) {
       const { id } = request.params as { id: string };
       const accounts = await prisma.walletAccount.findMany({ where: { walletId: id }, orderBy: { index: "asc" } });
       return sendSuccess(reply, accounts);
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Export wallet (reveal mnemonic)
+  app.post("/wallets/:id/export", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const wallet = await prisma.wallet.findFirst({ where: { id, orgId: request.orgId } });
+      if (!wallet) throw new NotFoundError("Wallet");
+
+      const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
+
+      await createAuditLog(request.orgId, "WALLET_EXPORT", { walletId: id }, request.userId, request);
+      triggerWebhookEvents(request.orgId, "wallet.exported", { walletId: id });
+
+      return sendSuccess(reply, {
+        walletId: wallet.id,
+        mnemonic,
+        accounts: await prisma.walletAccount.findMany({
+          where: { walletId: id },
+          select: { chain: true, address: true, derivationPath: true, index: true },
+          orderBy: { index: "asc" },
+        }),
+      });
     } catch (err) {
       return sendError(reply, err);
     }

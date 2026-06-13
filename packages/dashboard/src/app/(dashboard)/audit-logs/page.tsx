@@ -7,11 +7,14 @@ import { apiFetch } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 interface AuditLog {
   id: string;
   action: string;
   resource?: string;
+  details?: any;
   ip?: string;
   userAgent?: string;
   createdAt: string;
@@ -20,6 +23,7 @@ interface AuditLog {
 export default function AuditLogsPage() {
   const router = useRouter();
   const { isAuthenticated, token } = useAuth();
+  const { addToast } = useToast();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -33,7 +37,9 @@ export default function AuditLogsPage() {
       const res: any = await apiFetch(`/audit-logs?limit=${limit}&offset=${offset}`, { token });
       setLogs(res.data);
       setTotal(res.total);
-    } catch { setLogs([]); setTotal(0); } finally { setLoading(false); }
+    } catch (err: any) {
+      addToast(err.message || "Failed to load audit logs", "error");
+    } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {
@@ -44,8 +50,9 @@ export default function AuditLogsPage() {
   if (!isAuthenticated) return null;
 
   const columns = [
-    { key: "action", header: "Action", render: (log: AuditLog) => <span className="font-medium">{log.action}</span> },
+    { key: "action", header: "Action", render: (log: AuditLog) => <span className="font-medium text-xs">{log.action}</span> },
     { key: "resource", header: "Resource", render: (log: AuditLog) => log.resource ? <span className="font-mono text-xs">{log.resource.slice(0, 16)}...</span> : "-" },
+    { key: "details", header: "Details", render: (log: AuditLog) => log.details ? <span className="text-xs">{JSON.stringify(log.details).slice(0, 60)}</span> : "-" },
     { key: "ip", header: "IP", render: (log: AuditLog) => log.ip || "-" },
     { key: "createdAt", header: "Timestamp", render: (log: AuditLog) => new Date(log.createdAt).toLocaleString() },
   ];
@@ -55,8 +62,16 @@ export default function AuditLogsPage() {
       <h1 className="text-2xl font-bold mb-6">Audit Logs</h1>
       <Card>
         <CardContent className="p-0">
-          <Table columns={columns} data={logs} loading={loading} emptyMessage="No audit logs yet." />
-          <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => { setLimit(l); setOffset(o); }} />
+          {loading ? (
+            <div className="p-6 space-y-3">
+              <Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" />
+            </div>
+          ) : (
+            <>
+              <Table columns={columns} data={logs} loading={false} emptyMessage="No audit logs yet." />
+              <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => { setLimit(l); setOffset(o); }} />
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

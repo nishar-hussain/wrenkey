@@ -5,11 +5,15 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 export default function DashboardPage() {
   const router = useRouter();
   const { isAuthenticated, token } = useAuth();
+  const { addToast } = useToast();
   const [stats, setStats] = useState({ wallets: 0, transactions: 0, users: 0, agents: 0 });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -17,6 +21,7 @@ export default function DashboardPage() {
       return;
     }
     async function loadStats() {
+      setLoading(true);
       try {
         const [wallets, txs, users, agents] = await Promise.all([
           apiFetch<any>("/wallets?limit=1", { token: token! }),
@@ -30,7 +35,10 @@ export default function DashboardPage() {
           users: users.total || 0,
           agents: agents.total || 0,
         });
-      } catch { setStats({ wallets: 0, transactions: 0, users: 0, agents: 0 }); }
+      } catch (err: any) {
+        addToast(err.message || "Failed to load dashboard stats", "error");
+        setStats({ wallets: 0, transactions: 0, users: 0, agents: 0 });
+      } finally { setLoading(false); }
     }
     loadStats();
   }, [isAuthenticated, token, router]);
@@ -56,8 +64,17 @@ export default function DashboardPage() {
                   {stat.label[0]}
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stat.value}</p>
-                  <p className="text-sm text-slate-500">{stat.label}</p>
+                  {loading ? (
+                    <>
+                      <Skeleton className="h-6 w-12 mb-1" />
+                      <Skeleton className="h-4 w-16" />
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold">{stat.value}</p>
+                      <p className="text-sm text-slate-500">{stat.label}</p>
+                    </>
+                  )}
                 </div>
               </div>
             </CardContent>

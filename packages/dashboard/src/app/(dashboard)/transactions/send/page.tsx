@@ -22,6 +22,8 @@ export default function SendTransactionPage() {
   const [wallets, setWallets] = useState<WalletOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [estimatedFee, setEstimatedFee] = useState<any>(null);
+  const [feeLoading, setFeeLoading] = useState(false);
 
   const [form, setForm] = useState({
     walletId: "",
@@ -33,13 +35,17 @@ export default function SendTransactionPage() {
     data: "",
   });
 
+  const [sponsorGas, setSponsorGas] = useState(false);
+
   const fetchWallets = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
       const res: any = await apiFetch("/wallets?limit=100", { token });
       setWallets(res.data);
-    } catch { setWallets([]); } finally { setLoading(false); }
+    } catch (err: any) {
+      addToast(err.message || "Failed to load wallets", "error");
+    } finally { setLoading(false); }
   }, [token]);
 
   useEffect(() => {
@@ -47,9 +53,27 @@ export default function SendTransactionPage() {
     fetchWallets();
   }, [isAuthenticated, fetchWallets, router]);
 
+  const estimateFee = async () => {
+    if (!form.to) return;
+    setFeeLoading(true);
+    try {
+      const res: any = await apiFetch("/transactions/estimate-fee", {
+        method: "POST",
+        body: JSON.stringify({ to: form.to, value: form.value || "0", data: form.data || undefined }),
+        token: token!,
+      });
+      setEstimatedFee(res);
+    } catch (err: any) {
+      addToast(err.message || "Failed to estimate fee", "error");
+    } finally { setFeeLoading(false); }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.walletId || !form.to || !form.value) return;
+    if (!form.walletId || !form.to || !form.value) {
+      addToast("Wallet, recipient, and value are required", "error");
+      return;
+    }
     setSending(true);
     try {
       const payload: any = {
@@ -58,18 +82,35 @@ export default function SendTransactionPage() {
       };
       if (form.maxFeePerGas) payload.maxFeePerGas = form.maxFeePerGas;
       if (form.data) payload.data = form.data;
+      if (sponsorGas) payload.sponsorGas = true;
 
       const res: any = await apiFetch("/transactions/sign", {
         method: "POST", body: JSON.stringify(payload), token: token!,
       });
-      addToast(`Transaction sent! Hash: ${res.txHash?.slice(0, 16)}...`, "success");
-      setForm({ walletId: "", to: "", value: "", chain: "arc", gasLimit: "21000", maxFeePerGas: "", data: "" });
+
+      if (res.allowed === false) {
+        addToast(`Transaction blocked: ${res.reason}`, "error");
+      } else {
+        addToast(`Transaction sent! Hash: ${res.txHash?.slice(0, 16)}...`, "success");
+        setForm({ walletId: "", to: "", value: "", chain: "arc", gasLimit: "21000", maxFeePerGas: "", data: "" });
+        setEstimatedFee(null);
+        setSponsorGas(false);
+      }
     } catch (err: any) {
-      addToast(err.message, "error");
+      addToast(err.message || "Failed to send transaction", "error");
     } finally { setSending(false); }
   };
 
   if (!isAuthenticated) return null;
+
+  if (loading) {
+    return (
+      <div className="max-w-2xl">
+        <h1 className="text-2xl font-bold mb-6">Send Transaction</h1>
+        <p className="text-slate-400">Loading wallets...</p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -94,11 +135,11 @@ export default function SendTransactionPage() {
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">To Address</label>
-              <Input value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} placeholder="0x..." required />
+              <Input value={form.to} onChange={(e) => { setForm({ ...form, to: e.target.value }); setEstimatedFee(null); }} placeholder="0x..." required />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-sm font-medium">Value (ARC units)</label>
+                <label className="text-sm font-medium">Value (ARC)</label>
                 <Input value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} placeholder="0.01" required />
               </div>
               <div className="space-y-1">
@@ -106,15 +147,49 @@ export default function SendTransactionPage() {
                 <Input value={form.gasLimit} onChange={(e) => setForm({ ...form, gasLimit: e.target.value })} placeholder="21000" />
               </div>
             </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Max Fee Per Gas (optional)</label>
-              <Input value={form.maxFeePerGas} onChange={(e) => setForm({ ...form, maxFeePerGas: e.target.value })} placeholder="Auto" />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Max Fee Per Gas (optional)</label>
+                <Input value={form.maxFeePerGas} onChange={(e) => setForm({ ...form, maxFeePerGas: e.target.value })} placeholder="Auto" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Gas Sponsorship</label>
+                <label className="flex items-center gap-2 pt-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={sponsorGas}
+                    onChange={(e) => setSponsorGas(e.target.checked)}
+                    className="rounded border-slate-300"
+                  />
+                  <span className="text-sm text-slate-600">Sponsor gas fees</span>
+                </label>
+              </div>
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">Data / Calldata (optional)</label>
               <Input value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} placeholder="0x..." />
             </div>
-            <Button type="submit" disabled={sending} className="w-full">Sign & Send</Button>
+
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" onClick={estimateFee} disabled={!form.to || feeLoading}>
+                {feeLoading ? "Estimating..." : "Estimate Fee"}
+              </Button>
+            </div>
+
+            {estimatedFee && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm">
+                <p className="font-medium text-blue-700">Estimated Fee</p>
+                <div className="grid grid-cols-2 gap-2 mt-2 text-xs text-blue-600">
+                  <div><span className="font-medium">Gas Limit:</span> {estimatedFee.gasLimit}</div>
+                  <div><span className="font-medium">Base Fee:</span> {estimatedFee.baseFeePerGas} wei</div>
+                  <div className="col-span-2"><span className="font-medium">Total:</span> {estimatedFee.estimatedFee} {estimatedFee.currency || "ETH"}</div>
+                </div>
+              </div>
+            )}
+
+            <Button type="submit" disabled={sending} className="w-full">
+              {sending ? "Signing & Sending..." : sponsorGas ? "Send with Sponsored Gas" : "Sign & Send"}
+            </Button>
           </form>
         </CardContent>
       </Card>

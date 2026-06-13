@@ -4,12 +4,13 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
 
 interface ApiKey {
@@ -43,7 +44,9 @@ export default function ApiKeysPage() {
       const res: any = await apiFetch(`/api-keys?limit=${limit}&offset=${offset}`, { token });
       setKeys(res.data);
       setTotal(res.total);
-    } catch {} finally { setLoading(false); }
+    } catch (err: any) {
+      addToast(err.message || "Failed to load API keys", "error");
+    } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {
@@ -52,7 +55,10 @@ export default function ApiKeysPage() {
   }, [isAuthenticated, fetchData, router]);
 
   const createKey = async () => {
-    if (!form.name.trim()) return;
+    if (!form.name.trim()) {
+      addToast("Name is required", "error");
+      return;
+    }
     setCreateLoading(true);
     try {
       const permissions = form.permissions === "*" ? ["*"] : form.permissions.split(",").map((s: string) => s.trim()).filter(Boolean);
@@ -61,10 +67,11 @@ export default function ApiKeysPage() {
         method: "POST", body: JSON.stringify({ name: form.name, permissions, allowedIps }), token: token!,
       });
       setCreatedKey({ apiKey: res.apiKey, keyPrefix: res.keyPrefix });
-      fetchData();
       addToast("API key created", "success");
-    } catch (err: any) { addToast(err.message, "error"); }
-    finally { setCreateLoading(false); }
+      fetchData();
+    } catch (err: any) {
+      addToast(err.message || "Failed to create API key", "error");
+    } finally { setCreateLoading(false); }
   };
 
   const deleteKey = async (id: string) => {
@@ -72,7 +79,9 @@ export default function ApiKeysPage() {
       await apiFetch(`/api-keys/${id}`, { method: "DELETE", token: token! });
       addToast("API key deleted", "success");
       fetchData();
-    } catch (err: any) { addToast(err.message, "error"); }
+    } catch (err: any) {
+      addToast(err.message || "Failed to delete API key", "error");
+    }
   };
 
   if (!isAuthenticated) return null;
@@ -80,7 +89,7 @@ export default function ApiKeysPage() {
   const columns = [
     { key: "name", header: "Name" },
     { key: "keyPrefix", header: "Prefix", render: (k: ApiKey) => <span className="font-mono text-xs">{k.keyPrefix}...</span> },
-    { key: "permissions", header: "Permissions", render: (k: ApiKey) => <span className="text-xs">{k.permissions.join(", ") || "*"}</span> },
+    { key: "permissions", header: "Permissions", render: (k: ApiKey) => <span className="text-xs">{k.permissions.join(", ")}</span> },
     { key: "expiresAt", header: "Expires", render: (k: ApiKey) => k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : "Never" },
     { key: "createdAt", header: "Created", render: (k: ApiKey) => new Date(k.createdAt).toLocaleDateString() },
     {
@@ -97,8 +106,16 @@ export default function ApiKeysPage() {
       </div>
       <Card>
         <CardContent className="p-0">
-          <Table columns={columns} data={keys} loading={loading} emptyMessage="No API keys." />
-          <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => { setLimit(l); setOffset(o); }} />
+          {loading ? (
+            <div className="p-6 space-y-3">
+              <Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" />
+            </div>
+          ) : (
+            <>
+              <Table columns={columns} data={keys} loading={false} emptyMessage="No API keys." />
+              <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => { setLimit(l); setOffset(o); }} />
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -107,6 +124,7 @@ export default function ApiKeysPage() {
           <div className="space-y-4">
             <div className="p-3 bg-green-50 border border-green-200 rounded-md text-sm">
               <p className="font-medium text-green-700">Key created! Save it now.</p>
+              <p className="text-green-600 mt-1">This key will not be shown again.</p>
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">API Key</label>
