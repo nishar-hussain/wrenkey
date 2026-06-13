@@ -13,6 +13,7 @@ export default function ResetPasswordPage() {
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -45,6 +46,10 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     if (newPassword.length < 8) {
       setError("Password must be at least 8 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match");
       return;
     }
     setLoading(true); setError(""); setSuccess("");
@@ -116,6 +121,17 @@ export default function ResetPasswordPage() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Min 8 characters"
+                  required
+                  minLength={8}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Confirm Password</label>
+                <Input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter password"
                   required
                   minLength={8}
                 />

@@ -251,6 +251,51 @@ export class WranKeyClient {
     return this.request("GET", `/accounts/${address}/nonce`);
   }
 
+  async estimateFee(tx: { to: string; value?: string; data?: string }): Promise<{
+    gasLimit: string;
+    baseFeePerGas: string;
+    estimatedFee: string;
+    estimatedFeeWei: string;
+    chain: string;
+    currency: string;
+  }> {
+    return this.request("POST", "/transactions/estimate-fee", tx);
+  }
+
+  async updateWallet(id: string, data: { name?: string; tags?: string[]; status?: string }): Promise<Wallet> {
+    return this.request("PATCH", `/wallets/${id}`, data);
+  }
+
+  // ─── Auth (additional) ─────────────────────────────
+
+  async requestPasswordReset(email: string): Promise<{ message: string }> {
+    return this.request("POST", "/auth/password/reset", { email });
+  }
+
+  async confirmPasswordReset(token: string, newPassword: string): Promise<{ message: string }> {
+    return this.request("POST", "/auth/password/reset/confirm", { token, newPassword });
+  }
+
+  async webauthnRegisterOptions(email: string): Promise<{ options: unknown; userId: string }> {
+    return this.request("POST", "/auth/webauthn/register", { email });
+  }
+
+  async webauthnRegisterVerify(userId: string, credential: unknown): Promise<AuthResponse> {
+    const res = await this.request<AuthResponse>("POST", "/auth/webauthn/register/verify", { userId, credential });
+    this.sessionToken = res.sessionToken;
+    return res;
+  }
+
+  async webauthnAuthenticateOptions(email: string): Promise<{ options: unknown; userId: string }> {
+    return this.request("POST", "/auth/webauthn/authenticate", { email });
+  }
+
+  async webauthnAuthenticateVerify(userId: string, credential: unknown): Promise<AuthResponse> {
+    const res = await this.request<AuthResponse>("POST", "/auth/webauthn/authenticate/verify", { userId, credential });
+    this.sessionToken = res.sessionToken;
+    return res;
+  }
+
   // ─── Policies ─────────────────────────────────────
 
   async createPolicy(data: { name: string; effect: string; conditions?: unknown[]; consensus?: string; priority?: number }): Promise<Policy> {

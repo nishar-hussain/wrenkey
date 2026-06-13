@@ -324,4 +324,47 @@ describe("evaluatePolicies", () => {
     );
     expect(result.allowed).toBe(false);
   });
+
+  it("should block ReDoS patterns in REGEX_MATCH", () => {
+    const result = evaluatePolicies(
+      [
+        {
+          effect: "EFFECT_ALLOW",
+          conditions: [{ type: "REGEX_MATCH", field: "params.to", value: "(a+)+b" }],
+          consensus: "ANY",
+        },
+      ],
+      baseContext
+    );
+    expect(result.allowed).toBe(false);
+  });
+
+  it("should block long regex patterns", () => {
+    const longPattern = "a".repeat(300);
+    const result = evaluatePolicies(
+      [
+        {
+          effect: "EFFECT_ALLOW",
+          conditions: [{ type: "REGEX_MATCH", field: "params.to", value: longPattern }],
+          consensus: "ANY",
+        },
+      ],
+      baseContext
+    );
+    expect(result.allowed).toBe(false);
+  });
+
+  it("should allow safe regex patterns", () => {
+    const result = evaluatePolicies(
+      [
+        {
+          effect: "EFFECT_ALLOW",
+          conditions: [{ type: "REGEX_MATCH", field: "params.to", value: "^0xabc" }],
+          consensus: "ANY",
+        },
+      ],
+      baseContext
+    );
+    expect(result.allowed).toBe(true);
+  });
 });

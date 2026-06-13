@@ -39,11 +39,22 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - run: npm run db:generate
+      - run: npm run lint || true
+      - run: npx tsc --noEmit -p packages/backend/tsconfig.json
+      - run: npx tsc --noEmit -p packages/dashboard/tsconfig.json
+      - run: npx tsc --noEmit -p packages/sdk/tsconfig.json
       - run: npm test
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wrankey_test
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: test-secret
           ENCRYPTION_KEY: test-encryption-key-32chars-test
+          WEBHOOK_HMAC_SECRET: test-webhook-secret
+          ARC_RPC_URL: https://rpc.arc.network
+          ARC_CHAIN_ID: 1234
+          CORS_ORIGIN: http://localhost:5173
           NODE_ENV: test
+          WEBAUTHN_RP_ID: localhost
+      - run: npm run test --workspace=packages/sdk
+      - run: npm run test --workspace=packages/dashboard

@@ -39,10 +39,11 @@ function checkScope(permissions: string[], method: string, url: string): boolean
   for (const rule of SCOPE_MAP) {
     if (rule.pattern.test(url) && rule.methods.includes(method)) {
       if (permissions.includes(rule.scope)) return true;
+      return false;
     }
   }
-  // If no scope mapping matches, allow through (legacy behavior)
-  return true;
+  // If no scope mapping matches, deny by default (secure)
+  return false;
 }
 
 export async function authMiddleware(request: FastifyRequest, _reply: FastifyReply) {

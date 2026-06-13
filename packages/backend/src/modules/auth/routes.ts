@@ -20,7 +20,7 @@ import { hashSha256, generateRandomToken } from "../../utils/crypto.js";
 const OTP_PREFIX = "otp:";
 const RATELIMIT_PREFIX = "ratelimit:otp:";
 const RP_NAME = "WranKey";
-const RP_ID = process.env.WEBAUTHN_RP_ID || "localhost";
+const RP_ID = config.webauthnRpId;
 const EXPECTED_ORIGIN = config.corsOrigin;
 const OTP_RATE_LIMIT = 3;
 const OTP_RATE_WINDOW = 300;
@@ -31,27 +31,46 @@ function generateOtp(): string {
 
 async function checkOtpRateLimit(redis: ReturnType<typeof getRedis>, keyType: string, identifier: string): Promise<void> {
   const rateLimitKey = `${RATELIMIT_PREFIX}${keyType}:${identifier}`;
-  const attempts = await redis.incr(rateLimitKey);
-  if (attempts === 1) await redis.expire(rateLimitKey, OTP_RATE_WINDOW);
+  // Use Lua script for atomic incr + expire
+  const luaScript = `
+    local current = redis.call('INCR', KEYS[1])
+    if current == 1 then
+      redis.call('EXPIRE', KEYS[1], ARGV[1])
+    end
+    return current
+  `;
+  const attempts = await redis.eval(luaScript, 1, rateLimitKey, OTP_RATE_WINDOW) as number;
   if (attempts > OTP_RATE_LIMIT) {
     throw new AppError(429, "Too many OTP requests. Try again in 5 minutes.", "RATE_LIMITED");
   }
 }
 
 async function findOrCreateOrg(name: string): Promise<{ id: string; name: string }> {
-  let org = await prisma.organization.findFirst({ where: { name } });
-  if (!org) {
-    org = await prisma.organization.create({ data: { name } });
+  const existing = await prisma.organization.findFirst({ where: { name } });
+  if (existing) return existing;
+  try {
+    return await prisma.organization.create({ data: { name } });
+  } catch (err: any) {
+    if (err?.code === "P2002") {
+      const created = await prisma.organization.findFirst({ where: { name } });
+      if (created) return created;
+    }
+    throw err;
   }
-  return org;
 }
 
 async function findOrCreateUser(orgId: string, email: string, role = "DEVELOPER") {
-  let user = await prisma.user.findFirst({ where: { orgId, email } });
-  if (!user) {
-    user = await prisma.user.create({ data: { orgId, email, role } });
+  const existing = await prisma.user.findFirst({ where: { orgId, email } });
+  if (existing) return existing;
+  try {
+    return await prisma.user.create({ data: { orgId, email, role } });
+  } catch (err: any) {
+    if (err?.code === "P2002") {
+      const created = await prisma.user.findFirst({ where: { orgId, email } });
+      if (created) return created;
+    }
+    throw err;
   }
-  return user;
 }
 
 export async function authRoutes(app: FastifyInstance) {
@@ -106,12 +125,11 @@ export async function authRoutes(app: FastifyInstance) {
         console.log(`[DEV] OTP for ${email}: ${otp}`);
       }
 
-      // In development, always return OTP in response for testing
-      const isDev = process.env.NODE_ENV !== "production";
+      // Only return OTP in dev mode
       return sendSuccess(reply, {
-        message: emailSent ? "OTP sent to your email" : `OTP generated${isDev ? " (dev mode - check server logs)" : ""}`,
+        message: emailSent ? "OTP sent to your email" : `OTP generated${config.isDev ? " (dev mode - check server logs)" : ""}`,
         expiresIn: config.otpExpirySeconds,
-        otp: isDev ? otp : undefined,
+        otp: config.isDev ? otp : undefined,
       });
     } catch (err) {
       return sendError(reply, err);
@@ -195,7 +213,7 @@ export async function authRoutes(app: FastifyInstance) {
         }
       }
       console.log(`[DEV] SMS OTP for ${phone}: ${otp}`);
-      return sendSuccess(reply, { message: "OTP sent", expiresIn: config.otpExpirySeconds, otp: process.env.NODE_ENV === "development" ? otp : undefined });
+      return sendSuccess(reply, { message: "OTP sent", expiresIn: config.otpExpirySeconds, otp: config.isDev ? otp : undefined });
     } catch (err) {
       return sendError(reply, err);
     }
@@ -482,13 +500,13 @@ export async function authRoutes(app: FastifyInstance) {
       if (!email || !password) throw new ValidationError("Email and password required");
 
       const user = await prisma.user.findFirst({ where: { email } });
-      if (!user) throw new ValidationError("Invalid credentials");
+      if (!user) throw new AppError(401, "Invalid credentials", "UNAUTHORIZED");
 
       const auth = await prisma.authenticator.findFirst({ where: { userId: user.id, type: "PASSWORD" } });
-      if (!auth?.credentialData) throw new ValidationError("Invalid credentials");
+      if (!auth?.credentialData) throw new AppError(401, "Invalid credentials", "UNAUTHORIZED");
 
       const valid = await bcrypt.compare(password, (auth.credentialData as any).hash);
-      if (!valid) throw new ValidationError("Invalid credentials");
+      if (!valid) throw new AppError(401, "Invalid credentials", "UNAUTHORIZED");
 
       const token = signToken({ sub: user.id, orgId: user.orgId, role: user.role });
       const session = await prisma.session.create({
@@ -503,7 +521,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
   });
 
-  // Session management
+  // Session management - protected by global auth hook
   app.post("/sessions/refresh", async (request, reply) => {
     try {
       const authHeader = request.headers.authorization;
@@ -512,9 +530,15 @@ export async function authRoutes(app: FastifyInstance) {
       const { verifyToken, signToken } = await import("../../utils/jwt.js");
       const payload = verifyToken(authHeader.slice(7));
 
+      // Verify session exists and is not expired in DB
+      const session = await prisma.session.findFirst({
+        where: { token: authHeader.slice(7), userId: payload.sub, expiresAt: { gt: new Date() } },
+      });
+      if (!session) throw new AppError(401, "Session expired or revoked", "SESSION_EXPIRED");
+
       const token = signToken({ sub: payload.sub, orgId: payload.orgId, role: payload.role });
-      await prisma.session.updateMany({
-        where: { userId: payload.sub, token: authHeader.slice(7) },
+      await prisma.session.update({
+        where: { id: session.id },
         data: { token, expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
       });
 
@@ -545,7 +569,17 @@ export async function authRoutes(app: FastifyInstance) {
   app.delete("/sessions/:id", async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      await prisma.session.deleteMany({ where: { id } });
+      const authHeader = request.headers.authorization;
+      if (!authHeader?.startsWith("Bearer ")) throw new AppError(401, "Token required", "UNAUTHORIZED");
+      const { verifyToken } = await import("../../utils/jwt.js");
+      const payload = verifyToken(authHeader.slice(7));
+
+      // Only allow users to delete their own sessions
+      const deleted = await prisma.session.deleteMany({
+        where: { id, userId: payload.sub },
+      });
+      if (deleted.count === 0) throw new AppError(404, "Session not found", "NOT_FOUND");
+
       return sendSuccess(reply, { message: "Session revoked" });
     } catch (err) {
       return sendError(reply, err);
@@ -559,6 +593,12 @@ export async function authRoutes(app: FastifyInstance) {
       if (!authHeader?.startsWith("Bearer ")) throw new AppError(401, "Token required", "UNAUTHORIZED");
       const { verifyToken } = await import("../../utils/jwt.js");
       const payload = verifyToken(authHeader.slice(7));
+
+      // Verify session in DB
+      const session = await prisma.session.findFirst({
+        where: { token: authHeader.slice(7), expiresAt: { gt: new Date() } },
+      });
+      if (!session) throw new AppError(401, "Session expired or revoked", "SESSION_EXPIRED");
 
       const { name, permissions, allowedIps } = request.body as { name: string; permissions?: string[]; allowedIps?: string[] };
       if (!name) throw new ValidationError("Name required");
@@ -589,6 +629,13 @@ export async function authRoutes(app: FastifyInstance) {
       if (!authHeader?.startsWith("Bearer ")) throw new AppError(401, "Token required", "UNAUTHORIZED");
       const { verifyToken } = await import("../../utils/jwt.js");
       const payload = verifyToken(authHeader.slice(7));
+
+      // Verify session in DB
+      const session = await prisma.session.findFirst({
+        where: { token: authHeader.slice(7), expiresAt: { gt: new Date() } },
+      });
+      if (!session) throw new AppError(401, "Session expired or revoked", "SESSION_EXPIRED");
+
       const { limit, offset } = parsePagination(request.query as any);
 
       const [data, total] = await Promise.all([
@@ -611,6 +658,13 @@ export async function authRoutes(app: FastifyInstance) {
       if (!authHeader?.startsWith("Bearer ")) throw new AppError(401, "Token required", "UNAUTHORIZED");
       const { verifyToken } = await import("../../utils/jwt.js");
       const payload = verifyToken(authHeader.slice(7));
+
+      // Verify session in DB
+      const session = await prisma.session.findFirst({
+        where: { token: authHeader.slice(7), expiresAt: { gt: new Date() } },
+      });
+      if (!session) throw new AppError(401, "Session expired or revoked", "SESSION_EXPIRED");
+
       const { id } = request.params as { id: string };
 
       await prisma.apiKey.deleteMany({ where: { id, orgId: payload.orgId } });

@@ -31,8 +31,11 @@ export async function orgRoutes(app: FastifyInstance) {
 
   app.get("/orgs", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
-      const orgs = await prisma.organization.findMany();
-      return sendSuccess(reply, orgs);
+      const org = await prisma.organization.findUnique({
+        where: { id: request.orgId },
+      });
+      if (!org) throw new NotFoundError("Organization");
+      return sendSuccess(reply, [org]);
     } catch (err) {
       return sendError(reply, err);
     }

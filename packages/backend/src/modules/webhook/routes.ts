@@ -3,7 +3,7 @@ import { createHmac } from "crypto";
 import prisma from "../../db.js";
 import { config } from "../../config.js";
 import { authMiddleware } from "../../middleware/auth.js";
-import { sendSuccess, sendError, ValidationError } from "../../utils/errors.js";
+import { sendSuccess, sendError, ValidationError, NotFoundError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
 import { generateRandomToken } from "../../utils/crypto.js";
 import { parsePagination } from "../../utils/pagination.js";
@@ -27,13 +27,28 @@ export async function triggerWebhookEvents(orgId: string, event: string, data: u
       const payload = JSON.stringify({ event, data, timestamp: new Date().toISOString() });
       const signature = createHmac("sha256", webhook.hmacSecret).update(payload).digest("hex");
 
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
       fetch(webhook.url, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-WranKey-Signature": signature },
         body: payload,
-      }).catch(() => {});
+        signal: controller.signal,
+      })
+        .then((res) => {
+          if (!res.ok) {
+            console.error(`[WEBHOOK] Failed to deliver to ${webhook.url} (${webhook.id}): HTTP ${res.status}`);
+          }
+        })
+        .catch((err) => {
+          console.error(`[WEBHOOK] Delivery failed for ${webhook.url} (${webhook.id}): ${err.message}`);
+        })
+        .finally(() => clearTimeout(timeout));
     }
-  } catch {}
+  } catch (err) {
+    console.error("[WEBHOOK] Error fetching webhooks:", err);
+  }
 }
 
 export async function webhookRoutes(app: FastifyInstance) {
@@ -92,7 +107,7 @@ export async function webhookRoutes(app: FastifyInstance) {
       const wh = await prisma.webhook.updateMany({
         where: { id, orgId: request.orgId }, data: { active, url, events },
       });
-      if (wh.count === 0) throw new ValidationError("Webhook not found");
+      if (wh.count === 0) throw new NotFoundError("Webhook not found");
       const updated = await prisma.webhook.findUnique({ where: { id } });
       return sendSuccess(reply, updated);
     } catch (err) {

@@ -100,6 +100,8 @@ export interface Webhook {
   createdAt: string;
 }
 
+export type WebhookListItem = Omit<Webhook, "hmacSecret">;
+
 export interface AuditLog {
   id: string;
   orgId: string;
@@ -138,7 +140,13 @@ export interface PaginatedResponse<T> {
 
 export interface AuthResponse {
   sessionToken: string;
-  user: User;
+  user: {
+    id: string;
+    email?: string;
+    phone?: string;
+    name?: string;
+    role: string;
+  };
   org: Organization;
   expiresAt: string;
 }

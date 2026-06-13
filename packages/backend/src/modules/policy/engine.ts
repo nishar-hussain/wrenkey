@@ -30,6 +30,16 @@ export interface EvaluationResult {
   reason?: string;
 }
 
+function isSafeRegex(pattern: string): boolean {
+  // Reject patterns longer than 256 chars
+  if (pattern.length > 256) return false;
+  // Reject patterns with nested quantifiers (common ReDoS vector)
+  if (/(?:\*\+|\+\*|\+\+|\*\*|\{\d+,\}\{|\{\d+,\}[*+])/.test(pattern)) return false;
+  // Reject patterns with nested groups and quantifiers
+  if (/(?:\(.*(\*|\+|\{\d+,\})\).*(\*|\+|\{\d+,\}))/.test(pattern)) return false;
+  return true;
+}
+
 function evaluateCondition(condition: Condition, context: EvaluationContext): boolean {
   const fieldValue = resolveFieldPath(condition.field, context);
   const now = context.timestamp || Date.now();
@@ -53,8 +63,15 @@ function evaluateCondition(condition: Condition, context: EvaluationContext): bo
         return !fieldValue.some((v) => condition.values!.includes(String(v)));
       }
       return !condition.values.includes(String(fieldValue));
-    case "REGEX_MATCH":
-      return new RegExp(String(condition.value)).test(String(fieldValue));
+    case "REGEX_MATCH": {
+      const pattern = String(condition.value);
+      if (!isSafeRegex(pattern)) return false;
+      try {
+        return new RegExp(pattern).test(String(fieldValue));
+      } catch {
+        return false;
+      }
+    }
     case "BEFORE":
       return now < new Date(String(condition.value)).getTime();
     case "AFTER":

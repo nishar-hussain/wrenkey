@@ -5,13 +5,23 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
+const isDev = process.env.NODE_ENV === "development" || !process.env.NODE_ENV;
+
+function requireEnv(key: string, devDefault?: string): string {
+  const val = process.env[key];
+  if (val) return val;
+  if (isDev && devDefault !== undefined) return devDefault;
+  throw new Error(`Missing required environment variable: ${key}`);
+}
+
 export const config = {
   port: parseInt(process.env.PORT || "3001", 10),
   host: process.env.HOST || "0.0.0.0",
+  isDev,
   databaseUrl: process.env.DATABASE_URL || "",
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
-  jwtSecret: process.env.JWT_SECRET || "dev-secret",
-  encryptionKey: process.env.ENCRYPTION_KEY || "dev-encryption-key-32characters",
+  jwtSecret: requireEnv("JWT_SECRET", "dev-jwt-secret-32chars-long-for-dev-only"),
+  encryptionKey: requireEnv("ENCRYPTION_KEY", "dev-encryption-key-must-be-32chars"),
   arcRpcUrl: process.env.ARC_RPC_URL || "https://rpc.arc.network",
   arcChainId: parseInt(process.env.ARC_CHAIN_ID || "1234", 10),
   sessionExpirySeconds: parseInt(process.env.SESSION_EXPIRY_SECONDS || "3600", 10),
@@ -34,7 +44,8 @@ export const config = {
     googleClientId: process.env.OAUTH_GOOGLE_CLIENT_ID || "",
     googleClientSecret: process.env.OAUTH_GOOGLE_CLIENT_SECRET || "",
   },
-  webhookHmacSecret: process.env.WEBHOOK_HMAC_SECRET || "dev-webhook-secret",
+  webhookHmacSecret: requireEnv("WEBHOOK_HMAC_SECRET", "dev-webhook-hmac-secret"),
+  webauthnRpId: process.env.WEBAUTHN_RP_ID || "localhost",
   gasSponsorship: {
     enabled: process.env.GAS_SPONSORSHIP_ENABLED === "true",
     maxSponsorAmount: process.env.GAS_SPONSORSHIP_MAX_AMOUNT || "0.01",

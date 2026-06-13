@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import prisma from "../../db.js";
 import { authMiddleware } from "../../middleware/auth.js";
-import { sendSuccess, sendError, ValidationError } from "../../utils/errors.js";
+import { sendSuccess, sendError, ValidationError, NotFoundError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
 import { PolicyRuleSchema } from "./engine.js";
 import { parsePagination } from "../../utils/pagination.js";
@@ -58,7 +58,7 @@ export async function policyRoutes(app: FastifyInstance) {
     try {
       const { id } = request.params as { id: string };
       const policy = await prisma.policy.findFirst({ where: { id, orgId: request.orgId } });
-      if (!policy) throw new ValidationError("Policy not found");
+      if (!policy) throw new NotFoundError("Policy not found");
       return sendSuccess(reply, policy);
     } catch (err) {
       return sendError(reply, err);
@@ -84,7 +84,7 @@ export async function policyRoutes(app: FastifyInstance) {
         where: { id, orgId: request.orgId },
         data: { active, name, effect, conditions, consensus, priority },
       });
-      if (policy.count === 0) throw new ValidationError("Policy not found");
+      if (policy.count === 0) throw new NotFoundError("Policy not found");
       const updated = await prisma.policy.findUnique({ where: { id } });
       return sendSuccess(reply, updated);
     } catch (err) {
