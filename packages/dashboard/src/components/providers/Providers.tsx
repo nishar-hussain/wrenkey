@@ -12,6 +12,7 @@ interface AuthContextType extends AuthState {
   login: (token: string, user: { id: string; email?: string; role: string }, org: { id: string; name: string }) => void;
   logout: () => void;
   isAuthenticated: boolean;
+  ready: boolean;
 }
 
 import { createContext, useContext } from "react";
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType>({
   login: () => {},
   logout: () => {},
   isAuthenticated: false,
+  ready: false,
 });
 
 export function useAuth() {
@@ -34,6 +36,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<{ id: string; email?: string; role: string } | null>(null);
   const [org, setOrg] = useState<{ id: string; name: string } | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("wrankey_token");
@@ -42,6 +45,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     if (stored) setToken(stored);
     if (storedUser) setUser(JSON.parse(storedUser));
     if (storedOrg) setOrg(JSON.parse(storedOrg));
+    setReady(true);
   }, []);
 
   const login = (
@@ -66,15 +70,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("wrankey_org");
   };
 
-  // If not authenticated, show login page style
-  if (!token && typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-    if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-      // We'll use middleware/redirects in pages instead
-    }
-  }
-
   return (
-    <AuthContext.Provider value={{ token, user, org, login, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{ token, user, org, login, logout, isAuthenticated: !!token, ready }}>
       <ToastProvider>
         {children}
       </ToastProvider>

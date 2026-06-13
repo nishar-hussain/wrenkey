@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -19,14 +19,14 @@ export default function ResetPasswordPage() {
   const [success, setSuccess] = useState("");
 
   // Check if we have a token in the URL (from email link)
-  useState(() => {
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlToken = params.get("token");
     if (urlToken) {
       setToken(urlToken);
       setStep("confirm");
     }
-  });
+  }, []);
 
   const handleRequest = async (e: React.FormEvent) => {
     e.preventDefault();

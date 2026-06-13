@@ -43,7 +43,16 @@ export default function DashboardPage() {
     loadStats();
   }, [isAuthenticated, token, router]);
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-white dark:bg-gray-950">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-slate-500">Redirecting to login...</p>
+        </div>
+      </div>
+    );
+  }
 
   const statCards = [
     { label: "Wallets", value: stats.wallets, href: "/wallets", color: "bg-blue-500" },

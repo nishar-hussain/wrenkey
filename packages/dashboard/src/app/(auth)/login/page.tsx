@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
@@ -129,7 +129,7 @@ export default function LoginPage() {
   };
 
   // Handle OAuth callback (code in URL)
-  useState(() => {
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     if (code) {
@@ -148,7 +148,7 @@ export default function LoginPage() {
           window.history.replaceState({}, "", "/login");
         });
     }
-  });
+  }, []);
 
   // Wallet
   const connectWallet = async () => {
