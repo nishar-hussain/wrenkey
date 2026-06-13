@@ -40,7 +40,7 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       const isRootUser = request.auth.role === "ORG_ADMIN";
       const policyResult = evaluatePolicies(
-        policies.map((p) => ({ effect: p.effect as any, conditions: p.conditions as any, consensus: p.consensus as any })),
+        policies.map((p: any) => ({ effect: p.effect as any, conditions: p.conditions as any, consensus: p.consensus as any })),
         context, isRootUser
       );
 

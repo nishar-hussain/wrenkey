@@ -52,7 +52,7 @@ export async function walletRoutes(app: FastifyInstance) {
 
       return sendSuccess(reply, {
         walletId: wallet.id, name: wallet.name, ownerType: wallet.ownerType, ownerId: wallet.ownerId,
-        addresses: wallet.accounts.map((a) => ({ chain: a.chain, address: a.address, derivationPath: a.derivationPath, index: a.index })),
+        addresses: wallet.accounts.map((a: any) => ({ chain: a.chain, address: a.address, derivationPath: a.derivationPath, index: a.index })),
       }, 201);
     } catch (err) {
       return sendError(reply, err);
@@ -85,7 +85,7 @@ export async function walletRoutes(app: FastifyInstance) {
 
       return sendSuccess(reply, {
         walletId: wallet.id, name: wallet.name,
-        addresses: wallet.accounts.map((a) => ({ chain: a.chain, address: a.address, derivationPath: a.derivationPath, index: a.index })),
+        addresses: wallet.accounts.map((a: any) => ({ chain: a.chain, address: a.address, derivationPath: a.derivationPath, index: a.index })),
       }, 201);
     } catch (err) {
       return sendError(reply, err);

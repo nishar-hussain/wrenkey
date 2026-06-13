@@ -27,7 +27,7 @@ export const config = {
   sessionExpirySeconds: parseInt(process.env.SESSION_EXPIRY_SECONDS || "3600", 10),
   apiKeyExpiryDays: parseInt(process.env.API_KEY_EXPIRY_DAYS || "365", 10),
   otpExpirySeconds: parseInt(process.env.OTP_EXPIRY_SECONDS || "300", 10),
-  corsOrigin: process.env.CORS_ORIGIN || "http://localhost:5173",
+  corsOrigin: (process.env.CORS_ORIGIN || "http://localhost:5173,http://localhost:8080").split(",").map(s => s.trim()),
   smtp: {
     host: process.env.SMTP_HOST || "",
     port: parseInt(process.env.SMTP_PORT || "587", 10),

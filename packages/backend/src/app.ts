@@ -19,7 +19,16 @@ import { webhookRoutes } from "./modules/webhook/routes.js";
 export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
   const app = Fastify({ logger: false, bodyLimit: 1048576 });
 
-  await app.register(cors, { origin: config.corsOrigin, credentials: true });
+  await app.register(cors, {
+    origin: (origin, cb) => {
+      if (!origin || config.corsOrigin.includes(origin)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Not allowed by CORS"), false);
+      }
+    },
+    credentials: true,
+  });
   await app.register(cookie);
 
   if (!opts.disableRateLimit) {
