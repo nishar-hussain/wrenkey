@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { User, Mail, Shield, Organization } from "lucide-react";
+import { User, Mail, Shield, Building2 } from "lucide-react";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -84,7 +84,7 @@ export default function ProfilePage() {
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <Organization className="h-5 w-5 text-muted-foreground shrink-0" />
+              <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">Organization</p>
                 <p className="text-sm font-medium">{org?.name || "—"}</p>
