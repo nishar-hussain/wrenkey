@@ -36,35 +36,12 @@ services:
     restart: unless-stopped
     ports:
       - "3001:3001"
+    env_file:
+      - packages/backend/.env
     environment:
-      NODE_ENV: production
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/wrankey
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: changeme-in-production-use-random-string
-      ENCRYPTION_KEY: changeme-in-production-use-32chars
-      PORT: 3001
-      HOST: 0.0.0.0
-      ARC_RPC_URL: https://rpc.arc.network
-      ARC_CHAIN_ID: 1234
-      SESSION_EXPIRY_SECONDS: 3600
-      API_KEY_EXPIRY_DAYS: 365
-      OTP_EXPIRY_SECONDS: 300
       CORS_ORIGIN: http://localhost:5173,http://localhost:8080
-      SMTP_HOST: ""
-      SMTP_PORT: "587"
-      SMTP_USER: ""
-      SMTP_PASS: ""
-      FROM_EMAIL: no-reply@wrankey.io
-      TWILIO_ACCOUNT_SID: ""
-      TWILIO_AUTH_TOKEN: ""
-      TWILIO_PHONE_NUMBER: ""
-      OAUTH_GOOGLE_CLIENT_ID: ""
-      OAUTH_GOOGLE_CLIENT_SECRET: ""
-      WEBHOOK_HMAC_SECRET: changeme-in-production
-      WEBAUTHN_RP_ID: localhost
-      GAS_SPONSORSHIP_ENABLED: "false"
-      GAS_SPONSORSHIP_MAX_AMOUNT: "0.01"
-      GAS_SPONSORSHIP_WALLET_ID: ""
     depends_on:
       postgres:
         condition: service_healthy

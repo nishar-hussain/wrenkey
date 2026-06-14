@@ -58,7 +58,12 @@ export default function LoginPage() {
     try {
       const res: any = await apiFetch("/auth/email/send", { method: "POST", body: JSON.stringify({ email }) });
       setOtpSent(true);
-      if (res.otp) setDevOtp(res.otp);
+      // Show dev OTP if email wasn't sent (dev mode or SMTP failure)
+      if (res.devOtp) setDevOtp(res.devOtp);
+      // Show warning if email wasn't actually delivered
+      if (res.emailSent === false) {
+        setError(res.message || "Email could not be sent. Check server logs.");
+      }
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
   };

@@ -88,21 +88,37 @@ export async function authRoutes(app: FastifyInstance) {
 
       // Attempt to send email if SMTP is configured
       let emailSent = false;
-      if (config.smtp.host) {
+      let smtpError = "";
+      if (config.smtp.host && config.smtp.user && config.smtp.pass) {
         try {
           const isSecure = config.smtp.port === 465;
           const transporter = createTransport({
             host: config.smtp.host,
             port: config.smtp.port,
             secure: isSecure,
-            requireTLS: !isSecure,
-            ...(config.smtp.user
-              ? { auth: { user: config.smtp.user, pass: config.smtp.pass } }
-              : {}),
+            auth: {
+              user: config.smtp.user,
+              pass: config.smtp.pass,
+            },
+            tls: {
+              rejectUnauthorized: !config.isDev,
+            },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000,
           });
 
+          // Verify SMTP connection before sending
+          await transporter.verify();
+          console.log(`[EMAIL] SMTP connection verified for ${config.smtp.host}:${config.smtp.port}`);
+
+          // Use SMTP_USER as from address (Gmail requires this)
+          const fromAddress = config.smtp.from.includes("@")
+            ? `"WranKey" <${config.smtp.from}>`
+            : `"WranKey" <${config.smtp.user}>`;
+
           const info = await transporter.sendMail({
-            from: config.smtp.from,
+            from: fromAddress,
             to: email,
             subject: "WranKey - Login Code",
             text: `Your code: ${otp}\n\nExpires in ${Math.floor(config.otpExpirySeconds / 60)} minutes.`,
@@ -115,21 +131,34 @@ export async function authRoutes(app: FastifyInstance) {
             </div>`,
           });
           emailSent = true;
-          console.log(`[EMAIL] Sent OTP to ${email}, messageId: ${info.messageId}`);
+          console.log(`[EMAIL] Sent OTP to ${email}, messageId: ${info.messageId}, response: ${info.response}`);
         } catch (smtpErr: any) {
-          console.error(`[EMAIL] Failed to send OTP to ${email}:`, smtpErr.message);
+          smtpError = smtpErr.message || "Unknown SMTP error";
+          console.error(`[EMAIL] Failed to send OTP to ${email}:`, {
+            message: smtpErr.message,
+            code: smtpErr.code,
+            responseCode: smtpErr.responseCode,
+            response: smtpErr.response,
+            command: smtpErr.command,
+          });
         }
+      } else {
+        console.warn(`[EMAIL] SMTP not fully configured. host=${config.smtp.host}, user=${config.smtp.user ? "set" : "missing"}, pass=${config.smtp.pass ? "set" : "missing"}`);
       }
 
       if (!emailSent) {
         console.log(`[DEV] OTP for ${email}: ${otp}`);
       }
 
-      // Only return OTP in dev mode
       return sendSuccess(reply, {
-        message: emailSent ? "OTP sent to your email" : `OTP generated${config.isDev ? " (dev mode - check server logs)" : ""}`,
+        message: emailSent
+          ? "OTP sent to your email"
+          : smtpError
+            ? `Email delivery failed: ${smtpError}. Check server logs.`
+            : "OTP generated (check server logs - SMTP not configured)",
+        emailSent,
         expiresIn: config.otpExpirySeconds,
-        otp: config.isDev ? otp : undefined,
+        ...(config.isDev && !emailSent ? { devOtp: otp } : {}),
       });
     } catch (err) {
       return sendError(reply, err);
@@ -212,8 +241,10 @@ export async function authRoutes(app: FastifyInstance) {
           console.error("Twilio SMS send failed:", twilioErr);
         }
       }
-      console.log(`[DEV] SMS OTP for ${phone}: ${otp}`);
-      return sendSuccess(reply, { message: "OTP sent", expiresIn: config.otpExpirySeconds, otp: config.isDev ? otp : undefined });
+      if (!config.twilio.accountSid || !config.twilio.authToken) {
+        console.log(`[DEV] SMS OTP for ${phone}: ${otp}`);
+      }
+      return sendSuccess(reply, { message: "OTP sent", expiresIn: config.otpExpirySeconds });
     } catch (err) {
       return sendError(reply, err);
     }
@@ -706,17 +737,38 @@ export async function authRoutes(app: FastifyInstance) {
       const resetToken = generateRandomToken();
       await redis.setex(`pwd_reset:${resetToken}`, 900, user.id); // 15 min expiry
 
-      if (config.smtp.host && config.smtp.user) {
-        const { createTransport } = await import("nodemailer");
-        const transporter = createTransport({
-          host: config.smtp.host, port: config.smtp.port,
-          auth: { user: config.smtp.user, pass: config.smtp.pass },
-        });
-        await transporter.sendMail({
-          from: config.smtp.from, to: email,
-          subject: "WranKey - Reset Your Password",
-          text: `Reset your password: ${config.corsOrigin}/reset-password?token=${resetToken}\n\nExpires in 15 minutes.`,
-        }).catch(() => {});
+      if (config.smtp.host && config.smtp.user && config.smtp.pass) {
+        try {
+          const { createTransport } = await import("nodemailer");
+          const isSecure = config.smtp.port === 465;
+          const transporter = createTransport({
+            host: config.smtp.host,
+            port: config.smtp.port,
+            secure: isSecure,
+            auth: { user: config.smtp.user, pass: config.smtp.pass },
+            tls: { rejectUnauthorized: !config.isDev },
+          });
+          const fromAddress = config.smtp.from.includes("@")
+            ? `"WranKey" <${config.smtp.from}>`
+            : `"WranKey" <${config.smtp.user}>`;
+          const resetUrl = `${Array.isArray(config.corsOrigin) ? config.corsOrigin[0] : config.corsOrigin}/reset-password?token=${resetToken}`;
+          await transporter.sendMail({
+            from: fromAddress,
+            to: email,
+            subject: "WranKey - Reset Your Password",
+            text: `Reset your password: ${resetUrl}\n\nExpires in 15 minutes.`,
+            html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+              <h2 style="color:#1e3a8a;">WranKey</h2>
+              <p>Click the link below to reset your password:</p>
+              <a href="${resetUrl}" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;margin:16px 0;">Reset Password</a>
+              <p style="color:#64748b;font-size:14px;">This link expires in 15 minutes.</p>
+              <p style="color:#94a3b8;font-size:12px;">If you didn't request this, ignore this email.</p>
+            </div>`,
+          });
+          console.log(`[EMAIL] Sent password reset email to ${email}`);
+        } catch (resetEmailErr: any) {
+          console.error(`[EMAIL] Failed to send password reset to ${email}:`, resetEmailErr.message);
+        }
       }
       console.log(`[DEV] Password reset token for ${email}: ${resetToken}`);
 

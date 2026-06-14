@@ -1,3 +1,4 @@
+// Triggering a restart to reload environment variables
 import { buildApp } from "./app.js";
 import { connectRedis } from "./redis.js";
 import { config } from "./config.js";
