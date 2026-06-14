@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
@@ -37,6 +37,16 @@ export default function LoginPage() {
 
   // OAuth
   const [oauthLoading, setOauthLoading] = useState(false);
+  const [googleClientId, setGoogleClientId] = useState("");
+
+  // Load backend configurations (like public Google Client ID) on mount
+  useEffect(() => {
+    apiFetch("/auth/config")
+      .then((res: any) => {
+        if (res.googleClientId) setGoogleClientId(res.googleClientId);
+      })
+      .catch((err) => console.error("Failed to load auth config", err));
+  }, []);
 
   // Wallet
   const [walletAddress, setWalletAddress] = useState("");
@@ -117,9 +127,9 @@ export default function LoginPage() {
   const handleGoogleOAuth = async () => {
     setOauthLoading(true); setError("");
     try {
-      const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+      const clientId = googleClientId || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
       if (!clientId) {
-        setError("Google OAuth not configured. Set NEXT_PUBLIC_GOOGLE_CLIENT_ID in your environment.");
+        setError("Google OAuth not configured. Set NEXT_PUBLIC_GOOGLE_CLIENT_ID in your environment or OAUTH_GOOGLE_CLIENT_ID in your backend .env file.");
         setOauthLoading(false);
         return;
       }
@@ -133,11 +143,14 @@ export default function LoginPage() {
     }
   };
 
+  const oauthExchangeStarted = useRef(false);
+
   // Handle OAuth callback (code in URL)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
-    if (code) {
+    if (code && !oauthExchangeStarted.current) {
+      oauthExchangeStarted.current = true;
       setLoading(true); setError("");
       apiFetch("/auth/oauth", {
         method: "POST",
@@ -145,7 +158,6 @@ export default function LoginPage() {
       })
         .then((res: any) => {
           doLogin(res);
-          window.history.replaceState({}, "", "/login");
         })
         .catch((err: any) => {
           setError(err.message || "OAuth login failed");

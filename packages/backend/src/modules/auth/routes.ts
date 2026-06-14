@@ -74,6 +74,13 @@ async function findOrCreateUser(orgId: string, email: string, role = "DEVELOPER"
 }
 
 export async function authRoutes(app: FastifyInstance) {
+  // Public configuration endpoint
+  app.get("/auth/config", async (request, reply) => {
+    return sendSuccess(reply, {
+      googleClientId: config.oauth.googleClientId || "",
+    });
+  });
+
   // Email OTP Send
   app.post("/auth/email/send", async (request, reply) => {
     try {
@@ -294,7 +301,7 @@ export async function authRoutes(app: FastifyInstance) {
           body: JSON.stringify({
             client_id: config.oauth.googleClientId,
             client_secret: config.oauth.googleClientSecret,
-            code, redirect_uri: redirectUri || config.corsOrigin,
+            code, redirect_uri: redirectUri || config.corsOrigin[0],
             grant_type: "authorization_code",
           }),
         });
@@ -797,6 +804,251 @@ export async function authRoutes(app: FastifyInstance) {
       await redis.del(`pwd_reset:${token}`);
 
       return sendSuccess(reply, { message: "Password reset successfully" });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Passwordless Signup Initiate
+  app.post("/auth/signup/initiate", async (request, reply) => {
+    try {
+      const { name, email, orgName, hearAbout } = request.body as {
+        name: string;
+        email: string;
+        orgName: string;
+        hearAbout?: string;
+      };
+
+      if (!name || !email || !orgName) {
+        throw new ValidationError("Name, email, and organization name are required");
+      }
+
+      const existing = await prisma.user.findFirst({ where: { email } });
+      if (existing) {
+        throw new ValidationError("User already exists");
+      }
+
+      const redis = getRedis();
+      const token = generateRandomToken();
+
+      await redis.setex(
+        `pending_signup:${token}`,
+        86400,
+        JSON.stringify({ name, email, orgName, hearAbout })
+      );
+
+      if (config.smtp.host && config.smtp.user && config.smtp.pass) {
+        try {
+          const { createTransport } = await import("nodemailer");
+          const isSecure = config.smtp.port === 465;
+          const transporter = createTransport({
+            host: config.smtp.host,
+            port: config.smtp.port,
+            secure: isSecure,
+            auth: { user: config.smtp.user, pass: config.smtp.pass },
+            tls: { rejectUnauthorized: !config.isDev },
+          });
+          const fromAddress = config.smtp.from.includes("@")
+            ? `"WranKey" <${config.smtp.from}>`
+            : `"WranKey" <${config.smtp.user}>`;
+          const verifyUrl = `${Array.isArray(config.corsOrigin) ? config.corsOrigin[0] : config.corsOrigin}/signup/verify?token=${token}`;
+          await transporter.sendMail({
+            from: fromAddress,
+            to: email,
+            subject: "WranKey - Verify Your Email",
+            text: `Verify your email to continue creating your account: ${verifyUrl}\n\nThis link expires in 24 hours.`,
+            html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+              <h2 style="color:#1e3a8a;">WranKey</h2>
+              <p>Click the link below to verify your email and continue creating your account:</p>
+              <a href="${verifyUrl}" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;margin:16px 0;">Verify Email</a>
+              <p style="color:#64748b;font-size:14px;">This link expires in 24 hours.</p>
+              <p style="color:#94a3b8;font-size:12px;">If you didn't request this, ignore this email.</p>
+            </div>`,
+          });
+          console.log(`[EMAIL] Sent signup verification email to ${email}`);
+        } catch (emailErr: any) {
+          console.error(`[EMAIL] Failed to send signup verification to ${email}:`, emailErr.message);
+        }
+      }
+      console.log(`[DEV] Signup verification link for ${email}: ${Array.isArray(config.corsOrigin) ? config.corsOrigin[0] : config.corsOrigin}/signup/verify?token=${token}`);
+
+      return sendSuccess(reply, { message: "Verification email sent successfully" });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Passwordless Signup Verify Token
+  app.get("/auth/signup/verify", async (request, reply) => {
+    try {
+      const { token } = request.query as { token: string };
+      if (!token) throw new ValidationError("Token required");
+
+      const redis = getRedis();
+      const dataStr = await redis.get(`pending_signup:${token}`);
+      if (!dataStr) {
+        throw new ValidationError("Invalid or expired signup verification link");
+      }
+
+      const { name, email, orgName } = JSON.parse(dataStr);
+      return sendSuccess(reply, { name, email, orgName });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Passwordless Signup Register Options (Passkey Registration Options)
+  app.post("/auth/signup/register-options", async (request, reply) => {
+    try {
+      const { token, attachment } = request.body as {
+        token: string;
+        attachment?: "platform" | "cross-platform";
+      };
+      if (!token) throw new ValidationError("Token required");
+
+      const redis = getRedis();
+      const dataStr = await redis.get(`pending_signup:${token}`);
+      if (!dataStr) {
+        throw new ValidationError("Invalid or expired signup session");
+      }
+
+      const { email, name } = JSON.parse(dataStr);
+
+      const options = await generateRegistrationOptions({
+        rpName: RP_NAME,
+        rpID: RP_ID,
+        userName: email,
+        userDisplayName: name || email,
+        attestationType: "none",
+        authenticatorSelection: {
+          residentKey: "preferred",
+          userVerification: "preferred",
+          ...(attachment ? { authenticatorAttachment: attachment } : {}),
+        },
+      });
+
+      await redis.setex(`webauthn:challenge:signup:${token}`, 300, options.challenge);
+      return sendSuccess(reply, { options });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Passwordless Signup Confirm (Passkey Registration Confirm)
+  app.post("/auth/signup/confirm", async (request, reply) => {
+    try {
+      const { token, credential } = request.body as {
+        token: string;
+        credential: any;
+      };
+      if (!token || !credential) {
+        throw new ValidationError("Token and credential are required");
+      }
+
+      const redis = getRedis();
+      const dataStr = await redis.get(`pending_signup:${token}`);
+      if (!dataStr) {
+        throw new ValidationError("Invalid or expired signup session");
+      }
+
+      const challenge = await redis.get(`webauthn:challenge:signup:${token}`);
+      if (!challenge) {
+        throw new ValidationError("WebAuthn challenge expired or not found");
+      }
+
+      const { name, email, orgName } = JSON.parse(dataStr);
+
+      const verification = await verifyRegistrationResponse({
+        response: credential,
+        expectedChallenge: challenge,
+        expectedOrigin: EXPECTED_ORIGIN,
+        expectedRPID: RP_ID,
+      });
+
+      if (!verification.verified) {
+        throw new ValidationError("Authenticator verification failed");
+      }
+
+      const regInfo = verification.registrationInfo as {
+        credentialId?: string;
+        credentialPublicKey?: Uint8Array;
+        counter?: number;
+      } | undefined;
+      const credentialId = regInfo?.credentialId;
+      const credentialPublicKey = regInfo?.credentialPublicKey;
+      const counter = regInfo?.counter;
+
+      // Atomic creation of Org, User, and Authenticator records
+      const result = await prisma.$transaction(async (tx) => {
+        const org = await tx.organization.create({ data: { name: orgName } });
+        const user = await tx.user.create({
+          data: {
+            orgId: org.id,
+            email,
+            name,
+            role: "DEVELOPER",
+          },
+        });
+
+        await tx.authenticator.create({
+          data: {
+            userId: user.id,
+            type: "PASSKEY",
+            credentialId,
+            credentialData: {
+              publicKey: Buffer.from(credentialPublicKey!).toString("base64"),
+              counter,
+            },
+            verified: true,
+          },
+        });
+
+        return { org, user };
+      });
+
+      const tokenVal = signToken({
+        sub: result.user.id,
+        orgId: result.org.id,
+        role: result.user.role,
+      });
+
+      const session = await prisma.session.create({
+        data: {
+          userId: result.user.id,
+          token: tokenVal,
+          type: "READ_WRITE",
+          expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000),
+        },
+      });
+
+      // Audit logs and webhook triggers
+      await createAuditLog(result.org.id, "SIGNUP", { email, method: "PASSKEY" }, result.user.id, request);
+      triggerWebhookEvents(result.org.id, "user.signup", { userId: result.user.id, email, method: "PASSKEY" });
+      await createAuditLog(result.org.id, "LOGIN", { method: "PASSKEY" }, result.user.id, request);
+      triggerWebhookEvents(result.org.id, "user.login", { userId: result.user.id, email, method: "PASSKEY" });
+
+      // Clean up Redis keys
+      await redis.del(`pending_signup:${token}`);
+      await redis.del(`webauthn:challenge:signup:${token}`);
+
+      return sendSuccess(
+        reply,
+        {
+          sessionToken: tokenVal,
+          user: {
+            id: result.user.id,
+            email: result.user.email,
+            name: result.user.name,
+            role: result.user.role,
+          },
+          org: {
+            id: result.org.id,
+            name: result.org.name,
+          },
+          expiresAt: session.expiresAt,
+        },
+        201
+      );
     } catch (err) {
       return sendError(reply, err);
     }

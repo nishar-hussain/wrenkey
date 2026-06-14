@@ -70,12 +70,15 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
   // Auth middleware for protected routes
   const publicPaths = [
     "/health", "/api/v1/health", "/docs",
+    "/api/v1/auth/config",
     "/api/v1/auth/email/send", "/api/v1/auth/email/verify",
     "/api/v1/auth/oauth", "/api/v1/auth/wallet",
     "/api/v1/auth/webauthn/register", "/api/v1/auth/webauthn/register/verify",
     "/api/v1/auth/webauthn/authenticate", "/api/v1/auth/webauthn/authenticate/verify",
     "/api/v1/auth/password/signup", "/api/v1/auth/password/login",
     "/api/v1/auth/phone/send", "/api/v1/auth/phone/verify",
+    "/api/v1/auth/signup/initiate", "/api/v1/auth/signup/verify",
+    "/api/v1/auth/signup/register-options", "/api/v1/auth/signup/confirm",
   ];
 
   app.addHook("onRequest", async (request, reply) => {
