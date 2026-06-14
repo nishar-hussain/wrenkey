@@ -222,6 +222,7 @@ export async function authRoutes(app: FastifyInstance) {
         sessionToken: token,
         user: { id: user.id, email: user.email, role: user.role },
         org: { id: org.id, name: org.name },
+        isNewUser,
         expiresAt: session.expiresAt,
       }, 201);
     } catch (err) {
@@ -280,16 +281,27 @@ export async function authRoutes(app: FastifyInstance) {
 
       const org = await findOrCreateOrg(orgName || `Org-${phone.slice(-4)}`);
       let user = await prisma.user.findFirst({ where: { orgId: org.id, phone } });
+      const isNewUser = !user;
       if (!user) user = await prisma.user.create({ data: { orgId: org.id, phone, role: "DEVELOPER" } });
+
+      await prisma.authenticator.upsert({
+        where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: "PHONE" } }))?.id || "" },
+        update: { verified: true },
+        create: { userId: user.id, type: "PHONE", verified: true },
+      });
 
       const token = signToken({ sub: user.id, orgId: org.id, role: user.role });
       const session = await prisma.session.create({
         data: { userId: user.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
       });
 
+      if (isNewUser) {
+        await createAuditLog(org.id, "SIGNUP", { phone }, user.id, request);
+        triggerWebhookEvents(org.id, "user.signup", { userId: user.id, phone, method: "PHONE" });
+      }
       await createAuditLog(org.id, "LOGIN", { method: "PHONE" }, user.id, request);
       triggerWebhookEvents(org.id, "user.login", { userId: user.id, phone, method: "PHONE" });
-      return sendSuccess(reply, { sessionToken: token, user: { id: user.id, phone: user.phone, role: user.role }, org: { id: org.id, name: org.name }, expiresAt: session.expiresAt }, 201);
+      return sendSuccess(reply, { sessionToken: token, user: { id: user.id, phone: user.phone, role: user.role }, org: { id: org.id, name: org.name }, isNewUser, expiresAt: session.expiresAt }, 201);
     } catch (err) {
       return sendError(reply, err);
     }
@@ -298,7 +310,7 @@ export async function authRoutes(app: FastifyInstance) {
   // OAuth
   app.post("/auth/oauth", async (request, reply) => {
     try {
-      const { provider, code, redirectUri } = request.body as { provider: string; code: string; redirectUri: string };
+      const { provider, code, redirectUri, orgName } = request.body as { provider: string; code: string; redirectUri: string; orgName?: string };
       if (!provider || !code) throw new ValidationError("Provider and code required");
 
       let email: string;
@@ -328,8 +340,9 @@ export async function authRoutes(app: FastifyInstance) {
         throw new ValidationError("OAuth provider not configured");
       }
 
-      const org = await findOrCreateOrg(`${name || email}'s Org`);
+      const org = await findOrCreateOrg(orgName || `${name || email}'s Org`);
       const user = await findOrCreateUser(org.id, email, { name });
+      const isNewUser = user.createdAt.getTime() === user.updatedAt.getTime();
 
       await prisma.authenticator.upsert({
         where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: `OAUTH_${provider.toUpperCase()}` } }))?.id || "" },
@@ -342,9 +355,13 @@ export async function authRoutes(app: FastifyInstance) {
         data: { userId: user.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
       });
 
+      if (isNewUser) {
+        await createAuditLog(org.id, "SIGNUP", { method: "OAUTH", provider }, user.id, request);
+        triggerWebhookEvents(org.id, "user.signup", { userId: user.id, email, method: "OAUTH" });
+      }
       await createAuditLog(org.id, "LOGIN", { method: "OAUTH", provider }, user.id, request);
       triggerWebhookEvents(org.id, "user.login", { userId: user.id, email, method: "OAUTH" });
-      return sendSuccess(reply, { sessionToken: token, user: { id: user.id, email: user.email, name: user.name, role: user.role }, org: { id: org.id, name: org.name }, expiresAt: session.expiresAt }, 201);
+      return sendSuccess(reply, { sessionToken: token, user: { id: user.id, email: user.email, name: user.name, role: user.role }, org: { id: org.id, name: org.name }, isNewUser, expiresAt: session.expiresAt }, 201);
     } catch (err) {
       return sendError(reply, err);
     }
@@ -490,8 +507,8 @@ export async function authRoutes(app: FastifyInstance) {
       if (recovered.toLowerCase() !== address.toLowerCase()) throw new ValidationError("Invalid signature");
 
       const org = await findOrCreateOrg(orgName || `${address.slice(0, 8)}'s Org`);
-      let user = await prisma.user.findFirst({ where: { orgId: org.id, email: `${address}@wallet.wrankey` } });
-      if (!user) user = await prisma.user.create({ data: { orgId: org.id, email: `${address}@wallet.wrankey`, name: address.slice(0, 12), role: "DEVELOPER" } });
+      const user = await findOrCreateUser(org.id, `${address}@wallet.wrankey`, { name: address.slice(0, 12) });
+      const isNewUser = user.createdAt.getTime() === user.updatedAt.getTime();
 
       await prisma.authenticator.upsert({
         where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: "WALLET" } }))?.id || "" },
@@ -504,9 +521,13 @@ export async function authRoutes(app: FastifyInstance) {
         data: { userId: user.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
       });
 
+      if (isNewUser) {
+        await createAuditLog(org.id, "SIGNUP", { method: "WALLET", address }, user.id, request);
+        triggerWebhookEvents(org.id, "user.signup", { userId: user.id, address, method: "WALLET" });
+      }
       await createAuditLog(org.id, "LOGIN", { method: "WALLET", address }, user.id, request);
       triggerWebhookEvents(org.id, "user.login", { userId: user.id, address, method: "WALLET" });
-      return sendSuccess(reply, { sessionToken: token, user: { id: user.id, email: user.email, role: user.role }, org: { id: org.id, name: org.name }, expiresAt: session.expiresAt }, 201);
+      return sendSuccess(reply, { sessionToken: token, user: { id: user.id, email: user.email, role: user.role }, org: { id: org.id, name: org.name }, isNewUser, expiresAt: session.expiresAt }, 201);
     } catch (err) {
       return sendError(reply, err);
     }
@@ -523,8 +544,8 @@ export async function authRoutes(app: FastifyInstance) {
       if (existing) throw new ValidationError("User already exists");
 
       const passwordHash = await bcrypt.hash(password, 12);
-      const org = await findOrCreateOrg(name || `${email}'s Org`);
-      const user = await prisma.user.create({ data: { orgId: org.id, email, name, role: "DEVELOPER" } });
+      const org = await findOrCreateOrg(name || humanOrgName(email));
+      const user = await findOrCreateUser(org.id, email, { name, role: "ORG_ADMIN" });
 
       await prisma.authenticator.create({ data: { userId: user.id, type: "PASSWORD", credentialData: { hash: passwordHash }, verified: true } });
 
@@ -534,7 +555,7 @@ export async function authRoutes(app: FastifyInstance) {
       });
 
       await createAuditLog(org.id, "SIGNUP", { method: "PASSWORD" }, user.id, request);
-      return sendSuccess(reply, { sessionToken: token, user: { id: user.id, email: user.email, role: user.role }, org: { id: org.id, name: org.name }, expiresAt: session.expiresAt }, 201);
+      return sendSuccess(reply, { sessionToken: token, user: { id: user.id, email: user.email, role: user.role }, org: { id: org.id, name: org.name }, isNewUser: true, expiresAt: session.expiresAt }, 201);
     } catch (err) {
       return sendError(reply, err);
     }

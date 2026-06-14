@@ -41,6 +41,23 @@ export async function orgRoutes(app: FastifyInstance) {
     }
   });
 
+  app.patch("/org", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { name } = request.body as { name: string };
+      if (!name || !name.trim()) throw new ValidationError("Organization name is required");
+
+      const org = await prisma.organization.update({
+        where: { id: request.orgId },
+        data: { name: name.trim() },
+      });
+
+      await createAuditLog(request.orgId, "ORG_UPDATE", { name }, request.userId, request);
+      return sendSuccess(reply, org);
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
   // User management (scoped to current org)
   app.post("/users", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {

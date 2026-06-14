@@ -11,6 +11,7 @@ interface AuthState {
 interface AuthContextType extends AuthState {
   login: (token: string, user: { id: string; email?: string; role: string }, org: { id: string; name: string }) => void;
   logout: () => void;
+  updateOrg: (org: { id: string; name: string }) => void;
   isAuthenticated: boolean;
   ready: boolean;
 }
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType>({
   org: null,
   login: () => {},
   logout: () => {},
+  updateOrg: () => {},
   isAuthenticated: false,
   ready: false,
 });
@@ -70,8 +72,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("wrankey_org");
   };
 
+  const updateOrg = (newOrg: { id: string; name: string }) => {
+    setOrg(newOrg);
+    localStorage.setItem("wrankey_org", JSON.stringify(newOrg));
+  };
+
   return (
-    <AuthContext.Provider value={{ token, user, org, login, logout, isAuthenticated: !!token, ready }}>
+    <AuthContext.Provider value={{ token, user, org, login, logout, updateOrg, isAuthenticated: !!token, ready }}>
       <ToastProvider>
         {children}
       </ToastProvider>

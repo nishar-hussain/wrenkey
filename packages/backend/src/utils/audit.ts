@@ -11,7 +11,7 @@ export type AuditAction =
   | "API_KEY_CREATE" | "API_KEY_DELETE"
   | "SESSION_CREATE" | "SESSION_REFRESH"
   | "WEBHOOK_CREATE" | "WEBHOOK_DELETE"
-  | "ORG_CREATE" | "USER_CREATE" | "USER_UPDATE" | "USER_DELETE";
+  | "ORG_CREATE" | "ORG_UPDATE" | "USER_CREATE" | "USER_UPDATE" | "USER_DELETE";
 
 export async function createAuditLog(
   orgId: string,

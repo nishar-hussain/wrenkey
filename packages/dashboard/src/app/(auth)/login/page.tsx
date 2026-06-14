@@ -56,9 +56,14 @@ export default function LoginPage() {
     login(
       res.sessionToken,
       { id: res.user.id, email: res.user.email || res.user.phone, role: res.user.role },
-      { id: res.org.id, name: res.org.name }
+      { id: res.org.id, name: res.org.name },
+      res.isNewUser === true,
     );
-    router.push("/");
+    if (res.isNewUser) {
+      router.push("/onboarding");
+    } else {
+      router.push("/");
+    }
   };
 
   // Email OTP
@@ -341,7 +346,7 @@ export default function LoginPage() {
                 {oauthLoading ? "Connecting..." : "Continue with Google"}
               </Button>
               <p className="text-xs text-slate-400 text-center">
-                Requires GOOGLE_CLIENT_ID to be configured on the backend.
+                Google OAuth requires GOOGLE_CLIENT_ID configured on the backend.
               </p>
             </div>
           )}
