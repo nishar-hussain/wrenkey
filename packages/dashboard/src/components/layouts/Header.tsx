@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/Providers";
-import { Bell, ChevronRight, LogOut, User as UserIcon, Settings, Sun, Moon } from "lucide-react";
+import { Bell, ChevronRight, LogOut, User as UserIcon, Users, Sun, Moon } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -123,29 +123,45 @@ export function Header() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-              <div className="h-7 w-7 rounded-full bg-gray-900 dark:bg-white dark:text-gray-900 text-white flex items-center justify-center text-xs font-medium ring-2 ring-gray-200 dark:ring-gray-600">
+              <div className="h-7 w-7 rounded-full bg-brand-600 text-white flex items-center justify-center text-xs font-medium ring-2 ring-gray-200 dark:ring-gray-600">
                 {user?.email?.charAt(0).toUpperCase() || "U"}
               </div>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuLabel className="font-normal">
-              <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium">{user?.email || "User"}</p>
-                <p className="text-xs text-muted-foreground">{org?.name}</p>
+              <div className="flex flex-col space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <div className="h-9 w-9 rounded-full bg-brand-600 text-white flex items-center justify-center text-sm font-medium shrink-0">
+                    {user?.email?.charAt(0).toUpperCase() || "U"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{user?.email || "User"}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{user?.role?.replace("_", " ").toLowerCase() || "Member"}</p>
+                  </div>
+                </div>
+                <div className="pt-1.5 border-t border-gray-100 dark:border-gray-700">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Organization</p>
+                  <p className="text-sm font-medium">{org?.name || "—"}</p>
+                  <p className="text-xs text-muted-foreground font-mono">{org?.id ? `ID: ${org.id.slice(0, 8)}...` : "—"}</p>
+                </div>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <UserIcon className="h-4 w-4 mr-2" />
-              Profile
+            <DropdownMenuItem asChild>
+              <Link href="/profile" className="cursor-pointer">
+                <UserIcon className="h-4 w-4 mr-2" />
+                My Profile
+              </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Settings className="h-4 w-4 mr-2" />
-              Settings
+            <DropdownMenuItem asChild>
+              <Link href="/team" className="cursor-pointer">
+                <Users className="h-4 w-4 mr-2" />
+                Team
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout} className="text-red-600 dark:text-red-400">
+            <DropdownMenuItem onClick={logout} className="text-red-600 dark:text-red-400 cursor-pointer">
               <LogOut className="h-4 w-4 mr-2" />
               Log out
             </DropdownMenuItem>

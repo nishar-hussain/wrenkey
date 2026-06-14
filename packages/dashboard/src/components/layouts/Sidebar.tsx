@@ -15,6 +15,8 @@ import {
   Key,
   Users,
   ClipboardList,
+  User,
+  UsersRound,
   Menu,
   X,
 } from "lucide-react";
@@ -29,6 +31,8 @@ const mainNav = [
 ];
 
 const secondaryNav = [
+  { href: "/profile", label: "My Profile", icon: User },
+  { href: "/team", label: "Team", icon: UsersRound },
   { href: "/webhooks", label: "Webhooks", icon: Webhook },
   { href: "/api-keys", label: "API Keys", icon: Key },
   { href: "/users", label: "Users", icon: Users },
@@ -96,12 +100,13 @@ export function Sidebar() {
       {/* Footer */}
       <div className="border-t border-gray-200 p-3">
         <div className="flex items-center gap-3 px-3 py-2">
-          <div className="h-8 w-8 rounded-full bg-gray-900 text-white flex items-center justify-center text-xs font-medium shrink-0">
+          <div className="h-8 w-8 rounded-full bg-brand-600 text-white flex items-center justify-center text-xs font-medium shrink-0">
             {user?.email?.charAt(0).toUpperCase() || "U"}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-gray-900 truncate">{user?.email || "User"}</p>
-            <p className="text-xs text-gray-500 truncate">{org?.name || "Organization"}</p>
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{user?.email || "User"}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 truncate capitalize">{user?.role?.replace("_", " ").toLowerCase() || "Member"}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{org?.name} · <span className="font-mono">{org?.id?.slice(0, 6)}</span></p>
           </div>
         </div>
       </div>

@@ -59,11 +59,13 @@ async function findOrCreateOrg(name: string): Promise<{ id: string; name: string
   }
 }
 
-async function findOrCreateUser(orgId: string, email: string, role = "DEVELOPER") {
+async function findOrCreateUser(orgId: string, email: string, opts?: { role?: string; name?: string }) {
   const existing = await prisma.user.findFirst({ where: { orgId, email } });
   if (existing) return existing;
   try {
-    return await prisma.user.create({ data: { orgId, email, role } });
+    const userCount = await prisma.user.count({ where: { orgId } });
+    const assignedRole = opts?.role || (userCount === 0 ? "ORG_ADMIN" : "DEVELOPER");
+    return await prisma.user.create({ data: { orgId, email, role: assignedRole, ...(opts?.name ? { name: opts.name } : {}) } });
   } catch (err: any) {
     if (err?.code === "P2002") {
       const created = await prisma.user.findFirst({ where: { orgId, email } });
@@ -71,6 +73,14 @@ async function findOrCreateUser(orgId: string, email: string, role = "DEVELOPER"
     }
     throw err;
   }
+}
+
+function humanOrgName(email: string): string {
+  const username = email.split("@")[0];
+  const name = username
+    .split(/[^a-zA-Z]/)[0]
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return `${name}'s Org`;
 }
 
 export async function authRoutes(app: FastifyInstance) {
@@ -183,7 +193,7 @@ export async function authRoutes(app: FastifyInstance) {
       if (!storedOtp || storedOtp !== otp) throw new ValidationError("Invalid or expired OTP");
       await redis.del(`${OTP_PREFIX}${email}`);
 
-      const org = await findOrCreateOrg(orgName || `${email}'s Org`);
+      const org = await findOrCreateOrg(orgName || humanOrgName(email));
       const user = await findOrCreateUser(org.id, email);
       const isNewUser = user.createdAt.getTime() === user.updatedAt.getTime();
 
@@ -319,8 +329,7 @@ export async function authRoutes(app: FastifyInstance) {
       }
 
       const org = await findOrCreateOrg(`${name || email}'s Org`);
-      let user = await prisma.user.findFirst({ where: { orgId: org.id, email } });
-      if (!user) user = await prisma.user.create({ data: { orgId: org.id, email, name, role: "DEVELOPER" } });
+      const user = await findOrCreateUser(org.id, email, { name });
 
       await prisma.authenticator.upsert({
         where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: `OAUTH_${provider.toUpperCase()}` } }))?.id || "" },
