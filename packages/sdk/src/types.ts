@@ -39,11 +39,56 @@ export interface Wallet {
 export interface WalletAccount {
   id: string;
   walletId: string;
-  chain: string;
+  chainId: string;
+  chain?: string;
   address: string;
   derivationPath: string;
   index: number;
   createdAt: string;
+}
+
+export interface Chain {
+  id: string;
+  name: string;
+  chainId: number;
+  rpcUrl: string;
+  nativeCurrency: string;
+  symbol: string;
+  blockExplorerUrl?: string;
+  derivationPath: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SpendingLimit {
+  id: string;
+  orgId: string;
+  walletId?: string;
+  chainId?: string;
+  name: string;
+  maxPerTx?: string;
+  maxDaily?: string;
+  maxMonthly?: string;
+  allowlist: string[];
+  denylist: string[];
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApprovalRequest {
+  id: string;
+  orgId: string;
+  transactionId: string;
+  requestedBy: string;
+  approvedBy: string[];
+  rejectedBy: string[];
+  requiredApprovals: number;
+  status: string;
+  transaction?: Transaction;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Transaction {
@@ -54,12 +99,16 @@ export interface Transaction {
   chain: string;
   to: string;
   value: string;
+  nonce?: number;
   gasLimit?: string;
   maxFeePerGas?: string;
+  maxPriorityFeePerGas?: string;
   data?: string;
   status: string;
   signedTx?: string;
+  replacementFor?: string;
   error?: string;
+  riskScore?: number;
   createdAt: string;
   confirmedAt?: string;
 }

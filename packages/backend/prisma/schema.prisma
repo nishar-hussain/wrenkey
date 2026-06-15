@@ -13,13 +13,15 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  users      User[]
-  wallets    Wallet[]
-  policies   Policy[]
-  agents     Agent[]
-  apiKeys    ApiKey[]
-  webhooks   Webhook[]
-  auditLogs  AuditLog[]
+  users          User[]
+  wallets        Wallet[]
+  policies       Policy[]
+  agents         Agent[]
+  apiKeys        ApiKey[]
+  webhooks       Webhook[]
+  auditLogs      AuditLog[]
+  spendingLimits SpendingLimit[]
+  approvalRequests ApprovalRequest[]
 
   @@map("organizations")
 }
@@ -107,23 +109,83 @@ model Wallet {
   org      Organization     @relation(fields: [orgId], references: [id])
   user     User?            @relation(fields: [userId], references: [id])
   accounts WalletAccount[]
+  spendingLimits SpendingLimit[]
 
   @@map("wallets")
+}
+
+model Chain {
+  id               String   @id @default(uuid())
+  name             String   @unique
+  chainId          Int      @unique @map("chain_id")
+  rpcUrl           String   @map("rpc_url")
+  nativeCurrency   String   @default("ETH") @map("native_currency")
+  symbol           String   @default("ETH")
+  blockExplorerUrl String?  @map("block_explorer_url")
+  derivationPath   String   @default("m/44'/60'/0'/0") @map("derivation_path")
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  accounts        WalletAccount[]
+  spendingLimits  SpendingLimit[]
+
+  @@map("chains")
 }
 
 model WalletAccount {
   id             String   @id @default(uuid())
   walletId       String   @map("wallet_id")
-  chain          String   @default("arc")
+  chainId        String   @map("chain_id")
   address        String
   derivationPath String   @map("derivation_path")
   index          Int
   createdAt      DateTime @default(now()) @map("created_at")
 
   wallet       Wallet        @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  chain        Chain         @relation(fields: [chainId], references: [id])
   transactions Transaction[]
 
   @@map("wallet_accounts")
+}
+
+model SpendingLimit {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  walletId    String?  @map("wallet_id")
+  chainId     String?  @map("chain_id")
+  name        String
+  maxPerTx    String?  @map("max_per_tx")
+  maxDaily    String?  @map("max_daily")
+  maxMonthly  String?  @map("max_monthly")
+  allowlist   String[] @default([])
+  denylist    String[] @default([])
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  org   Organization @relation(fields: [orgId], references: [id])
+  wallet Wallet?     @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  chain  Chain?      @relation(fields: [chainId], references: [id])
+
+  @@map("spending_limits")
+}
+
+model ApprovalRequest {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  transactionId String @map("transaction_id")
+  requestedBy String   @map("requested_by")
+  approvedBy  String[] @default([])
+  rejectedBy  String[] @default([])
+  requiredApprovals Int @default(2) @map("required_approvals")
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@map("approval_requests")
 }
 
 model Transaction {
@@ -134,12 +196,16 @@ model Transaction {
   chain        String    @default("arc")
   to           String
   value        String
+  nonce        Int?
   gasLimit     String?   @map("gas_limit")
   maxFeePerGas String?   @map("max_fee_per_gas")
+  maxPriorityFeePerGas String? @map("max_priority_fee_per_gas")
   data         String?
   status       String    @default("PENDING")
   signedTx     String?   @map("signed_tx")
+  replacementFor String? @map("replacement_for")
   error        String?
+  riskScore    Int?      @map("risk_score")
   createdAt    DateTime  @default(now()) @map("created_at")
   confirmedAt  DateTime? @map("confirmed_at")
 

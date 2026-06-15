@@ -59,17 +59,18 @@ async function findOrCreateOrg(name: string): Promise<{ id: string; name: string
   }
 }
 
-async function findOrCreateUser(orgId: string, email: string, opts?: { role?: string; name?: string }) {
+async function findOrCreateUser(orgId: string, email: string, opts?: { role?: string; name?: string }): Promise<{ user: any; created: boolean }> {
   const existing = await prisma.user.findFirst({ where: { orgId, email } });
-  if (existing) return existing;
+  if (existing) return { user: existing, created: false };
   try {
     const userCount = await prisma.user.count({ where: { orgId } });
     const assignedRole = opts?.role || (userCount === 0 ? "ORG_ADMIN" : "DEVELOPER");
-    return await prisma.user.create({ data: { orgId, email, role: assignedRole, ...(opts?.name ? { name: opts.name } : {}) } });
+    const user = await prisma.user.create({ data: { orgId, email, role: assignedRole, ...(opts?.name ? { name: opts.name } : {}) } });
+    return { user, created: true };
   } catch (err: any) {
     if (err?.code === "P2002") {
       const created = await prisma.user.findFirst({ where: { orgId, email } });
-      if (created) return created;
+      if (created) return { user: created, created: false };
     }
     throw err;
   }
@@ -89,6 +90,31 @@ export async function authRoutes(app: FastifyInstance) {
     return sendSuccess(reply, {
       googleClientId: config.oauth.googleClientId || "",
     });
+  });
+
+  // Email Lookup — check if user exists for "Welcome Back" flow
+  app.post("/auth/email/lookup", async (request, reply) => {
+    try {
+      const { email } = request.body as { email: string };
+      if (!email) throw new ValidationError("Email is required");
+
+      const user = await prisma.user.findFirst({
+        where: { email },
+        include: { org: true },
+      });
+
+      if (user) {
+        return sendSuccess(reply, {
+          exists: true,
+          email: user.email,
+          org: { id: user.org.id, name: user.org.name },
+        });
+      }
+
+      return sendSuccess(reply, { exists: false });
+    } catch (err) {
+      return sendError(reply, err);
+    }
   });
 
   // Email OTP Send
@@ -193,9 +219,14 @@ export async function authRoutes(app: FastifyInstance) {
       if (!storedOtp || storedOtp !== otp) throw new ValidationError("Invalid or expired OTP");
       await redis.del(`${OTP_PREFIX}${email}`);
 
-      const org = await findOrCreateOrg(orgName || humanOrgName(email));
-      const user = await findOrCreateUser(org.id, email);
-      const isNewUser = user.createdAt.getTime() === user.updatedAt.getTime();
+      const existingUser = await prisma.user.findFirst({ where: { email } });
+      let org: { id: string; name: string };
+      if (existingUser) {
+        org = (await prisma.organization.findUnique({ where: { id: existingUser.orgId } }))!;
+      } else {
+        org = await findOrCreateOrg(orgName || humanOrgName(email));
+      }
+      const { user, created: isNewUser } = await findOrCreateUser(org.id, email);
 
       await prisma.authenticator.upsert({
         where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: "EMAIL" } }))?.id || "" },
@@ -279,8 +310,14 @@ export async function authRoutes(app: FastifyInstance) {
       if (!storedOtp || storedOtp !== otp) throw new ValidationError("Invalid or expired OTP");
       await redis.del(`${OTP_PREFIX}phone:${phone}`);
 
-      const org = await findOrCreateOrg(orgName || `Org-${phone.slice(-4)}`);
-      let user = await prisma.user.findFirst({ where: { orgId: org.id, phone } });
+      const existingUser = await prisma.user.findFirst({ where: { phone } });
+      let org: { id: string; name: string };
+      if (existingUser) {
+        org = (await prisma.organization.findUnique({ where: { id: existingUser.orgId } }))!;
+      } else {
+        org = await findOrCreateOrg(orgName || `Org-${phone.slice(-4)}`);
+      }
+      let user = existingUser;
       const isNewUser = !user;
       if (!user) user = await prisma.user.create({ data: { orgId: org.id, phone, role: "DEVELOPER" } });
 
@@ -340,9 +377,14 @@ export async function authRoutes(app: FastifyInstance) {
         throw new ValidationError("OAuth provider not configured");
       }
 
-      const org = await findOrCreateOrg(orgName || `${name || email}'s Org`);
-      const user = await findOrCreateUser(org.id, email, { name });
-      const isNewUser = user.createdAt.getTime() === user.updatedAt.getTime();
+      const existingUser = await prisma.user.findFirst({ where: { email } });
+      let org: { id: string; name: string };
+      if (existingUser) {
+        org = (await prisma.organization.findUnique({ where: { id: existingUser.orgId } }))!;
+      } else {
+        org = await findOrCreateOrg(orgName || `${name || email}'s Org`);
+      }
+      const { user, created: isNewUser } = await findOrCreateUser(org.id, email, { name });
 
       await prisma.authenticator.upsert({
         where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: `OAUTH_${provider.toUpperCase()}` } }))?.id || "" },
@@ -374,8 +416,14 @@ export async function authRoutes(app: FastifyInstance) {
       if (!email) throw new ValidationError("Email required");
 
       const redis = getRedis();
-      const org = await findOrCreateOrg(`${email}'s Org`);
-      let user = await prisma.user.findFirst({ where: { orgId: org.id, email } });
+      const existingUser = await prisma.user.findFirst({ where: { email } });
+      let org: { id: string; name: string };
+      if (existingUser) {
+        org = (await prisma.organization.findUnique({ where: { id: existingUser.orgId } }))!;
+      } else {
+        org = await findOrCreateOrg(`${email}'s Org`);
+      }
+      let user = existingUser;
       if (!user) user = await prisma.user.create({ data: { orgId: org.id, email, role: "DEVELOPER" } });
 
       const options = await generateRegistrationOptions({
@@ -506,9 +554,15 @@ export async function authRoutes(app: FastifyInstance) {
       const recovered = verifyMessage(message || "Sign in to WranKey", signature);
       if (recovered.toLowerCase() !== address.toLowerCase()) throw new ValidationError("Invalid signature");
 
-      const org = await findOrCreateOrg(orgName || `${address.slice(0, 8)}'s Org`);
-      const user = await findOrCreateUser(org.id, `${address}@wallet.wrankey`, { name: address.slice(0, 12) });
-      const isNewUser = user.createdAt.getTime() === user.updatedAt.getTime();
+      const walletEmail = `${address}@wallet.wrankey`;
+      const existingUser = await prisma.user.findFirst({ where: { email: walletEmail } });
+      let org: { id: string; name: string };
+      if (existingUser) {
+        org = (await prisma.organization.findUnique({ where: { id: existingUser.orgId } }))!;
+      } else {
+        org = await findOrCreateOrg(orgName || `${address.slice(0, 8)}'s Org`);
+      }
+      const { user, created: isNewUser } = await findOrCreateUser(org.id, walletEmail, { name: address.slice(0, 12) });
 
       await prisma.authenticator.upsert({
         where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: "WALLET" } }))?.id || "" },
@@ -545,7 +599,7 @@ export async function authRoutes(app: FastifyInstance) {
 
       const passwordHash = await bcrypt.hash(password, 12);
       const org = await findOrCreateOrg(name || humanOrgName(email));
-      const user = await findOrCreateUser(org.id, email, { name, role: "ORG_ADMIN" });
+      const { user } = await findOrCreateUser(org.id, email, { name, role: "ORG_ADMIN" });
 
       await prisma.authenticator.create({ data: { userId: user.id, type: "PASSWORD", credentialData: { hash: passwordHash }, verified: true } });
 

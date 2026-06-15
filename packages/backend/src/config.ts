@@ -26,6 +26,7 @@ export const config = {
   encryptionKey: requireEnv("ENCRYPTION_KEY", "dev-encryption-key-must-be-32chars"),
   arcRpcUrl: process.env.ARC_RPC_URL || "https://rpc.arc.network",
   arcChainId: parseInt(process.env.ARC_CHAIN_ID || "1234", 10),
+  arcChainName: "arc",
   sessionExpirySeconds: parseInt(process.env.SESSION_EXPIRY_SECONDS || "3600", 10),
   apiKeyExpiryDays: parseInt(process.env.API_KEY_EXPIRY_DAYS || "365", 10),
   otpExpirySeconds: parseInt(process.env.OTP_EXPIRY_SECONDS || "300", 10),
@@ -52,5 +53,15 @@ export const config = {
     enabled: process.env.GAS_SPONSORSHIP_ENABLED === "true",
     maxSponsorAmount: process.env.GAS_SPONSORSHIP_MAX_AMOUNT || "0.01",
     sponsorWalletId: process.env.GAS_SPONSORSHIP_WALLET_ID || "",
+  },
+  riskThresholds: {
+    highValuePercentage: parseFloat(process.env.RISK_HIGH_VALUE_PCT || "80"),
+    highRiskScoreThreshold: parseInt(process.env.RISK_SCORE_THRESHOLD || "70", 10),
+    velocityWindowSeconds: parseInt(process.env.VELOCITY_WINDOW_SECONDS || "3600", 10),
+    maxTxPerWindow: parseInt(process.env.MAX_TX_PER_WINDOW || "50", 10),
+  },
+  txRetry: {
+    maxRetries: parseInt(process.env.TX_MAX_RETRIES || "3", 10),
+    retryBaseDelayMs: parseInt(process.env.TX_RETRY_BASE_DELAY_MS || "1000", 10),
   },
 };

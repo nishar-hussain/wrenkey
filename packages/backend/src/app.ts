@@ -15,6 +15,9 @@ import { policyRoutes } from "./modules/policy/routes.js";
 import { transactionRoutes } from "./modules/transaction/routes.js";
 import { agentRoutes } from "./modules/agent/routes.js";
 import { webhookRoutes } from "./modules/webhook/routes.js";
+import { chainRoutes } from "./modules/chain/routes.js";
+import { spendingLimitRoutes } from "./modules/spending-limit/routes.js";
+import { approvalRoutes } from "./modules/approval/routes.js";
 
 export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
   const app = Fastify({ logger: false, bodyLimit: 1048576 });
@@ -71,7 +74,7 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
   const publicPaths = [
     "/health", "/api/v1/health", "/docs",
     "/api/v1/auth/config",
-    "/api/v1/auth/email/send", "/api/v1/auth/email/verify",
+    "/api/v1/auth/email/send", "/api/v1/auth/email/verify", "/api/v1/auth/email/lookup",
     "/api/v1/auth/oauth", "/api/v1/auth/wallet",
     "/api/v1/auth/webauthn/register", "/api/v1/auth/webauthn/register/verify",
     "/api/v1/auth/webauthn/authenticate", "/api/v1/auth/webauthn/authenticate/verify",
@@ -98,6 +101,9 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
     await api.register(transactionRoutes);
     await api.register(agentRoutes);
     await api.register(webhookRoutes);
+    await api.register(chainRoutes);
+    await api.register(spendingLimitRoutes);
+    await api.register(approvalRoutes);
   }, { prefix: "/api/v1" });
 
   return app;

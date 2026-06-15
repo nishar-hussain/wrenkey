@@ -13,6 +13,9 @@ import type {
   ApiKeyInfo,
   PaginatedResponse,
   AuthResponse,
+  Chain,
+  SpendingLimit,
+  ApprovalRequest,
 } from "./types.js";
 
 export class WranKeyClient {
@@ -264,6 +267,112 @@ export class WranKeyClient {
 
   async updateWallet(id: string, data: { name?: string; tags?: string[]; status?: string }): Promise<Wallet> {
     return this.request("PATCH", `/wallets/${id}`, data);
+  }
+
+  async freezeWallet(id: string): Promise<{ walletId: string; status: string }> {
+    return this.request("POST", `/wallets/${id}/freeze`);
+  }
+
+  async unfreezeWallet(id: string): Promise<{ walletId: string; status: string }> {
+    return this.request("POST", `/wallets/${id}/unfreeze`);
+  }
+
+  async rotateWallet(id: string): Promise<Wallet> {
+    return this.request("POST", `/wallets/${id}/rotate`);
+  }
+
+  async exportWalletEncrypted(walletId: string, passphrase: string): Promise<{
+    walletId: string;
+    encryptedMnemonic: string;
+    accounts: WalletAccount[];
+  }> {
+    return this.request("POST", `/wallets/${walletId}/export`, { passphrase });
+  }
+
+  async getWalletGasPrice(walletId: string, chain?: string): Promise<{
+    chain: string; slow: string; standard: string; fast: string;
+  }> {
+    const qs = chain ? `?chain=${chain}` : "";
+    return this.request("GET", `/wallets/${walletId}/gas-price${qs}`);
+  }
+
+  // ─── Transactions (extended) ───────────────────────
+
+  async simulateTransaction(tx: {
+    walletId: string; chain?: string; to: string; value?: string; gasLimit?: string; maxFeePerGas?: string; data?: string;
+  }): Promise<{ success: boolean; gasUsed: string; returnData: string; error?: string }> {
+    return this.request("POST", "/transactions/simulate", tx);
+  }
+
+  async retryTransaction(id: string): Promise<{ transactionId: string; txHash: string; status: string }> {
+    return this.request("POST", `/transactions/${id}/retry`);
+  }
+
+  async cancelTransaction(id: string): Promise<{ transactionId: string; txHash: string; status: string }> {
+    return this.request("POST", `/transactions/${id}/cancel`);
+  }
+
+  async speedUpTransaction(id: string, gasMultiplier?: number): Promise<{ transactionId: string; txHash: string; status: string }> {
+    return this.request("POST", `/transactions/${id}/speed-up`, { gasMultiplier });
+  }
+
+  // ─── Chains ────────────────────────────────────────
+
+  async listChains(limit = 50, offset = 0): Promise<PaginatedResponse<Chain>> {
+    return this.request("GET", `/chains?limit=${limit}&offset=${offset}`);
+  }
+
+  async addChain(data: { name: string; chainId: number; rpcUrl: string; nativeCurrency?: string; symbol?: string; blockExplorerUrl?: string; derivationPath?: string }): Promise<Chain> {
+    return this.request("POST", "/chains", data);
+  }
+
+  async seedChains(): Promise<{ message: string; chains: Chain[] }> {
+    return this.request("POST", "/chains/seed");
+  }
+
+  // ─── Spending Limits ───────────────────────────────
+
+  async createSpendingLimit(data: {
+    walletId?: string; chainId?: string; name: string; maxPerTx?: string;
+    maxDaily?: string; maxMonthly?: string; allowlist?: string[]; denylist?: string[];
+  }): Promise<SpendingLimit> {
+    return this.request("POST", "/spending-limits", data);
+  }
+
+  async listSpendingLimits(limit = 50, offset = 0, walletId?: string): Promise<PaginatedResponse<SpendingLimit>> {
+    const walletParam = walletId ? `&walletId=${walletId}` : "";
+    return this.request("GET", `/spending-limits?limit=${limit}&offset=${offset}${walletParam}`);
+  }
+
+  async getSpendingLimit(id: string): Promise<SpendingLimit> {
+    return this.request("GET", `/spending-limits/${id}`);
+  }
+
+  async updateSpendingLimit(id: string, data: Partial<SpendingLimit>): Promise<SpendingLimit> {
+    return this.request("PATCH", `/spending-limits/${id}`, data);
+  }
+
+  async deleteSpendingLimit(id: string): Promise<void> {
+    await this.request("DELETE", `/spending-limits/${id}`);
+  }
+
+  // ─── Approval Requests ─────────────────────────────
+
+  async listApprovalRequests(limit = 50, offset = 0, status?: string): Promise<PaginatedResponse<ApprovalRequest>> {
+    const statusParam = status ? `&status=${status}` : "";
+    return this.request("GET", `/approval-requests?limit=${limit}&offset=${offset}${statusParam}`);
+  }
+
+  async getApprovalRequest(id: string): Promise<ApprovalRequest> {
+    return this.request("GET", `/approval-requests/${id}`);
+  }
+
+  async approveRequest(id: string): Promise<{ id: string; status: string; approvedCount: number; requiredApprovals: number }> {
+    return this.request("POST", `/approval-requests/${id}/approve`);
+  }
+
+  async rejectRequest(id: string): Promise<{ id: string; status: string }> {
+    return this.request("POST", `/approval-requests/${id}/reject`);
   }
 
   // ─── Auth (additional) ─────────────────────────────
