@@ -28,14 +28,14 @@ export function useWallets() {
     fetchWallets();
   }, [fetchWallets]);
 
-  const createWallet = useCallback(async (name: string, options?: { ownerType?: string; ownerId?: string; tags?: string[] }) => {
+  const createWallet = useCallback(async (name: string, options?: { ownerType?: string; ownerId?: string; tags?: string[]; chain?: string }) => {
     if (!client) throw new Error("Client not initialized");
     const wallet = await client.createWallet(name, options);
     await fetchWallets();
     return wallet;
   }, [client, fetchWallets]);
 
-  const importWallet = useCallback(async (name: string, mnemonic: string, options?: { ownerType?: string; ownerId?: string }) => {
+  const importWallet = useCallback(async (name: string, mnemonic: string, options?: { ownerType?: string; ownerId?: string; chain?: string; tags?: string[] }) => {
     if (!client) throw new Error("Client not initialized");
     const wallet = await client.importWallet(name, mnemonic, options);
     await fetchWallets();
@@ -65,8 +65,65 @@ export function useWallets() {
     return client.listAccounts(walletId);
   }, [client]);
 
+  const updateWallet = useCallback(async (id: string, data: { name?: string; tags?: string[]; status?: string }) => {
+    if (!client) throw new Error("Client not initialized");
+    const wallet = await client.updateWallet(id, data);
+    await fetchWallets();
+    return wallet;
+  }, [client, fetchWallets]);
+
+  const freezeWallet = useCallback(async (id: string) => {
+    if (!client) throw new Error("Client not initialized");
+    const result = await client.freezeWallet(id);
+    await fetchWallets();
+    return result;
+  }, [client, fetchWallets]);
+
+  const unfreezeWallet = useCallback(async (id: string) => {
+    if (!client) throw new Error("Client not initialized");
+    const result = await client.unfreezeWallet(id);
+    await fetchWallets();
+    return result;
+  }, [client, fetchWallets]);
+
+  const rotateWallet = useCallback(async (id: string) => {
+    if (!client) throw new Error("Client not initialized");
+    const wallet = await client.rotateWallet(id);
+    await fetchWallets();
+    return wallet;
+  }, [client, fetchWallets]);
+
+  const exportWallet = useCallback(async (id: string) => {
+    if (!client) throw new Error("Client not initialized");
+    return client.exportWallet(id);
+  }, [client]);
+
+  const exportWalletEncrypted = useCallback(async (id: string, passphrase: string) => {
+    if (!client) throw new Error("Client not initialized");
+    return client.exportWalletEncrypted(id, passphrase);
+  }, [client]);
+
+  const getWalletBalance = useCallback(async (id: string) => {
+    if (!client) throw new Error("Client not initialized");
+    return client.getWalletBalance(id);
+  }, [client]);
+
+  const getWalletTokens = useCallback(async (id: string, chain?: string) => {
+    if (!client) throw new Error("Client not initialized");
+    return client.getWalletTokens(id, chain);
+  }, [client]);
+
+  const getWalletGasPrice = useCallback(async (id: string, chain?: string) => {
+    if (!client) throw new Error("Client not initialized");
+    return client.getWalletGasPrice(id, chain);
+  }, [client]);
+
   return {
     wallets, loading, error, total,
-    fetchWallets, createWallet, importWallet, getWallet, deleteWallet, deriveAccount, listAccounts,
+    fetchWallets, createWallet, importWallet, getWallet, deleteWallet,
+    deriveAccount, listAccounts,
+    updateWallet, freezeWallet, unfreezeWallet, rotateWallet,
+    exportWallet, exportWalletEncrypted,
+    getWalletBalance, getWalletTokens, getWalletGasPrice,
   };
 }

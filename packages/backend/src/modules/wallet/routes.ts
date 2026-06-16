@@ -14,6 +14,7 @@ import {
   getGasPrice,
 } from "../../utils/enclave.js";
 import { getChainByName, getDefaultChain } from "../../services/chain.js";
+import { getTokenBalances } from "../../services/tokens.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
 
 export async function walletRoutes(app: FastifyInstance) {
@@ -232,7 +233,7 @@ export async function walletRoutes(app: FastifyInstance) {
 
       const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
 
-      let exportPayload: any = {
+      const exportPayload: any = {
         walletId: wallet.id,
         accounts: await prisma.walletAccount.findMany({
           where: { walletId: id },
@@ -380,6 +381,41 @@ export async function walletRoutes(app: FastifyInstance) {
         walletId: id,
         balances,
       });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  app.get("/wallets/:id/tokens", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { chain: chainName } = request.query as { chain?: string };
+
+      const wallet = await prisma.wallet.findFirst({
+        where: { id, orgId: request.orgId },
+        include: { accounts: { include: { chain: true } } },
+      });
+      if (!wallet) throw new NotFoundError("Wallet");
+
+      const targetAccounts = chainName
+        ? wallet.accounts.filter((a) => a.chain.name === chainName)
+        : wallet.accounts;
+
+      if (targetAccounts.length === 0) throw new NotFoundError("Account");
+
+      const tokenBalances = await Promise.all(
+        targetAccounts.map(async (account) => {
+          const tokens = await getTokenBalances(account.address, account.chain.rpcUrl, account.chain.chainId);
+          return {
+            address: account.address,
+            chain: account.chain.name,
+            chainId: account.chain.chainId,
+            tokens,
+          };
+        })
+      );
+
+      return sendSuccess(reply, { walletId: id, tokenBalances });
     } catch (err) {
       return sendError(reply, err);
     }

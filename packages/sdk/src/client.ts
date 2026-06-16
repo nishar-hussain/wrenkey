@@ -181,16 +181,16 @@ export class WranKeyClient {
 
   // ─── Wallets ──────────────────────────────────────
 
-  async createWallet(name: string, options?: { ownerType?: string; ownerId?: string; tags?: string[] }): Promise<{
+  async createWallet(name: string, options?: { ownerType?: string; ownerId?: string; tags?: string[]; chain?: string }): Promise<{
     walletId: string; name: string; ownerType: string; ownerId: string;
-    addresses: Array<{ chain: string; address: string; derivationPath: string; index: number }>;
+    addresses: Array<{ chainId: string; address: string; derivationPath: string; index: number }>;
   }> {
     return this.request("POST", "/wallets", { name, ...options });
   }
 
-  async importWallet(name: string, mnemonic: string, options?: { ownerType?: string; ownerId?: string }): Promise<{
+  async importWallet(name: string, mnemonic: string, options?: { ownerType?: string; ownerId?: string; chain?: string; tags?: string[] }): Promise<{
     walletId: string; name: string;
-    addresses: Array<{ chain: string; address: string; derivationPath: string; index: number }>;
+    addresses: Array<{ chainId: string; address: string; derivationPath: string; index: number }>;
   }> {
     return this.request("POST", "/wallets/import", { name, mnemonic, ...options });
   }
@@ -225,12 +225,17 @@ export class WranKeyClient {
 
   async getWalletBalance(walletId: string): Promise<{
     walletId: string;
-    address: string;
-    balance: string;
-    balanceWei: string;
-    chain: string;
+    balances: Array<{ chainId: string; chain: string; address: string; balance: string; balanceWei: string; symbol: string }>;
   }> {
     return this.request("GET", `/wallets/${walletId}/balance`);
+  }
+
+  async getWalletTokens(walletId: string, chain?: string): Promise<{
+    walletId: string;
+    tokenBalances: Array<{ address: string; chain: string; chainId: number; tokens: Array<{ token: { address: string; name: string; symbol: string; decimals: number }; balance: string; balanceFormatted: string }> }>;
+  }> {
+    const qs = chain ? `?chain=${chain}` : "";
+    return this.request("GET", `/wallets/${walletId}/tokens${qs}`);
   }
 
   // ─── Transactions ─────────────────────────────────
