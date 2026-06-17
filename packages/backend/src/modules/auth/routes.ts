@@ -30,6 +30,7 @@ function generateOtp(): string {
 }
 
 async function checkOtpRateLimit(redis: ReturnType<typeof getRedis>, keyType: string, identifier: string): Promise<void> {
+  if (config.isDev) return;
   const rateLimitKey = `${RATELIMIT_PREFIX}${keyType}:${identifier}`;
   // Use Lua script for atomic incr + expire
   const luaScript = `

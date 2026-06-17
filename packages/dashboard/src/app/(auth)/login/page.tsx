@@ -80,7 +80,7 @@ export default function LoginPage() {
 
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    if (!email || loading) return;
     setLoading(true);
     setError("");
     try {
@@ -120,7 +120,7 @@ export default function LoginPage() {
   };
 
   const handleRememberedUserClick = async () => {
-    if (!email) return;
+    if (!email || loading) return;
     setLoading(true);
     setError("");
     try {
@@ -163,6 +163,7 @@ export default function LoginPage() {
 
   const verifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError("");
     try {
