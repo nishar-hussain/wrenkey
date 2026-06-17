@@ -152,7 +152,13 @@ export default function LoginPage() {
     }
   }, []);
 
-  const isGoogleCallback = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("code");
+  const [isGoogleCallback, setIsGoogleCallback] = useState(false);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("code")) {
+      setIsGoogleCallback(true);
+    }
+  }, []);
 
   if (isGoogleCallback) {
     return (
