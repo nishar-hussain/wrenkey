@@ -21,6 +21,17 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
   });
 
   if (!res.ok) {
+    if (res.status === 401) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("wrankey_token");
+        localStorage.removeItem("wrankey_user");
+        localStorage.removeItem("wrankey_org");
+        // Redirecting to login
+        if (process.env.NODE_ENV !== "test") {
+          window.location.href = "/login";
+        }
+      }
+    }
     const err = await res.json().catch(() => ({ error: { message: res.statusText } }));
     throw new Error(err?.error?.message || `HTTP ${res.status}`);
   }

@@ -93,6 +93,23 @@ export async function authRoutes(app: FastifyInstance) {
     });
   });
 
+  // Protected: get current session user + org (used by frontend to validate token on load)
+  app.get("/auth/me", async (request, reply) => {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: request.userId },
+        include: { org: true },
+      });
+      if (!user) throw new ValidationError("User not found");
+      return sendSuccess(reply, {
+        user: { id: user.id, email: user.email, role: user.role },
+        org: { id: user.org.id, name: user.org.name },
+      });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
   // Email Lookup — check if user exists for "Welcome Back" flow
   app.post("/auth/email/lookup", async (request, reply) => {
     try {
