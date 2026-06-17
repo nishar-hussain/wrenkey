@@ -25,7 +25,7 @@ export async function walletRoutes(app: FastifyInstance) {
       };
       if (!name) throw new ValidationError("Wallet name is required");
 
-      const chainInfo = chain ? await getChainByName(chain).catch(() => null) : await getDefaultChain();
+      const chainInfo = chain ? (await getChainByName(chain).catch(() => null)) || await getDefaultChain() : await getDefaultChain();
       if (!chainInfo) throw new ValidationError("Invalid or no active chain found");
 
       const { mnemonic } = generateHdWallet();
@@ -73,10 +73,20 @@ export async function walletRoutes(app: FastifyInstance) {
       };
       if (!name || !mnemonic) throw new ValidationError("Name and mnemonic required");
 
-      const chainInfo = chain ? await getChainByName(chain).catch(() => null) : await getDefaultChain();
+      const words = mnemonic.trim().split(/\s+/);
+      if (words.length !== 12 && words.length !== 24) {
+        throw new ValidationError(`Invalid mnemonic: expected 12 or 24 words, got ${words.length}`);
+      }
+
+      try {
+        generateHdWalletFromMnemonic(mnemonic);
+      } catch (mnemErr: any) {
+        throw new ValidationError(`Invalid recovery phrase: ${mnemErr.shortMessage || mnemErr.message}`);
+      }
+
+      const chainInfo = chain ? (await getChainByName(chain).catch(() => null)) || await getDefaultChain() : await getDefaultChain();
       if (!chainInfo) throw new ValidationError("Invalid or no active chain found");
 
-      generateHdWalletFromMnemonic(mnemonic);
       const encryptedSeed = encryptSeedForStorage(mnemonic);
       const fullPath = `${chainInfo.derivationPath}/0`;
       const hdNode = deriveAccount(mnemonic, 0, chainInfo.derivationPath);

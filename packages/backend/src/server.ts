@@ -3,6 +3,7 @@ import { buildApp } from "./app.js";
 import { connectRedis } from "./redis.js";
 import { config } from "./config.js";
 import { registerWebSocketGateway } from "./services/websocket.js";
+import { seedChains } from "./services/chain.js";
 
 async function start() {
   const app = await buildApp();
@@ -11,6 +12,12 @@ async function start() {
     await connectRedis();
   } catch (err) {
     app.log.warn("Redis not available, continuing without cache");
+  }
+
+  try {
+    await seedChains();
+  } catch (err) {
+    app.log.warn("Failed to seed chains, continuing anyway");
   }
 
   try {

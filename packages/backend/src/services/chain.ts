@@ -136,16 +136,6 @@ export async function seedChains() {
       blockExplorerUrl: "https://basescan.org",
       active: true,
     },
-    {
-      name: "sepolia",
-      chainId: 11155111,
-      rpcUrl: process.env.SEPOLIA_RPC_URL || "https://rpc.sepolia.org",
-      nativeCurrency: "ETH",
-      symbol: "ETH",
-      derivationPath: "m/44'/60'/0'/0",
-      blockExplorerUrl: "https://sepolia.etherscan.io",
-      active: true,
-    },
   ];
 
   for (const c of chains) {

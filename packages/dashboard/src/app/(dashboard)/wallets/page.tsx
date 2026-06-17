@@ -110,6 +110,11 @@ export default function WalletsPage() {
       addToast("Name and mnemonic are required", "error");
       return;
     }
+    const words = importMnemonic.trim().split(/\s+/);
+    if (words.length !== 12 && words.length !== 24) {
+      addToast(`Invalid recovery phrase: expected 12 or 24 words, got ${words.length}`, "error");
+      return;
+    }
     setImportLoading(true);
     try {
       await apiFetch("/wallets/import", {
