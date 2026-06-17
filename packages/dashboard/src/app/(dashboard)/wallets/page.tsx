@@ -24,7 +24,7 @@ interface Wallet {
   createdAt: string;
 }
 
-const CHAIN_OPTIONS = ["arc", "ethereum", "polygon", "arbitrum", "optimism", "base", "sepolia"];
+const CHAIN_OPTIONS = ["sepolia", "ethereum", "polygon", "arbitrum", "optimism", "base"];
 
 export default function WalletsPage() {
   const router = useRouter();
@@ -41,14 +41,14 @@ export default function WalletsPage() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newChain, setNewChain] = useState("arc");
+  const [newChain, setNewChain] = useState("sepolia");
   const [newTags, setNewTags] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
 
   const [showImport, setShowImport] = useState(false);
   const [importName, setImportName] = useState("");
   const [importMnemonic, setImportMnemonic] = useState("");
-  const [importChain, setImportChain] = useState("arc");
+  const [importChain, setImportChain] = useState("sepolia");
   const [importLoading, setImportLoading] = useState(false);
 
   const fetchWallets = useCallback(async () => {
@@ -94,7 +94,7 @@ export default function WalletsPage() {
       });
       setShowCreate(false);
       setNewName("");
-      setNewChain("arc");
+      setNewChain("sepolia");
       setNewTags("");
       addToast("Wallet created", "success");
       fetchWallets();
@@ -125,7 +125,7 @@ export default function WalletsPage() {
       setShowImport(false);
       setImportName("");
       setImportMnemonic("");
-      setImportChain("arc");
+      setImportChain("sepolia");
       addToast("Wallet imported", "success");
       fetchWallets();
     } catch (err: any) {
@@ -170,7 +170,7 @@ export default function WalletsPage() {
       header: "Address",
       render: (w: Wallet) => {
         const addr = w.accounts?.[0]?.address;
-        const chain = w.accounts?.[0]?.chain?.name || w.accounts?.[0]?.chainId || "arc";
+        const chain = w.accounts?.[0]?.chain?.name || w.accounts?.[0]?.chainId || "sepolia";
         return addr ? (
           <span className="font-mono text-xs">
             {addr.slice(0, 8)}...{addr.slice(-6)}
@@ -212,10 +212,10 @@ export default function WalletsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Wallets</h1>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => { setShowImport(true); setImportName(""); setImportMnemonic(""); setImportChain("arc"); }}>
+          <Button variant="secondary" onClick={() => { setShowImport(true); setImportName(""); setImportMnemonic(""); setImportChain("sepolia"); }}>
             Import
           </Button>
-          <Button onClick={() => { setShowCreate(true); setNewName(""); setNewChain("arc"); setNewTags(""); }}>
+          <Button onClick={() => { setShowCreate(true); setNewName(""); setNewChain("sepolia"); setNewTags(""); }}>
             Create Wallet
           </Button>
         </div>

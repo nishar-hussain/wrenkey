@@ -32,7 +32,7 @@ export default function SendTransactionPage() {
     walletId: "",
     to: "",
     value: "",
-    chain: "arc",
+    chain: "sepolia",
     gasLimit: "21000",
     maxFeePerGas: "",
     maxPriorityFeePerGas: "",

@@ -53,21 +53,22 @@ export async function getDefaultChain(): Promise<ChainInfo> {
     return defaultChain;
   }
 
-  const arc = await prisma.chain.upsert({
-    where: { name: config.arcChainName },
-    update: { active: true },
+  const sepolia = await prisma.chain.upsert({
+    where: { name: config.defaultChainName },
+    update: { active: true, rpcUrl: config.defaultRpcUrl, chainId: config.defaultChainId },
     create: {
-      name: config.arcChainName,
-      chainId: config.arcChainId,
-      rpcUrl: config.arcRpcUrl,
+      name: config.defaultChainName,
+      chainId: config.defaultChainId,
+      rpcUrl: config.defaultRpcUrl,
       nativeCurrency: "ETH",
-      symbol: "ARC",
+      symbol: "ETH",
       derivationPath: "m/44'/60'/0'/0",
+      blockExplorerUrl: "https://sepolia.etherscan.io",
       active: true,
     },
   });
-  chainCache.set(arc.name, arc);
-  return arc;
+  chainCache.set(sepolia.name, sepolia);
+  return sepolia;
 }
 
 export async function seedChains() {
@@ -76,13 +77,13 @@ export async function seedChains() {
 
   const chains = [
     {
-      name: "arc",
-      chainId: config.arcChainId,
-      rpcUrl: config.arcRpcUrl,
+      name: "sepolia",
+      chainId: 11155111,
+      rpcUrl: process.env.SEPOLIA_RPC_URL || process.env.ARC_RPC_URL || "https://rpc.sepolia.org",
       nativeCurrency: "ETH",
-      symbol: "ARC",
+      symbol: "ETH",
       derivationPath: "m/44'/60'/0'/0",
-      blockExplorerUrl: null,
+      blockExplorerUrl: "https://sepolia.etherscan.io",
       active: true,
     },
     {

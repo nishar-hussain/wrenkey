@@ -12,7 +12,7 @@ import { Building2, ArrowRight } from "lucide-react";
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { isAuthenticated, ready, token, user, updateOrg } = useAuth();
+  const { isAuthenticated, ready, token, user, org, updateOrg } = useAuth();
   const { addToast } = useToast();
   const [orgName, setOrgName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -23,6 +23,17 @@ export default function OnboardingPage() {
       router.push("/login");
     }
   }, [ready, isAuthenticated, router]);
+
+  // Auto-skip onboarding if the user's org already has a real name
+  // (e.g. they provided it during signup — no need to ask again)
+  useEffect(() => {
+    if (!ready || !isAuthenticated) return;
+    const autoGenPattern = /^.+'s Org$/;
+    if (org?.name && !autoGenPattern.test(org.name)) {
+      // Org already has a real custom name — skip onboarding
+      router.replace("/");
+    }
+  }, [ready, isAuthenticated, org, router]);
 
   if (!ready || !isAuthenticated) {
     return (

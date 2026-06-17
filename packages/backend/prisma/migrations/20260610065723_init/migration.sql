@@ -84,7 +84,7 @@ CREATE TABLE "wallets" (
 CREATE TABLE "wallet_accounts" (
     "id" TEXT NOT NULL,
     "wallet_id" TEXT NOT NULL,
-    "chain" TEXT NOT NULL DEFAULT 'arc',
+    "chain" TEXT NOT NULL DEFAULT 'sepolia',
     "address" TEXT NOT NULL,
     "derivation_path" TEXT NOT NULL,
     "index" INTEGER NOT NULL,
@@ -99,7 +99,7 @@ CREATE TABLE "transactions" (
     "account_id" TEXT NOT NULL,
     "org_id" TEXT NOT NULL,
     "tx_hash" TEXT,
-    "chain" TEXT NOT NULL DEFAULT 'arc',
+    "chain" TEXT NOT NULL DEFAULT 'sepolia',
     "to" TEXT NOT NULL,
     "value" TEXT NOT NULL,
     "gas_limit" TEXT,

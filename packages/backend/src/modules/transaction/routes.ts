@@ -497,9 +497,9 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       if (!to) throw new ValidationError("to is required");
 
-      let rpcUrl = config.arcRpcUrl;
-      let feeChainId = config.arcChainId;
-      let chainSymbol = "ARC";
+      let rpcUrl = config.defaultRpcUrl;
+      let feeChainId = config.defaultChainId;
+      let chainSymbol = "ETH";
 
       if (chainName) {
         try {
@@ -526,7 +526,7 @@ export async function transactionRoutes(app: FastifyInstance) {
         gasPrice: gasPrice.toString(),
         estimatedFee: ethers.formatEther(estimatedFee),
         estimatedFeeWei: estimatedFee.toString(),
-        chain: chainName || "arc",
+        chain: chainName || "sepolia",
         chainId: feeChainId,
         currency: chainSymbol,
       });

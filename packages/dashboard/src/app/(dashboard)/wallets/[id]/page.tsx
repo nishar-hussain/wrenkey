@@ -257,7 +257,7 @@ export default function WalletDetailPage() {
 
   const deriveNewAccount = async () => {
     try {
-      const chain = prompt("Chain name (default: arc):") || "arc";
+      const chain = prompt("Chain name (default: sepolia):") || "sepolia";
       await apiFetch(`/wallets/${params.id}/accounts`, {
         method: "POST",
         body: JSON.stringify({ chain }),

@@ -193,7 +193,7 @@ model Transaction {
   accountId    String    @map("account_id")
   orgId        String    @map("org_id")
   txHash       String?   @map("tx_hash")
-  chain        String    @default("arc")
+  chain        String    @default("sepolia")
   to           String
   value        String
   nonce        Int?

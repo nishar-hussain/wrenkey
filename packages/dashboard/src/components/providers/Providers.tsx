@@ -44,10 +44,50 @@ export function Providers({ children }: { children: React.ReactNode }) {
     const stored = localStorage.getItem("wrankey_token");
     const storedUser = localStorage.getItem("wrankey_user");
     const storedOrg = localStorage.getItem("wrankey_org");
-    if (stored) setToken(stored);
-    if (storedUser) setUser(JSON.parse(storedUser));
-    if (storedOrg) setOrg(JSON.parse(storedOrg));
-    setReady(true);
+
+    if (!stored) {
+      // No token at all — mark ready and let AuthGuard redirect to login
+      setReady(true);
+      return;
+    }
+
+    // Validate the token against the backend before trusting it
+    const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
+    fetch(`${API_BASE}/api/v1/auth/me`, {
+      headers: {
+        "Authorization": `Bearer ${stored}`,
+        "Content-Type": "application/json",
+      },
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Session invalid");
+        return res.json();
+      })
+      .then((data) => {
+        // Token is valid — hydrate state from backend response (always fresh)
+        setToken(stored);
+        setUser(data.user);
+        setOrg(data.org);
+        // Keep localStorage in sync with fresh backend data
+        localStorage.setItem("wrankey_user", JSON.stringify(data.user));
+        localStorage.setItem("wrankey_org", JSON.stringify(data.org));
+        // Keep remembered user in sync too
+        if (data.user?.email && data.org?.name) {
+          localStorage.setItem(
+            "wrankey_remembered_user",
+            JSON.stringify({ email: data.user.email, orgName: data.org.name })
+          );
+        }
+      })
+      .catch(() => {
+        // Token is expired/revoked — wipe everything so login page shows cleanly
+        localStorage.removeItem("wrankey_token");
+        localStorage.removeItem("wrankey_user");
+        localStorage.removeItem("wrankey_org");
+      })
+      .finally(() => {
+        setReady(true);
+      });
   }, []);
 
   const login = (

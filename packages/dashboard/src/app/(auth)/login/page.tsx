@@ -64,7 +64,7 @@ export default function LoginPage() {
     }
   }, []);
 
-  const doLogin = (res: any) => {
+  const doLogin = (res: any, orgNameAlreadySet?: boolean) => {
     login(
       res.sessionToken,
       { id: res.user.id, email: res.user.email || res.user.phone, role: res.user.role },
@@ -75,7 +75,9 @@ export default function LoginPage() {
       "wrankey_remembered_user",
       JSON.stringify({ email: res.user.email, orgName: res.org.name })
     );
-    router.push(res.isNewUser ? "/onboarding" : "/");
+    // Only send to onboarding if truly a new user AND they didn't already name their org in the signup form
+    const needsOnboarding = res.isNewUser && !orgNameAlreadySet;
+    router.push(needsOnboarding ? "/onboarding" : "/");
   };
 
   const handleSignupSubmit = async (e: React.FormEvent) => {
@@ -184,7 +186,8 @@ export default function LoginPage() {
         method: "POST",
         body: JSON.stringify(body),
       });
-      doLogin(res);
+      // Pass whether the user already named their org so we can skip onboarding
+      doLogin(res, !!(orgName || isExisting));
     } catch (err: any) {
       setError(err.message || "Invalid OTP code.");
     } finally {
