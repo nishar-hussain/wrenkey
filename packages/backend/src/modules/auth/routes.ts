@@ -211,7 +211,7 @@ export async function authRoutes(app: FastifyInstance) {
   // Email OTP Verify
   app.post("/auth/email/verify", async (request, reply) => {
     try {
-      const { email, otp, orgName } = request.body as { email: string; otp: string; orgName?: string };
+      const { email, otp, orgName, name, tags } = request.body as { email: string; otp: string; orgName?: string; name?: string; tags?: string[] };
       if (!email || !otp) throw new ValidationError("Email and OTP required");
 
       const redis = getRedis();
@@ -226,7 +226,14 @@ export async function authRoutes(app: FastifyInstance) {
       } else {
         org = await findOrCreateOrg(orgName || humanOrgName(email));
       }
-      const { user, created: isNewUser } = await findOrCreateUser(org.id, email);
+      const { user, created: isNewUser } = await findOrCreateUser(org.id, email, { name });
+
+      if (isNewUser && tags && tags.length > 0) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { tags },
+        });
+      }
 
       await prisma.authenticator.upsert({
         where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: "EMAIL" } }))?.id || "" },

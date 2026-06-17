@@ -86,26 +86,41 @@ export default function TeamPage() {
           ) : (
             <>
               <Table
-                headers={["Member", "Role", "Joined"]}
-                rows={members.map((m) => [
-                  <div key={m.id} className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-full bg-brand-600 text-white flex items-center justify-center text-xs font-medium">
-                      {(m.email || m.phone || "?")?.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">{m.email || m.phone || "—"}</p>
-                      <p className="text-xs text-muted-foreground font-mono">{m.id.slice(0, 8)}...</p>
-                    </div>
-                  </div>,
-                  roleBadge(m.role),
-                  new Date(m.createdAt).toLocaleDateString(),
-                ])}
+                columns={[
+                  {
+                    key: "member",
+                    header: "Member",
+                    render: (m) => (
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 rounded-full bg-brand-600 text-white flex items-center justify-center text-xs font-medium">
+                          {(m.email || m.phone || "?")?.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">{m.email || m.phone || "—"}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{m.id.slice(0, 8)}...</p>
+                        </div>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "role",
+                    header: "Role",
+                    render: (m) => roleBadge(m.role),
+                  },
+                  {
+                    key: "joined",
+                    header: "Joined",
+                    render: (m) => new Date(m.createdAt).toLocaleDateString(),
+                  },
+                ]}
+                data={members}
               />
               <div className="mt-4">
                 <Pagination
-                  currentPage={page}
-                  totalPages={Math.ceil(total / limit)}
-                  onPageChange={(p) => setPage(p)}
+                  limit={limit}
+                  offset={(page - 1) * limit}
+                  total={total}
+                  onPageChange={(l, o) => setPage(Math.floor(o / l) + 1)}
                 />
               </div>
             </>
