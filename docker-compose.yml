@@ -29,48 +29,6 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    build:
-      context: .
-      dockerfile: packages/backend/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "3001:3001"
-    env_file:
-      - packages/backend/.env
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/wrankey
-      REDIS_URL: redis://redis:6379
-      CORS_ORIGIN: http://localhost:5173,http://localhost:8080
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  dashboard:
-    build:
-      context: .
-      dockerfile: packages/dashboard/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8080:80"
-    environment:
-      NODE_ENV: production
-      NEXT_PUBLIC_API_BASE: http://localhost:3001
-    depends_on:
-      - backend
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
 volumes:
   postgres_data:
   redis_data:
