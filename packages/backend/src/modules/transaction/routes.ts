@@ -11,6 +11,8 @@ import {
   broadcastTransaction,
   getTransactionStatus,
   simulateTransaction,
+  signMessage,
+  deriveAccount,
 } from "../../utils/enclave.js";
 import { evaluatePolicies, EvaluationContext } from "../policy/engine.js";
 import { getChainById } from "../../services/chain.js";
@@ -530,6 +532,53 @@ export async function transactionRoutes(app: FastifyInstance) {
         chainId: feeChainId,
         currency: chainSymbol,
       });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  app.post("/transactions/sign-message", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { walletId, chain: chainName, message } = request.body as {
+        walletId: string; chain?: string; message: string;
+      };
+
+      if (!walletId || message === undefined) {
+        throw new ValidationError("walletId and message are required");
+      }
+
+      const wallet = await prisma.wallet.findFirst({
+        where: { id: walletId, orgId: request.orgId },
+        include: { accounts: { include: { chain: true } } },
+      });
+      if (!wallet) throw new NotFoundError("Wallet");
+      if (wallet.status === "FROZEN") throw new ForbiddenError("Wallet is frozen — message signing is blocked");
+
+      const targetAccount = chainName
+        ? wallet.accounts.find((a) => a.chain.name === chainName)
+        : wallet.accounts[0];
+
+      if (!targetAccount) throw new NotFoundError("Account for chain");
+
+      const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
+      const derived = deriveAccount(mnemonic, targetAccount.index, targetAccount.chain.derivationPath);
+
+      // Sign message using ethers.js
+      const signature = await signMessage(derived.privateKey, message);
+
+      await createAuditLog(
+        request.orgId,
+        "WALLET_SIGN_MESSAGE",
+        { walletId, address: targetAccount.address, chain: targetAccount.chain.name, messageLength: message.length },
+        request.userId,
+        request
+      );
+
+      return sendSuccess(reply, {
+        signature,
+        address: targetAccount.address,
+        chain: targetAccount.chain.name,
+      }, 201);
     } catch (err) {
       return sendError(reply, err);
     }

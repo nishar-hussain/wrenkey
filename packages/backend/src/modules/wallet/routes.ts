@@ -415,7 +415,23 @@ export async function walletRoutes(app: FastifyInstance) {
 
       const tokenBalances = await Promise.all(
         targetAccounts.map(async (account) => {
-          const tokens = await getTokenBalances(account.address, account.chain.rpcUrl, account.chain.chainId);
+          const knownBalances = await getTokenBalances(account.address, account.chain.rpcUrl, account.chain.chainId);
+          
+          const customTokens = (wallet.tags || [])
+            .filter((tag) => tag.startsWith(`custom-token:${account.chain.chainId}:`))
+            .map((tag) => tag.split(":")[2]);
+
+          const customBalances = customTokens.length > 0
+            ? await getTokenBalances(account.address, account.chain.rpcUrl, account.chain.chainId, customTokens)
+            : [];
+
+          const knownAddresses = new Set(knownBalances.map((tb) => tb.token.address.toLowerCase()));
+          const filteredCustomBalances = customBalances.filter(
+            (cb) => !knownAddresses.has(cb.token.address.toLowerCase())
+          );
+
+          const tokens = [...knownBalances, ...filteredCustomBalances];
+
           return {
             address: account.address,
             chain: account.chain.name,

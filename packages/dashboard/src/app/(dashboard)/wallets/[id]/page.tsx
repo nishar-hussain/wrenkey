@@ -12,6 +12,13 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
 
 interface ChainInfo {
   id: string;
@@ -151,6 +158,17 @@ export default function WalletDetailPage() {
   const [editTags, setEditTags] = useState("");
   const [editLoading, setEditLoading] = useState(false);
 
+  const [showTrackTokenModal, setShowTrackTokenModal] = useState(false);
+  const [trackTokenAddress, setTrackTokenAddress] = useState("");
+  const [trackTokenChain, setTrackTokenChain] = useState("sepolia");
+  const [trackTokenLoading, setTrackTokenLoading] = useState(false);
+
+  const [showSignMessageModal, setShowSignMessageModal] = useState(false);
+  const [signMessageText, setSignMessageText] = useState("");
+  const [signMessageChain, setSignMessageChain] = useState("sepolia");
+  const [signMessageSignature, setSignMessageSignature] = useState("");
+  const [signMessageLoading, setSignMessageLoading] = useState(false);
+
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -241,9 +259,11 @@ export default function WalletDetailPage() {
     setEditLoading(true);
     try {
       const body: any = { name: editName };
-      body.tags = editTags
+      const systemTags = wallet?.tags.filter((t) => t.startsWith("custom-token:")) || [];
+      const userTags = editTags
         ? editTags.split(",").map((s) => s.trim()).filter(Boolean)
         : [];
+      body.tags = [...systemTags, ...userTags];
       await apiFetch(`/wallets/${params.id}`, { method: "PATCH", body: JSON.stringify(body), token: token! });
       addToast("Wallet updated", "success");
       setShowEdit(false);
@@ -252,6 +272,96 @@ export default function WalletDetailPage() {
       addToast(err.message || "Failed to update", "error");
     } finally {
       setEditLoading(false);
+    }
+  };
+
+  const isCustomToken = (chainId: number, address: string) => {
+    const tag = `custom-token:${chainId}:${address.toLowerCase()}`;
+    return wallet?.tags.includes(tag) || false;
+  };
+
+  const handleTrackToken = async () => {
+    if (!trackTokenAddress.trim()) {
+      addToast("Token contract address is required", "error");
+      return;
+    }
+    if (!trackTokenAddress.startsWith("0x") || trackTokenAddress.length !== 42) {
+      addToast("Invalid contract address format", "error");
+      return;
+    }
+    const acc = wallet?.accounts.find((a) => a.chain.name === trackTokenChain);
+    if (!acc) {
+      addToast(`Wallet has no account derived on ${trackTokenChain}`, "error");
+      return;
+    }
+    const numericChainId = acc.chain.chainId;
+    const tagToAdd = `custom-token:${numericChainId}:${trackTokenAddress.toLowerCase()}`;
+    
+    if (wallet?.tags.includes(tagToAdd)) {
+      addToast("Token is already being tracked on this chain", "info");
+      setShowTrackTokenModal(false);
+      return;
+    }
+
+    setTrackTokenLoading(true);
+    try {
+      const updatedTags = [...(wallet?.tags || []), tagToAdd];
+      await apiFetch(`/wallets/${params.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ tags: updatedTags }),
+        token: token!,
+      });
+      addToast("Token tracked successfully", "success");
+      setShowTrackTokenModal(false);
+      setTrackTokenAddress("");
+      fetchData();
+    } catch (err: any) {
+      addToast(err.message || "Failed to track token", "error");
+    } finally {
+      setTrackTokenLoading(false);
+    }
+  };
+
+  const handleUntrackToken = async (chainId: number, tokenAddress: string) => {
+    if (!confirm("Are you sure you want to stop tracking this token?")) return;
+    try {
+      const tagToRemove = `custom-token:${chainId}:${tokenAddress.toLowerCase()}`;
+      const updatedTags = (wallet?.tags || []).filter((t) => t !== tagToRemove);
+      await apiFetch(`/wallets/${params.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ tags: updatedTags }),
+        token: token!,
+      });
+      addToast("Token untracked", "success");
+      fetchData();
+    } catch (err: any) {
+      addToast(err.message || "Failed to untrack token", "error");
+    }
+  };
+
+  const handleSignMessage = async () => {
+    if (!signMessageText.trim()) {
+      addToast("Message text is required", "error");
+      return;
+    }
+    setSignMessageLoading(true);
+    setSignMessageSignature("");
+    try {
+      const res: any = await apiFetch("/transactions/sign-message", {
+        method: "POST",
+        body: JSON.stringify({
+          walletId: params.id as string,
+          chain: signMessageChain,
+          message: signMessageText,
+        }),
+        token: token!,
+      });
+      setSignMessageSignature(res.signature);
+      addToast("Message signed successfully", "success");
+    } catch (err: any) {
+      addToast(err.message || "Failed to sign message", "error");
+    } finally {
+      setSignMessageLoading(false);
     }
   };
 
@@ -586,13 +696,15 @@ export default function WalletDetailPage() {
           <p className="text-sm text-slate-500 mt-1">
             Status: <StatusBadge status={wallet.status} /> | Owner: {wallet.ownerType}
           </p>
-          {wallet.tags.length > 0 && (
+          {wallet.tags.filter((t) => !t.startsWith("custom-token:")).length > 0 && (
             <div className="flex gap-1 mt-2 flex-wrap">
-              {wallet.tags.map((t, i) => (
-                <span key={i} className="text-xs bg-slate-200 px-1.5 py-0.5 rounded">
-                  {t}
-                </span>
-              ))}
+              {wallet.tags
+                .filter((t) => !t.startsWith("custom-token:"))
+                .map((t, i) => (
+                  <span key={i} className="text-xs bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.5 rounded">
+                    {t}
+                  </span>
+                ))}
             </div>
           )}
         </div>
@@ -604,7 +716,7 @@ export default function WalletDetailPage() {
             variant="secondary"
             onClick={() => {
               setEditName(wallet.name);
-              setEditTags(wallet.tags.join(", "));
+              setEditTags(wallet.tags.filter((t) => !t.startsWith("custom-token:")).join(", "));
               setShowEdit(true);
             }}
           >
@@ -684,12 +796,15 @@ export default function WalletDetailPage() {
             </Card>
           )}
 
-          {tokenBalances.length > 0 && tokenBalances.some((tb) => tb.tokens.length > 0) && (
-            <Card>
-              <CardHeader>
-                <h2 className="font-semibold">Token Balances</h2>
-              </CardHeader>
-              <CardContent>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+              <h2 className="font-semibold">Token Balances</h2>
+              <Button size="sm" variant="secondary" onClick={() => setShowTrackTokenModal(true)}>
+                Track Custom Token
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {tokenBalances.length > 0 && tokenBalances.some((tb) => tb.tokens.length > 0) ? (
                 <div className="space-y-4">
                   {tokenBalances
                     .filter((tb) => tb.tokens.length > 0)
@@ -699,24 +814,47 @@ export default function WalletDetailPage() {
                           {tb.address.slice(0, 12)}... ({tb.chain})
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {tb.tokens.map((t, j) => (
-                            <div key={j} className="p-3 bg-slate-50 rounded-lg flex justify-between items-center">
-                              <div>
-                                <p className="font-medium text-sm">{t.token.symbol}</p>
-                                <p className="text-xs text-slate-400">{t.token.name}</p>
+                          {tb.tokens.map((t, j) => {
+                            const custom = isCustomToken(tb.chainId, t.token.address);
+                            return (
+                              <div key={j} className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-lg flex justify-between items-center group relative">
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="font-medium text-sm">{t.token.symbol}</p>
+                                    {custom && (
+                                      <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 px-1 rounded font-medium">Custom</span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-slate-400 font-mono truncate max-w-[120px] sm:max-w-[160px] md:max-w-[200px]" title={t.token.address}>{t.token.name}</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-mono text-sm font-medium">
+                                    {parseFloat(t.balanceFormatted).toFixed(4)}
+                                  </p>
+                                  {custom && (
+                                    <button
+                                      onClick={() => handleUntrackToken(tb.chainId, t.token.address)}
+                                      className="text-slate-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 font-bold text-xs"
+                                      title="Untrack token"
+                                    >
+                                      &#x2715;
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                              <p className="font-mono text-sm font-medium">
-                                {parseFloat(t.balanceFormatted).toFixed(4)}
-                              </p>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              ) : (
+                <p className="text-sm text-slate-400 py-2">
+                  No token balances. Track a custom token to get started.
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
@@ -870,6 +1008,30 @@ export default function WalletDetailPage() {
                     }}
                   >
                     Export
+                  </Button>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded">
+                  <div>
+                    <p className="font-medium">Sign Message</p>
+                    <p className="text-slate-500">
+                      Sign an arbitrary text message with derived key credentials
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setShowSignMessageModal(true);
+                      setSignMessageText("");
+                      setSignMessageSignature("");
+                      if (wallet.accounts.length > 0) {
+                        setSignMessageChain(wallet.accounts[0].chain.name);
+                      } else {
+                        setSignMessageChain("sepolia");
+                      }
+                    }}
+                  >
+                    Sign Message
                   </Button>
                 </div>
               </div>
@@ -1098,6 +1260,111 @@ export default function WalletDetailPage() {
           <Button onClick={saveSpendingLimit} disabled={slLoading} className="w-full">
             {slLoading ? "Saving..." : editingSpendingLimit ? "Update" : "Create"}
           </Button>
+        </div>
+      </Modal>
+      
+      <Modal
+        open={showTrackTokenModal}
+        onClose={() => {
+          setShowTrackTokenModal(false);
+          setTrackTokenAddress("");
+        }}
+        title="Track Custom ERC-20 Token"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500">
+            Enter the contract address of the ERC-20 token you wish to track. The system will query the token's name, symbol, and decimals on-chain.
+          </p>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Chain</label>
+            <Select value={trackTokenChain} onValueChange={setTrackTokenChain}>
+              <SelectTrigger className="w-full bg-slate-50 dark:bg-slate-900 border-slate-200">
+                <SelectValue placeholder="Select chain" />
+              </SelectTrigger>
+              <SelectContent>
+                {wallet.accounts.map((acc) => (
+                  <SelectItem key={acc.chain.name} value={acc.chain.name}>
+                    {acc.chain.name.charAt(0).toUpperCase() + acc.chain.name.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Token Contract Address</label>
+            <Input
+              value={trackTokenAddress}
+              onChange={(e) => setTrackTokenAddress(e.target.value)}
+              placeholder="0x..."
+              className="bg-slate-50 dark:bg-slate-900 border-slate-200"
+            />
+          </div>
+          <Button onClick={handleTrackToken} disabled={trackTokenLoading} className="w-full">
+            {trackTokenLoading ? "Tracking..." : "Track Token"}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={showSignMessageModal}
+        onClose={() => {
+          setShowSignMessageModal(false);
+          setSignMessageText("");
+          setSignMessageSignature("");
+        }}
+        title="Sign Message"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500">
+            Sign a text message using the private key derived for a specific account/chain.
+          </p>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Select Account / Chain</label>
+            <Select value={signMessageChain} onValueChange={setSignMessageChain}>
+              <SelectTrigger className="w-full bg-slate-50 dark:bg-slate-900 border-slate-200">
+                <SelectValue placeholder="Select chain" />
+              </SelectTrigger>
+              <SelectContent>
+                {wallet.accounts.map((acc) => (
+                  <SelectItem key={acc.chain.name} value={acc.chain.name}>
+                    {acc.chain.name.charAt(0).toUpperCase() + acc.chain.name.slice(1)} ({acc.address.slice(0, 6)}...{acc.address.slice(-4)})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Message to Sign</label>
+            <textarea
+              value={signMessageText}
+              onChange={(e) => setSignMessageText(e.target.value)}
+              placeholder="Enter your message here..."
+              rows={4}
+              className="w-full p-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-slate-500 text-slate-900 dark:text-slate-100"
+            />
+          </div>
+          <Button onClick={handleSignMessage} disabled={signMessageLoading} className="w-full">
+            {signMessageLoading ? "Signing..." : "Sign Message"}
+          </Button>
+
+          {signMessageSignature && (
+            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <label className="text-sm font-medium">Signature</label>
+              <div className="flex gap-2">
+                <Input
+                  value={signMessageSignature}
+                  readOnly
+                  className="font-mono text-xs bg-slate-50 dark:bg-slate-900 border-slate-200"
+                />
+                <Button
+                  variant="secondary"
+                  onClick={() => copyToClipboard(signMessageSignature, addToast)}
+                >
+                  Copy
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
     </div>

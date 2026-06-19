@@ -476,6 +476,14 @@ export class WranKeyClient {
   async listAuditLogs(limit = 50, offset = 0): Promise<PaginatedResponse<AuditLog>> {
     return this.request("GET", `/audit-logs?limit=${limit}&offset=${offset}`);
   }
+
+  async signMessage(params: {
+    walletId: string;
+    chain?: string;
+    message: string;
+  }): Promise<{ signature: string; address: string; chain: string }> {
+    return this.request("POST", "/transactions/sign-message", params);
+  }
 }
 
 export function createClient(config: WranKeyConfig): WranKeyClient {

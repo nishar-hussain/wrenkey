@@ -395,3 +395,46 @@ describe("Audit Log Routes", () => {
     expect(body.limit).toBe(10);
   });
 });
+
+describe("Transaction Routes", () => {
+  let testWalletId: string;
+
+  beforeAll(async () => {
+    const walletRes = await app.inject({
+      method: "POST",
+      url: "/api/v1/wallets",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: "Tx Route Test Wallet" },
+    });
+    testWalletId = JSON.parse(walletRes.payload).walletId;
+  });
+
+  it("POST /transactions/sign-message signs a message", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/transactions/sign-message",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        walletId: testWalletId,
+        message: "Hello WranKey",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.payload);
+    expect(body.signature).toBeTruthy();
+    expect(body.signature).toMatch(/^0x/);
+    expect(body.address).toBeTruthy();
+  });
+
+  it("POST /transactions/sign-message validates parameters", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/transactions/sign-message",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        walletId: testWalletId,
+      },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});

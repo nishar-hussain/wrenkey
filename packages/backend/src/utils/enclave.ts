@@ -49,8 +49,10 @@ export function signTransaction(mnemonic: string, tx: ethers.TransactionRequest)
   return wallet.signTransaction(tx);
 }
 
-export function signMessage(mnemonic: string, message: string): Promise<string> {
-  const wallet = ethers.Wallet.fromPhrase(mnemonic);
+export function signMessage(privateKeyOrMnemonic: string, message: string): Promise<string> {
+  const wallet = privateKeyOrMnemonic.includes(" ")
+    ? ethers.Wallet.fromPhrase(privateKeyOrMnemonic)
+    : new ethers.Wallet(privateKeyOrMnemonic);
   return wallet.signMessage(message);
 }
 
