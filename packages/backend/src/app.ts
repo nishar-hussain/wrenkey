@@ -112,6 +112,7 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
     "/api/v1/auth/webauthn/register", "/api/v1/auth/webauthn/register/verify",
     "/api/v1/auth/webauthn/authenticate", "/api/v1/auth/webauthn/authenticate/verify",
     "/api/v1/auth/password/signup", "/api/v1/auth/password/login",
+    "/api/v1/auth/password/reset", "/api/v1/auth/password/reset/confirm",
     "/api/v1/auth/phone/send", "/api/v1/auth/phone/verify",
     "/api/v1/auth/signup/initiate", "/api/v1/auth/signup/verify",
     "/api/v1/auth/signup/register-options", "/api/v1/auth/signup/confirm",

@@ -102,7 +102,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       if (!policyResult.allowed) {
         await createAuditLog(request.orgId, "POLICY_DENY", { walletId, to, value, reason: policyResult.reason }, request.userId, request);
         triggerWebhookEvents(request.orgId, "policy.triggered", { walletId, to, value, allowed: false, reason: policyResult.reason });
-        return sendSuccess(reply, { allowed: false, requiresConsensus: policyResult.requiresConsensus, reason: policyResult.reason, riskScore: risk.score, riskFlags: risk.flags }, 403);
+        return sendSuccess(reply, { allowed: false, requiresConsensus: policyResult.requiresConsensus, reason: policyResult.reason, riskScore: risk.score, riskFlags: risk.flags }, 200);
       }
 
       if (policyResult.requiresConsensus && !isRootUser) {

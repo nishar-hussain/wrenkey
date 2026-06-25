@@ -17,6 +17,8 @@ import {
   ClipboardList,
   User,
   UsersRound,
+  CheckCircle,
+  Gauge,
   Menu,
   X,
 } from "lucide-react";
@@ -37,6 +39,8 @@ const secondaryNav = [
   { href: "/api-keys", label: "API Keys", icon: Key },
   { href: "/users", label: "Users", icon: Users },
   { href: "/audit-logs", label: "Audit Logs", icon: ClipboardList },
+  { href: "/spending-limits", label: "Spending Limits", icon: Gauge },
+  { href: "/approvals", label: "Approvals", icon: CheckCircle },
 ];
 
 export function Sidebar() {

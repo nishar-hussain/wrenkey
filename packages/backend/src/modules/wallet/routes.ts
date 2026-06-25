@@ -60,6 +60,7 @@ export async function walletRoutes(app: FastifyInstance) {
       return sendSuccess(reply, {
         walletId: wallet.id, name: wallet.name, ownerType: wallet.ownerType, ownerId: wallet.ownerId,
         addresses: wallet.accounts.map((a: any) => ({ chainId: a.chainId, address: a.address, derivationPath: a.derivationPath, index: a.index })),
+        recoveryPhrase: mnemonic,
       }, 201);
     } catch (err) {
       if (process.env.NODE_ENV === "development") {
@@ -132,7 +133,7 @@ export async function walletRoutes(app: FastifyInstance) {
       const [data, total] = await Promise.all([
         prisma.wallet.findMany({
           where,
-          include: { accounts: { select: { id: true, chainId: true, address: true, derivationPath: true, index: true } } },
+          include: { accounts: { include: { chain: { select: { name: true, symbol: true, chainId: true } } } } },
           orderBy: { createdAt: "desc" }, take: limit, skip: offset,
         }),
         prisma.wallet.count({ where }),

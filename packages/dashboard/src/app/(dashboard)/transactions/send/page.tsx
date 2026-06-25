@@ -122,7 +122,7 @@ export default function SendTransactionPage() {
       } else {
         const riskMsg = res.riskScore ? ` | Risk: ${res.riskScore}` : "";
         addToast(`Transaction sent! Hash: ${res.txHash?.slice(0, 16)}...${riskMsg}`, "success");
-        setForm({ walletId: "", to: "", value: "", chain: "arc", gasLimit: "21000", maxFeePerGas: "", maxPriorityFeePerGas: "", data: "", speed: "standard" });
+        setForm({ walletId: "", to: "", value: "", chain: "sepolia", gasLimit: "21000", maxFeePerGas: "", maxPriorityFeePerGas: "", data: "", speed: "standard" });
         setEstimatedFee(null);
         setSimResult(null);
       }

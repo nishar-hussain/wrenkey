@@ -44,6 +44,7 @@ export default function WalletsPage() {
   const [newChain, setNewChain] = useState("sepolia");
   const [newTags, setNewTags] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
+  const [createdRecoveryPhrase, setCreatedRecoveryPhrase] = useState("");
 
   const [showImport, setShowImport] = useState(false);
   const [importName, setImportName] = useState("");
@@ -82,7 +83,7 @@ export default function WalletsPage() {
     if (!newName.trim()) return;
     setCreateLoading(true);
     try {
-      await apiFetch("/wallets", {
+      const res: any = await apiFetch("/wallets", {
         method: "POST",
         body: JSON.stringify({
           name: newName,
@@ -92,12 +93,16 @@ export default function WalletsPage() {
         }),
         token: token!,
       });
-      setShowCreate(false);
-      setNewName("");
-      setNewChain("sepolia");
-      setNewTags("");
-      addToast("Wallet created", "success");
-      fetchWallets();
+      if (res.recoveryPhrase) {
+        setCreatedRecoveryPhrase(res.recoveryPhrase);
+      } else {
+        setShowCreate(false);
+        setNewName("");
+        setNewChain("sepolia");
+        setNewTags("");
+        addToast("Wallet created", "success");
+        fetchWallets();
+      }
     } catch (err: any) {
       addToast(err.message || "Failed to create wallet", "error");
     } finally {
@@ -220,7 +225,7 @@ export default function WalletsPage() {
           <Button variant="secondary" onClick={() => { setShowImport(true); setImportName(""); setImportMnemonic(""); setImportChain("sepolia"); }}>
             Import
           </Button>
-          <Button onClick={() => { setShowCreate(true); setNewName(""); setNewChain("sepolia"); setNewTags(""); }}>
+          <Button onClick={() => { setShowCreate(true); setNewName(""); setNewChain("sepolia"); setNewTags(""); setCreatedRecoveryPhrase(""); }}>
             Create Wallet
           </Button>
         </div>
@@ -272,7 +277,38 @@ export default function WalletsPage() {
         </CardContent>
       </Card>
 
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create Wallet">
+      <Modal open={showCreate} onClose={() => { setShowCreate(false); setCreatedRecoveryPhrase(""); setNewName(""); }} title="Create Wallet">
+        {createdRecoveryPhrase ? (
+          <div className="space-y-4">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm">
+              <p className="font-medium text-amber-700">Save your recovery phrase!</p>
+              <p className="text-amber-600 mt-1">
+                This is the ONLY time it will be shown. Write it down and store it securely.
+                Anyone with this phrase can access your wallet.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Recovery Phrase (12 words)</label>
+              <div className="p-3 bg-slate-100 rounded-md font-mono text-sm break-words">
+                {createdRecoveryPhrase}
+              </div>
+            </div>
+            <Button
+              onClick={() => {
+                setShowCreate(false);
+                setCreatedRecoveryPhrase("");
+                setNewName("");
+                setNewChain("sepolia");
+                setNewTags("");
+                addToast("Wallet created — recovery phrase shown once", "success");
+                fetchWallets();
+              }}
+              className="w-full"
+            >
+              I've Saved My Recovery Phrase
+            </Button>
+          </div>
+        ) : (
         <div className="space-y-4">
           <div className="space-y-1">
             <label className="text-sm font-medium">Wallet Name</label>
@@ -300,6 +336,7 @@ export default function WalletsPage() {
             {createLoading ? "Creating..." : "Create"}
           </Button>
         </div>
+        )}
       </Modal>
 
       <Modal open={showImport} onClose={() => setShowImport(false)} title="Import Wallet">

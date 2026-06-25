@@ -109,6 +109,22 @@ export async function orgRoutes(app: FastifyInstance) {
     }
   });
 
+  app.patch("/users/me", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { name } = request.body as { name?: string };
+      if (!name) throw new ValidationError("Name is required");
+      const user = await prisma.user.update({
+        where: { id: request.userId },
+        data: { name },
+        select: { id: true, name: true, email: true, phone: true, role: true, tags: true, createdAt: true },
+      });
+      await createAuditLog(request.orgId, "USER_UPDATE", { userId: request.userId, name }, request.userId, request);
+      return sendSuccess(reply, user);
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
   app.patch("/users/:id", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
