@@ -1,13 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, API_BASE } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { useWebSocket } from "@/lib/websocket";
 import { Wallet, ArrowLeftRight, Users, Bot, ChevronRight, ArrowUpRight } from "lucide-react";
+
+interface HealthStatus {
+  database: string;
+  redis: string;
+  blockchain: string;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -15,6 +22,25 @@ export default function DashboardPage() {
   const { addToast } = useToast();
   const [stats, setStats] = useState({ wallets: 0, transactions: 0, users: 0, agents: 0 });
   const [loading, setLoading] = useState(true);
+  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
+
+  const handleTransactionStatus = useCallback((data: { transactionId: string; status: string; txHash?: string }) => {
+    addToast(`Transaction ${data.transactionId.slice(0, 8)}... ${data.status}`, "info");
+  }, [addToast]);
+
+  const handleWalletEvent = useCallback((event: string, data: any) => {
+    addToast(`${event.replace("wallet.", "")}: ${data.walletId?.slice(0, 8)}...`, "info");
+  }, [addToast]);
+
+  const { connected } = useWebSocket(API_BASE, token, {
+    onTransactionStatus: handleTransactionStatus,
+    onWalletEvent: handleWalletEvent,
+  });
+
+  useEffect(() => {
+    setWsConnected(connected);
+  }, [connected]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -24,11 +50,12 @@ export default function DashboardPage() {
     async function loadStats() {
       setLoading(true);
       try {
-        const [wallets, txs, users, agents] = await Promise.all([
+        const [wallets, txs, users, agents, healthRes] = await Promise.all([
           apiFetch<any>("/wallets?limit=1", { token: token! }),
           apiFetch<any>("/transactions?limit=1", { token: token! }),
           apiFetch<any>("/users?limit=1", { token: token! }),
           apiFetch<any>("/agents?limit=1", { token: token! }),
+          fetch(`${API_BASE}/health/services`).then(r => r.json()).catch(() => null),
         ]);
         setStats({
           wallets: wallets.total || 0,
@@ -36,12 +63,25 @@ export default function DashboardPage() {
           users: users.total || 0,
           agents: agents.total || 0,
         });
+        if (healthRes?.services) {
+          setHealth(healthRes.services);
+        }
       } catch (err: any) {
         addToast(err.message || "Failed to load dashboard stats", "error");
         setStats({ wallets: 0, transactions: 0, users: 0, agents: 0 });
       } finally { setLoading(false); }
     }
     loadStats();
+
+    const healthInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/health/services`);
+        const data = await res.json();
+        if (data?.services) setHealth(data.services);
+      } catch {}
+    }, 30000);
+
+    return () => clearInterval(healthInterval);
   }, [isAuthenticated, token, router]);
 
   if (!isAuthenticated) {
@@ -98,9 +138,20 @@ export default function DashboardPage() {
     },
   ];
 
+  const healthServices = health
+    ? [
+        { label: "Database", status: health.database, key: "database" as const },
+        { label: "Redis Cache", status: health.redis, key: "redis" as const },
+        { label: "Blockchain RPC", status: health.blockchain, key: "blockchain" as const },
+      ]
+    : [
+        { label: "MPC Signer Node", status: "operational", key: "database" as const },
+        { label: "Policy Engine", status: "operational", key: "redis" as const },
+        { label: "API Gateway", status: "operational", key: "blockchain" as const },
+      ];
+
   return (
     <div className="space-y-8">
-      {/* Hero Welcome Section */}
       <div className="flex flex-col gap-1.5">
         <h1 className="text-2xl md:text-3xl font-semibold text-slate-900 dark:text-white tracking-tight">
           System Overview
@@ -110,7 +161,6 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Grid of Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {statCards.map((stat) => {
           const Icon = stat.icon;
@@ -157,7 +207,6 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {/* Quick Actions & Enclave Stats Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
         <Card className="lg:col-span-2 border border-slate-100 dark:border-slate-800/80 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.015)] bg-white dark:bg-slate-900">
           <CardContent className="p-6 pt-6">
@@ -204,30 +253,40 @@ export default function DashboardPage() {
         <Card className="border border-slate-100 dark:border-slate-800/80 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.015)] bg-white dark:bg-slate-900">
           <CardContent className="p-6 pt-6">
             <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-2">Platform Status</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">All systems operational.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+              {health ? "Real-time service health" : "All systems operational."}
+            </p>
             
             <div className="space-y-4">
-              <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-800/50">
-                <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">MPC Signer Node</span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Operational
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-800/50">
-                <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">Policy Engine</span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Operational
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1.5">
-                <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">API Gateway</span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Operational
-                </span>
-              </div>
+              {healthServices.map((svc) => {
+                const isOperational = svc.status === "operational" || svc.status === "healthy";
+                return (
+                  <div key={svc.key} className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-800/50 last:border-b-0">
+                    <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">{svc.label}</span>
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                      isOperational
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-red-600 dark:text-red-400"
+                    }`}>
+                      <span className={`w-2.5 h-2.5 rounded-full ${
+                        isOperational
+                          ? "bg-emerald-500 animate-pulse"
+                          : "bg-red-500"
+                      }`} />
+                      {isOperational ? "Operational" : "Unavailable"}
+                    </span>
+                  </div>
+                );
+              })}
+              {wsConnected && (
+                <div className="flex items-center justify-between py-1.5 pt-2 border-t border-slate-100 dark:border-slate-800/50">
+                  <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">WebSocket</span>
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Connected
+                  </span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

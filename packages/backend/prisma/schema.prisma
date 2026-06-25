@@ -19,6 +19,7 @@ model Organization {
   agents         Agent[]
   apiKeys        ApiKey[]
   webhooks       Webhook[]
+  webhookDeliveries WebhookDelivery[]
   auditLogs      AuditLog[]
   spendingLimits SpendingLimit[]
   approvalRequests ApprovalRequest[]
@@ -206,6 +207,7 @@ model Transaction {
   replacementFor String? @map("replacement_for")
   error        String?
   riskScore    Int?      @map("risk_score")
+  sponsored    Boolean   @default(false)
   createdAt    DateTime  @default(now()) @map("created_at")
   confirmedAt  DateTime? @map("confirmed_at")
 
@@ -259,6 +261,7 @@ model Webhook {
 
   org  Organization @relation(fields: [orgId], references: [id])
   user User?        @relation(fields: [userId], references: [id])
+  deliveries WebhookDelivery[]
 
   @@map("webhooks")
 }
@@ -279,4 +282,26 @@ model AuditLog {
 
   @@index([orgId, createdAt])
   @@map("audit_logs")
+}
+
+model WebhookDelivery {
+  id            String    @id @default(uuid())
+  webhookId     String    @map("webhook_id")
+  orgId         String    @map("org_id")
+  event         String
+  payload       Json
+  status        String    @default("PENDING")
+  attemptCount  Int       @default(0) @map("attempt_count")
+  lastAttemptAt DateTime? @map("last_attempt_at")
+  nextAttemptAt DateTime? @map("next_attempt_at")
+  lastError     String?   @map("last_error")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  org     Organization @relation(fields: [orgId], references: [id])
+
+  @@index([status, nextAttemptAt])
+  @@index([webhookId])
+  @@map("webhook_deliveries")
 }

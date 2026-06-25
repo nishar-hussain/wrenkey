@@ -4,6 +4,8 @@ import { connectRedis } from "./redis.js";
 import { config } from "./config.js";
 import { registerWebSocketGateway } from "./services/websocket.js";
 import { seedChains } from "./services/chain.js";
+import { startTransactionMonitor } from "./services/tx-monitor.js";
+import { processPendingDeliveries } from "./modules/webhook/routes.js";
 
 async function start() {
   const app = await buildApp();
@@ -23,6 +25,10 @@ async function start() {
   try {
     await app.listen({ port: config.port, host: config.host });
     registerWebSocketGateway(app);
+
+    startTransactionMonitor();
+    setInterval(processPendingDeliveries, 30000);
+
     console.log(`WranKey API server running at http://${config.host}:${config.port}`);
     console.log(`Health: http://${config.host}:${config.port}/health`);
     console.log(`API:    http://${config.host}:${config.port}/api/v1`);

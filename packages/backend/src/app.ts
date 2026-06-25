@@ -6,6 +6,7 @@ import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { config } from "./config.js";
 import { AppError } from "./utils/errors.js";
+import prisma from "./db.js";
 import { authMiddleware } from "./middleware/auth.js";
 import { securityHeaders } from "./middleware/security.js";
 import { authRoutes } from "./modules/auth/routes.js";
@@ -70,9 +71,41 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
     status: "ok", timestamp: new Date().toISOString(), version: "0.1.0", service: "WranKey",
   }));
 
+  app.get("/health/services", async () => {
+    const dbOk = await (async () => {
+      try { await prisma.$queryRaw`SELECT 1`; return true; } catch { return false; }
+    })();
+
+    let redisOk = false;
+    try {
+      const { getRedis } = await import("./redis.js");
+      const r = getRedis();
+      redisOk = (await r.ping()) === "PONG";
+    } catch { redisOk = false; }
+
+    let rpcOk = false;
+    try {
+      const { ethers } = await import("ethers");
+      const provider = new ethers.JsonRpcProvider(config.defaultRpcUrl);
+      await provider.getBlockNumber();
+      rpcOk = true;
+    } catch { rpcOk = false; }
+
+    return {
+      status: dbOk && redisOk ? "healthy" : "degraded",
+      timestamp: new Date().toISOString(),
+      services: {
+        database: dbOk ? "operational" : "unavailable",
+        redis: redisOk ? "operational" : "unavailable",
+        blockchain: rpcOk ? "operational" : "unavailable",
+      },
+    };
+  });
+
   // Auth middleware for protected routes
   const publicPaths = [
     "/health", "/api/v1/health", "/docs",
+    "/health/services",
     "/api/v1/auth/config",
     "/api/v1/auth/email/send", "/api/v1/auth/email/verify", "/api/v1/auth/email/lookup",
     "/api/v1/auth/oauth", "/api/v1/auth/wallet",

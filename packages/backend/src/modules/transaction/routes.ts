@@ -30,11 +30,23 @@ export async function transactionRoutes(app: FastifyInstance) {
     let lockId: string | null = null;
 
     try {
-      const { walletId, chain: chainName, to, value, gasLimit, maxFeePerGas, maxPriorityFeePerGas, data, speed } = request.body as {
+      const { walletId, chain: chainName, to, value, gasLimit, maxFeePerGas, maxPriorityFeePerGas, data, speed, sponsored } = request.body as {
         walletId: string; chain?: string; to: string; value: string; gasLimit?: string;
         maxFeePerGas?: string; maxPriorityFeePerGas?: string; data?: string; speed?: "slow" | "standard" | "fast";
+        sponsored?: boolean;
       };
       if (!walletId || !to || value === undefined) throw new ValidationError("walletId, to, and value required");
+
+      const isSponsored = sponsored === true && config.gasSponsorship.enabled;
+      if (isSponsored) {
+        const sponsoredValue = parseFloat(value);
+        if (sponsoredValue > parseFloat(config.gasSponsorship.maxSponsorAmount)) {
+          throw new ValidationError(`Sponsored amount exceeds maximum ${config.gasSponsorship.maxSponsorAmount}`);
+        }
+        if (!config.gasSponsorship.sponsorWalletId) {
+          throw new ValidationError("Gas sponsorship wallet not configured");
+        }
+      }
 
       const wallet = await prisma.wallet.findFirst({
         where: { id: walletId, orgId: request.orgId },
@@ -109,6 +121,7 @@ export async function transactionRoutes(app: FastifyInstance) {
           data: {
             accountId: targetAccount.id, orgId: request.orgId, chain: chainInfo.name,
             to, value, gasLimit, maxFeePerGas, maxPriorityFeePerGas, data, status: "SIGNED", signedTx, riskScore: risk.score,
+            sponsored: isSponsored,
           },
         });
 
@@ -153,6 +166,7 @@ export async function transactionRoutes(app: FastifyInstance) {
         data: {
           accountId: targetAccount.id, orgId: request.orgId, chain: chainInfo.name,
           to, value, nonce, gasLimit, maxFeePerGas, maxPriorityFeePerGas, data, status: "SIGNED", signedTx, riskScore: risk.score,
+          sponsored: isSponsored,
         },
       });
 

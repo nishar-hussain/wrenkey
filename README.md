@@ -26,6 +26,98 @@ wrankey/
 | **Blockchain** | Arc Network (EVM-compatible) |
 | **Auth** | JWT sessions, API keys (SHA-256), WebAuthn/Passkeys, SIWE |
 
+## Implementation Status
+
+**Overall: ~90% complete (MVP-ready)**
+
+| Area | Status | Coverage |
+|------|--------|----------|
+| Backend API | ✅ Complete | 10 feature modules, 100+ endpoints |
+| Dashboard | ✅ Complete | 12 pages, all CRUD operations |
+| SDK | ✅ Complete | 50+ client methods, 6 React hooks |
+| Infrastructure | ✅ Complete | Prisma, Redis, Docker, CI/CD |
+| Tests | ✅ Complete | 90+ unit/integration tests (backend) |
+| Gas Sponsorship | ⬜ Pending | Config exists, implementation needed |
+| Webhook Retries | ⬜ Pending | Fire-and-forget, needs retry queue |
+| Real-time Dashboard | ⬜ Pending | WebSocket gateway exists, dashboard not connected |
+| Production Deploy | ⬜ Pending | No backend Dockerfile, no monitoring |
+
+## What's Complete
+
+### Backend API Modules (10)
+- ✅ **Auth** — 26 endpoints: Email/Phone OTP, Google OAuth, WebAuthn/Passkeys, Wallet (SIWE), Password (bcrypt), Passwordless signup, Sessions, API keys, Password reset
+- ✅ **Wallets** — 15 endpoints: HD wallet CRUD (BIP44), Import/Export (raw + passphrase-encrypted), Account derivation, Freeze/Unfreeze/Rotate, Balance, Tokens (ERC20), Gas price
+- ✅ **Transactions** — 10 endpoints: Sign & broadcast, Simulate (eth_call), Retry, Cancel, Speed-up, Fee estimation, Message signing, Nonce management
+- ✅ **Policies** — JSON rule engine: 9 condition types (LESS_THAN, GREATER_THAN, EQUAL, INCLUDE, NOT_INCLUDE, REGEX_MATCH, BEFORE, AFTER, WINDOW), 3 consensus modes (ANY/ALL/REQUIRES_CONSENSUS), Root user bypass, ReDoS protection
+- ✅ **Agents** — Create agent (auto-provisions user + scoped API key), Revoke, List
+- ✅ **Webhooks** — CRUD + HMAC-SHA256 signed event dispatch, 17 event types
+- ✅ **Spending Limits** — Per-wallet/chain: max per tx, daily, monthly, allowlist, denylist
+- ✅ **Approvals** — Multi-sig flow with required consensus count, auto-broadcast on approval
+- ✅ **Chains** — Registry with 6 seeded chains (Sepolia, Ethereum, Polygon, Arbitrum, Optimism, Base), Admin CRUD
+- ✅ **Orgs/Users** — Org CRUD, User CRUD, Role-based access (ORG_ADMIN, DEVELOPER, AGENT, AUDITOR), Audit logging (36 action types)
+
+### Dashboard Pages (12)
+- ✅ **Login** — 3-step email OTP flow with remembered users
+- ✅ **Onboarding** — Org naming wizard, auto-skips if named
+- ✅ **Reset Password** — Request + confirm with token
+- ✅ **Home** — Stats cards (wallets, txs, users, agents), quick actions
+- ✅ **Wallets** — List (search/filter/paginate), Create, Import
+- ✅ **Wallet Detail** — 3 tabs: Overview (balances, tokens, gas), Transactions (retry/cancel/speed-up), Security (freeze/unfreeze/rotate/export/sign/derive accounts)
+- ✅ **Transactions** — Filterable list with auto-refresh, Send form with fee estimation + simulation
+- ✅ **Policies** — Create with dynamic condition builder, toggle, delete
+- ✅ **Agents** — Create with permission checkboxes, one-time credential display, revoke
+- ✅ **Webhooks** — Create with event selection, HMAC secret display, delete
+- ✅ **API Keys** — Create with permissions + IP whitelist, one-time key display, delete
+- ✅ **Users** — Create, update, delete
+- ✅ **Team** — Read-only roster with role badges
+- ✅ **Profile** — Editable display name, account info
+- ✅ **Approvals** — Pending requests, approve/reject actions
+- ✅ **Audit Logs** — Paginated read-only table
+
+### SDK
+- ✅ `WranKeyClient` — 50+ typed methods covering all API endpoints
+- ✅ React hooks — `useAuth`, `useWallets`, `useTransactions`, `usePolicies`, `useAgents`
+- ✅ `WranKeyProvider` — Context with localStorage persistence + session restore
+- ✅ CJS + ESM dual output via tsup
+
+### Infrastructure
+- ✅ Prisma schema — 15 models, full migrations
+- ✅ Redis — Nonce locks, OTP rate limiting (Lua scripts), velocity checks
+- ✅ AES-256-GCM encryption at rest, PBKDF2 key derivation for passphrases
+- ✅ JWT + API key auth with scope-based permission mapping (22 URL patterns)
+- ✅ WebSocket gateway (`/ws`) with per-org client tracking
+- ✅ Swagger API docs at `/docs`
+- ✅ CI/CD — GitHub Actions: lint, typecheck, 3 test suites, PostgreSQL + Redis services
+- ✅ Docker Compose — PostgreSQL 16 + Redis 7
+
+## What's Remaining
+
+### Critical (needed for production)
+- ⬜ **Gas sponsorship** — Config exists in `config.ts` but no code uses it. Need sponsor wallet logic in transaction signing flow.
+- ⬜ **Scam address detection** — `isKnownScamAddress()` returns `false`. Needs integration with a blocklist registry.
+- ⬜ **Webhook retry queue** — Currently fire-and-forget. Needs retry with exponential backoff, dead letter queue, and delivery status tracking.
+- ⬜ **Dashboard WebSocket integration** — Backend gateway at `/ws` exists. Dashboard needs a WebSocket client for real-time transaction/wallet/event updates.
+- ⬜ **Platform health monitoring** — Dashboard "Platform Status" indicators are hardcoded. Need `/health` endpoint calls per service.
+- ⬜ **Backend Dockerfile** — Missing. Only dashboard has a Dockerfile. Need multistage Node.js build for the Fastify server.
+- ⬜ **`.env.example`** — Referenced in docs but not in the repo. Document all 40+ env vars with defaults.
+- ⬜ **Background transaction monitoring** — Tx status only checked on manual fetch. Need a background job that polls pending txs, updates status, and fires webhooks.
+
+### Medium
+- ⬜ More OAuth providers (GitHub, Discord, Twitter, Apple)
+- ⬜ WebSocket server-side heartbeat/keepalive
+- ⬜ Push/email notifications (only WebSocket + webhooks currently)
+- ⬜ Transaction CSV/PDF export
+- ⬜ Missing `brand-600` color class in Tailwind config
+- ⬜ Duplicate `Skeleton` export in `Spinner.tsx` (also in `skeleton.tsx`)
+
+### Nice to Have
+- ⬜ Wallet balance history & analytics
+- ⬜ Account/social recovery mechanisms
+- ⬜ Cross-org sharing / multi-tenancy
+- ⬜ E2E tests (Playwright/Cypress)
+- ⬜ SDK React hook test coverage
+- ⬜ Gasless transactions via ERC-4337
+
 ## Quick Start
 
 ### Prerequisites
