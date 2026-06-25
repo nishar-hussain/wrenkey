@@ -64,7 +64,8 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
       return reply.status(400).send({ error: { code: "VALIDATION_ERROR", message: error.message } });
     }
     console.error("Unhandled error:", error);
-    return reply.status(500).send({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+    const message = config.isDev ? (error?.message || "Internal server error") : "Internal server error";
+    return reply.status(500).send({ error: { code: "INTERNAL_ERROR", message } });
   });
 
   app.get("/health", async () => ({

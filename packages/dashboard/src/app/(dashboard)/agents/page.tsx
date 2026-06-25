@@ -134,7 +134,7 @@ export default function AgentsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Agents</h1>
-        <Button onClick={() => setShowCreate(true)}>Create Agent</Button>
+        <Button onClick={() => { setShowCreate(true); setNewName(""); setNewPermissions(["wallet:sign"]); }}>Create Agent</Button>
       </div>
 
       <Card>
@@ -152,7 +152,7 @@ export default function AgentsPage() {
         </CardContent>
       </Card>
 
-      <Modal open={showCreate} onClose={() => { setShowCreate(false); setCredentials(null); setNewPermissions(["wallet:sign"]); }} title="Create Agent">
+      <Modal open={showCreate} onClose={() => { setShowCreate(false); setCredentials(null); setNewName(""); setNewPermissions(["wallet:sign"]); }} title="Create Agent">
         {!credentials ? (
           <div className="space-y-4 max-h-[70vh] overflow-y-auto">
             <div className="space-y-1">

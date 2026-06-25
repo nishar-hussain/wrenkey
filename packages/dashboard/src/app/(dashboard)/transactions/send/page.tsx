@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +18,8 @@ interface WalletOption {
 
 export default function SendTransactionPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preselectedWalletId = searchParams.get("walletId") || "";
   const { isAuthenticated, token } = useAuth();
   const { addToast } = useToast();
   const [wallets, setWallets] = useState<WalletOption[]>([]);
@@ -46,10 +48,13 @@ export default function SendTransactionPage() {
     try {
       const res: any = await apiFetch("/wallets?limit=100", { token });
       setWallets(res.data);
+      if (preselectedWalletId && res.data.some((w: WalletOption) => w.id === preselectedWalletId)) {
+        setForm((prev) => ({ ...prev, walletId: preselectedWalletId }));
+      }
     } catch (err: any) {
       addToast(err.message || "Failed to load wallets", "error");
     } finally { setLoading(false); }
-  }, [token]);
+  }, [token, preselectedWalletId]);
 
   useEffect(() => {
     if (!isAuthenticated) { router.push("/login"); return; }

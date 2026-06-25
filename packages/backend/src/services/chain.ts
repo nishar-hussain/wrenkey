@@ -72,14 +72,11 @@ export async function getDefaultChain(): Promise<ChainInfo> {
 }
 
 export async function seedChains() {
-  const existing = await prisma.chain.count();
-  if (existing > 0) return;
-
   const chains = [
     {
       name: "sepolia",
       chainId: 11155111,
-      rpcUrl: process.env.SEPOLIA_RPC_URL || process.env.ARC_RPC_URL || "https://rpc.sepolia.org",
+      rpcUrl: process.env.SEPOLIA_RPC_URL || process.env.ARC_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com",
       nativeCurrency: "ETH",
       symbol: "ETH",
       derivationPath: "m/44'/60'/0'/0",
@@ -139,8 +136,14 @@ export async function seedChains() {
   ];
 
   for (const c of chains) {
-    await prisma.chain.create({ data: c });
+    await prisma.chain.upsert({
+      where: { name: c.name },
+      update: { rpcUrl: c.rpcUrl, chainId: c.chainId, blockExplorerUrl: c.blockExplorerUrl, active: c.active },
+      create: c,
+    });
   }
+
+  invalidateChainCache();
 }
 
 export function invalidateChainCache() {

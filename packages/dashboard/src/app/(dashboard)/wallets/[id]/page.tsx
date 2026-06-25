@@ -173,23 +173,26 @@ export default function WalletDetailPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [txActionLoading, setTxActionLoading] = useState<Record<string, boolean>>({});
+  const [balanceError, setBalanceError] = useState("");
+  const [balLoading, setBalLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError("");
+    setBalanceError("");
     try {
       const [walletRes, txRes, balRes, tokenRes, slRes, gpRes]: any[] = await Promise.all([
         apiFetch(`/wallets/${params.id}`, { token }),
         apiFetch(`/transactions?limit=50&chain=&walletId=${params.id}`, { token }),
-        apiFetch(`/wallets/${params.id}/balance`, { token }).catch(() => null),
+        apiFetch(`/wallets/${params.id}/balance`, { token }).catch((e) => { setBalanceError(e.message || "Balance fetch failed"); return null; }),
         apiFetch(`/wallets/${params.id}/tokens`, { token }).catch(() => null),
         apiFetch(`/spending-limits?limit=20&walletId=${params.id}`, { token }).catch(() => null),
         apiFetch(`/wallets/${params.id}/gas-price`, { token }).catch(() => null),
       ]);
       setWallet(walletRes);
       setTransactions(txRes.data);
-      if (balRes?.balances) setBalances(balRes.balances);
+      if (balRes?.balances) { setBalances(balRes.balances); setBalanceError(""); }
       if (tokenRes?.tokenBalances) setTokenBalances(tokenRes.tokenBalances);
       if (slRes?.data) setSpendingLimits(slRes.data);
       if (gpRes) setGasPrice(gpRes);
@@ -200,6 +203,27 @@ export default function WalletDetailPage() {
       setLoading(false);
     }
   }, [token, params.id]);
+
+  const refreshBalances = async () => {
+    if (!token) return;
+    setBalLoading(true);
+    setBalanceError("");
+    try {
+      const balRes: any = await apiFetch(`/wallets/${params.id}/balance`, { token });
+      if (balRes?.balances) { setBalances(balRes.balances); setBalanceError(""); }
+    } catch (e: any) {
+      setBalanceError(e.message || "Balance fetch failed");
+    }
+    try {
+      const tokenRes: any = await apiFetch(`/wallets/${params.id}/tokens`, { token });
+      if (tokenRes?.tokenBalances) setTokenBalances(tokenRes.tokenBalances);
+    } catch {}
+    try {
+      const gpRes: any = await apiFetch(`/wallets/${params.id}/gas-price`, { token });
+      if (gpRes) setGasPrice(gpRes);
+    } catch {}
+    setBalLoading(false);
+  };
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -746,6 +770,9 @@ export default function WalletDetailPage() {
             Export
           </Button>
           <Button onClick={deriveNewAccount}>Derive Account</Button>
+          <Button onClick={() => router.push(`/transactions/send?walletId=${wallet.id}`)}>
+            Send
+          </Button>
         </div>
       </div>
 
@@ -764,12 +791,21 @@ export default function WalletDetailPage() {
 
       {activeTab === "overview" && (
         <div className="space-y-6">
-          {balances.length > 0 && (
-            <Card>
-              <CardHeader>
-                <h2 className="font-semibold">Native Balances</h2>
-              </CardHeader>
-              <CardContent>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <h2 className="font-semibold">Native Balances</h2>
+              <Button size="sm" variant="secondary" onClick={refreshBalances} disabled={balLoading}>
+                {balLoading ? "Refreshing..." : "Refresh Balance"}
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {balanceError ? (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-sm">
+                  <p className="font-medium text-amber-700">Balance unavailable</p>
+                  <p className="text-amber-600 mt-1">{balanceError}</p>
+                  <Button size="sm" variant="secondary" className="mt-2" onClick={refreshBalances}>Retry</Button>
+                </div>
+              ) : balances.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {balances.map((b, i) => (
                     <div key={i} className="p-4 bg-slate-50 rounded-lg">
@@ -792,9 +828,13 @@ export default function WalletDetailPage() {
                     </div>
                   ))}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              ) : (
+                <p className="text-sm text-slate-400 py-2">
+                  No balance data. Click "Refresh Balance" to check.
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
@@ -892,11 +932,18 @@ export default function WalletDetailPage() {
       )}
 
       {activeTab === "transactions" && (
-        <Card>
-          <CardContent className="p-0">
-            <Table columns={txColumns} data={transactions} emptyMessage="No transactions yet." />
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <Button onClick={() => router.push(`/transactions/send?walletId=${wallet.id}`)}>
+              Send Transaction
+            </Button>
+          </div>
+          <Card>
+            <CardContent className="p-0">
+              <Table columns={txColumns} data={transactions} emptyMessage="No transactions yet." />
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {activeTab === "security" && (

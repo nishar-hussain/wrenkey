@@ -4,6 +4,31 @@ import { randomBytes } from "crypto";
 const prisma = new PrismaClient();
 
 async function main() {
+  const sepRpc = process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
+  const ethRpc = process.env.ETH_RPC_URL || "https://eth.llamarpc.com";
+  const polyRpc = process.env.POLYGON_RPC_URL || "https://polygon.llamarpc.com";
+  const arbRpc = process.env.ARBITRUM_RPC_URL || "https://arb1.arbitrum.io/rpc";
+  const optRpc = process.env.OPTIMISM_RPC_URL || "https://mainnet.optimism.io";
+  const baseRpc = process.env.BASE_RPC_URL || "https://mainnet.base.org";
+
+  const chains = [
+    { name: "sepolia", chainId: 11155111, rpcUrl: sepRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://sepolia.etherscan.io", active: true },
+    { name: "ethereum", chainId: 1, rpcUrl: ethRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://etherscan.io", active: true },
+    { name: "polygon", chainId: 137, rpcUrl: polyRpc, nativeCurrency: "MATIC", symbol: "POL", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://polygonscan.com", active: true },
+    { name: "arbitrum", chainId: 42161, rpcUrl: arbRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://arbiscan.io", active: true },
+    { name: "optimism", chainId: 10, rpcUrl: optRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://optimistic.etherscan.io", active: true },
+    { name: "base", chainId: 8453, rpcUrl: baseRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://basescan.org", active: true },
+  ];
+
+  for (const c of chains) {
+    await prisma.chain.upsert({
+      where: { name: c.name },
+      update: { rpcUrl: c.rpcUrl, chainId: c.chainId, blockExplorerUrl: c.blockExplorerUrl, active: c.active },
+      create: c,
+    });
+  }
+  console.log("Chains seeded/updated");
+
   // Clean existing data
   await prisma.auditLog.deleteMany();
   await prisma.webhook.deleteMany();
