@@ -62,6 +62,9 @@ export async function walletRoutes(app: FastifyInstance) {
         addresses: wallet.accounts.map((a: any) => ({ chainId: a.chainId, address: a.address, derivationPath: a.derivationPath, index: a.index })),
       }, 201);
     } catch (err) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("[wallet.create] Error:", (err as any)?.message, (err as any)?.stack);
+      }
       return sendError(reply, err);
     }
   });

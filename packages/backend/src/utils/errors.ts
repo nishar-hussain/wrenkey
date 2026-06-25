@@ -45,8 +45,9 @@ export function sendError(reply: FastifyReply, error: unknown) {
       error: { code: error.code, message: error.message },
     });
   }
-  console.error("Unhandled error:", error);
+  const err = error as any;
+  console.error("[sendError] Unhandled error:", err?.message || err, err?.stack || "");
   return reply.status(500).send({
-    error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+    error: { code: "INTERNAL_ERROR", message: err?.message || "Internal server error" },
   });
 }

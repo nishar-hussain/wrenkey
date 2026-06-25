@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDocker = !!(process.env.DATABASE_URL && (process.env.DATABASE_URL.includes("postgres:") || process.env.DATABASE_URL.includes("@postgres")));
 dotenv.config({ path: path.resolve(__dirname, "../.env"), override: !isDocker });
 
-// Reload comment to trigger tsx restart after env update
+// Reload comment to trigger tsx restart after env update - 2026-06-25
 const isDev = process.env.NODE_ENV === "development" || !process.env.NODE_ENV;
 
 function requireEnv(key: string, devDefault?: string): string {

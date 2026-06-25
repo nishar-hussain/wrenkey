@@ -118,6 +118,8 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
   ];
 
   app.addHook("onRequest", async (request, reply) => {
+    // Skip OPTIONS (CORS preflight) and non-API routes
+    if (request.method === "OPTIONS") return;
     if (!request.url.startsWith("/api/v1/") || publicPaths.includes(request.url)) return;
     try {
       await authMiddleware(request, reply);
