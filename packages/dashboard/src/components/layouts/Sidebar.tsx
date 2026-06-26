@@ -19,6 +19,9 @@ import {
   UsersRound,
   CheckCircle,
   Gauge,
+  BarChart3,
+  CreditCard,
+  Activity,
   Menu,
   X,
 } from "lucide-react";
@@ -30,6 +33,12 @@ const mainNav = [
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/policies", label: "Policies", icon: Shield },
   { href: "/agents", label: "Agents", icon: Bot },
+];
+
+const analyticsNav = [
+  { href: "/usage", label: "Usage", icon: BarChart3 },
+  { href: "/billing", label: "Billing", icon: CreditCard },
+  { href: "/activity-logs", label: "Activity Logs", icon: Activity },
 ];
 
 const secondaryNav = [
@@ -88,6 +97,13 @@ export function Sidebar() {
           <div className="space-y-1">
             <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Main</p>
             {mainNav.map((item) => (
+              <NavItem key={item.href} {...item} />
+            ))}
+          </div>
+
+          <div className="space-y-1">
+            <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Analytics</p>
+            {analyticsNav.map((item) => (
               <NavItem key={item.href} {...item} />
             ))}
           </div>
