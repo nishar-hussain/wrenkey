@@ -80,7 +80,8 @@ export async function spendingLimitRoutes(app: FastifyInstance) {
   app.delete("/spending-limits/:id", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      await prisma.spendingLimit.deleteMany({ where: { id, orgId: request.orgId } });
+      const result = await prisma.spendingLimit.deleteMany({ where: { id, orgId: request.orgId } });
+      if (result.count === 0) throw new NotFoundError("Spending limit");
       await createAuditLog(request.orgId, "SPENDING_LIMIT_DELETE", { limitId: id }, request.userId, request);
       return sendSuccess(reply, { message: "Spending limit deleted" });
     } catch (err) {

@@ -39,6 +39,15 @@ const SCOPE_MAP: Array<{ pattern: RegExp; methods: string[]; scope: string }> = 
   { pattern: /^\/api\/v1\/spending-limits/, methods: ["POST", "PATCH", "DELETE"], scope: "wallet:write" },
   { pattern: /^\/api\/v1\/approval-requests/, methods: ["GET"], scope: "wallet:read" },
   { pattern: /^\/api\/v1\/approval-requests/, methods: ["POST"], scope: "wallet:write" },
+  { pattern: /^\/api\/v1\/tags/, methods: ["GET"], scope: "wallet:read" },
+  { pattern: /^\/api\/v1\/tags/, methods: ["POST", "PATCH", "DELETE"], scope: "wallet:write" },
+  { pattern: /^\/api\/v1\/configuration/, methods: ["GET"], scope: "wallet:read" },
+  { pattern: /^\/api\/v1\/configuration/, methods: ["PATCH"], scope: "wallet:write" },
+  { pattern: /^\/api\/v1\/billing/, methods: ["GET", "POST"], scope: "wallet:read" },
+  { pattern: /^\/api\/v1\/sub-orgs/, methods: ["GET"], scope: "wallet:read" },
+  { pattern: /^\/api\/v1\/sub-orgs/, methods: ["POST", "PATCH", "DELETE"], scope: "wallet:write" },
+  { pattern: /^\/api\/v1\/contract-interfaces/, methods: ["GET"], scope: "wallet:read" },
+  { pattern: /^\/api\/v1\/contract-interfaces/, methods: ["POST", "DELETE"], scope: "wallet:write" },
 ];
 
 function checkScope(permissions: string[], method: string, url: string): boolean {

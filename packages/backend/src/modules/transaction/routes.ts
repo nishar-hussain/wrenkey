@@ -28,6 +28,7 @@ function parseTxStatus(txStatus: string): "PENDING" | "SIGNED" | "BROADCAST" | "
 export async function transactionRoutes(app: FastifyInstance) {
   app.post("/transactions/sign", { preHandler: [authMiddleware] }, async (request, reply) => {
     let lockId: string | null = null;
+    let lockedAddress: string | null = null;
 
     try {
       const { walletId, chain: chainName, to, value, gasLimit, maxFeePerGas, maxPriorityFeePerGas, data, speed, sponsored } = request.body as {
@@ -40,6 +41,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       const isSponsored = sponsored === true && config.gasSponsorship.enabled;
       if (isSponsored) {
         const sponsoredValue = parseFloat(value);
+        if (isNaN(sponsoredValue)) throw new ValidationError("Invalid transaction value");
         if (sponsoredValue > parseFloat(config.gasSponsorship.maxSponsorAmount)) {
           throw new ValidationError(`Sponsored amount exceeds maximum ${config.gasSponsorship.maxSponsorAmount}`);
         }
@@ -148,6 +150,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       }
 
       lockId = await acquireNonceLock(targetAccount.address);
+      const lockedAddress = targetAccount.address;
       const nonce = await getNextNonce(targetAccount.address, chainInfo.rpcUrl);
 
       const seed = decryptSeedFromStorage(wallet.encryptedSeed);
@@ -172,8 +175,10 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       await createAuditLog(request.orgId, "TX_SIGN", { transactionId: transaction.id, walletId, to, value, nonce, riskScore: risk.score }, request.userId, request);
 
-      if (lockId) await releaseNonceLock(targetAccount.address, lockId);
-      lockId = null;
+      if (lockId) {
+        await releaseNonceLock(lockedAddress, lockId);
+        lockId = null;
+      }
 
       try {
         const { hash } = await broadcastTransaction(signedTx, chainInfo.rpcUrl);
@@ -201,11 +206,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       return sendError(reply, err);
     } finally {
       if (lockId) {
-        const { walletId } = request.body as any;
-        const wallet = walletId ? await prisma.wallet.findFirst({ where: { id: walletId }, include: { accounts: true } }).catch(() => null) : null;
-        if (wallet?.accounts?.[0]?.address) {
-          await releaseNonceLock(wallet.accounts[0].address, lockId).catch(() => {});
-        }
+        await releaseNonceLock(lockedAddress, lockId).catch(() => {});
       }
     }
   });
@@ -314,6 +315,7 @@ export async function transactionRoutes(app: FastifyInstance) {
   });
 
   app.post("/transactions/:id/retry", { preHandler: [authMiddleware] }, async (request, reply) => {
+    let lockId: string | null = null;
     try {
       const { id } = request.params as { id: string };
       const tx = await prisma.transaction.findFirst({ where: { id, orgId: request.orgId } });
@@ -331,6 +333,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       if (wallet.status === "FROZEN") throw new ForbiddenError("Wallet is frozen");
 
       const seed = decryptSeedFromStorage(wallet.encryptedSeed);
+      lockId = await acquireNonceLock(account.address);
       const nonce = await getNextNonce(account.address, account.chain.rpcUrl);
 
       const txData: ethers.TransactionRequest = {
@@ -369,10 +372,13 @@ export async function transactionRoutes(app: FastifyInstance) {
       }
     } catch (err) {
       return sendError(reply, err);
+    } finally {
+      if (lockId) await releaseNonceLock(account.address, lockId).catch(() => {});
     }
   });
 
   app.post("/transactions/:id/cancel", { preHandler: [authMiddleware] }, async (request, reply) => {
+    let lockId: string | null = null;
     try {
       const { id } = request.params as { id: string };
       const tx = await prisma.transaction.findFirst({ where: { id, orgId: request.orgId } });
@@ -386,12 +392,14 @@ export async function transactionRoutes(app: FastifyInstance) {
       if (!wallet) throw new NotFoundError("Wallet");
 
       const seed = decryptSeedFromStorage(wallet.encryptedSeed);
+      lockId = await acquireNonceLock(account.address);
+      const cancelNonce = tx.nonce || await getNextNonce(account.address, account.chain.rpcUrl);
 
       const cancelTx: ethers.TransactionRequest = {
         to: account.address,
         value: 0n,
         chainId: account.chain.chainId,
-        nonce: tx.nonce || await getNextNonce(account.address, account.chain.rpcUrl),
+        nonce: cancelNonce,
       };
 
       const signedCancel = await signTransaction(seed, cancelTx);
@@ -418,10 +426,13 @@ export async function transactionRoutes(app: FastifyInstance) {
       }
     } catch (err) {
       return sendError(reply, err);
+    } finally {
+      if (lockId) await releaseNonceLock(account.address, lockId).catch(() => {});
     }
   });
 
   app.post("/transactions/:id/speed-up", { preHandler: [authMiddleware] }, async (request, reply) => {
+    let lockId: string | null = null;
     try {
       const { id } = request.params as { id: string };
       const { gasMultiplier } = request.body as { gasMultiplier?: number };

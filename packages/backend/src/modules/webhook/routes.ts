@@ -183,12 +183,18 @@ export async function webhookRoutes(app: FastifyInstance) {
   app.get("/webhooks", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const { search } = request.query as { search?: string };
+
+      const where: any = { orgId: request.orgId };
+      if (search) {
+        where.url = { contains: search, mode: "insensitive" };
+      }
       const [data, total] = await Promise.all([
         prisma.webhook.findMany({
-          where: { orgId: request.orgId }, orderBy: { createdAt: "desc" }, take: limit, skip: offset,
+          where, orderBy: { createdAt: "desc" }, take: limit, skip: offset,
           select: { id: true, url: true, events: true, active: true, createdAt: true },
         }),
-        prisma.webhook.count({ where: { orgId: request.orgId } }),
+        prisma.webhook.count({ where }),
       ]);
       return sendSuccess(reply, { data, total, limit, offset });
     } catch (err) {
@@ -199,7 +205,8 @@ export async function webhookRoutes(app: FastifyInstance) {
   app.delete("/webhooks/:id", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      await prisma.webhook.deleteMany({ where: { id, orgId: request.orgId } });
+      const result = await prisma.webhook.deleteMany({ where: { id, orgId: request.orgId } });
+      if (result.count === 0) throw new NotFoundError("Webhook");
       await createAuditLog(request.orgId, "WEBHOOK_DELETE", { webhookId: id }, request.userId, request);
       return sendSuccess(reply, { message: "Webhook deleted" });
     } catch (err) {

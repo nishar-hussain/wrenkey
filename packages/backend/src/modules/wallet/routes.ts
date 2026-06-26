@@ -162,7 +162,8 @@ export async function walletRoutes(app: FastifyInstance) {
   app.delete("/wallets/:id", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      await prisma.wallet.deleteMany({ where: { id, orgId: request.orgId } });
+      const result = await prisma.wallet.deleteMany({ where: { id, orgId: request.orgId } });
+      if (result.count === 0) throw new NotFoundError("Wallet");
       await createAuditLog(request.orgId, "WALLET_DELETE", { walletId: id }, request.userId, request);
       triggerWebhookEvents(request.orgId, "wallet.deleted", { walletId: id });
       return sendSuccess(reply, { message: "Wallet deleted" });

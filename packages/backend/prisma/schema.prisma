@@ -8,11 +8,14 @@ datasource db {
 }
 
 model Organization {
-  id        String   @id @default(uuid())
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  name        String
+  parentOrgId String?  @map("parent_org_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
+  parent         Organization?  @relation("OrgHierarchy", fields: [parentOrgId], references: [id])
+  children       Organization[] @relation("OrgHierarchy")
   users          User[]
   wallets        Wallet[]
   policies       Policy[]
@@ -23,6 +26,10 @@ model Organization {
   auditLogs      AuditLog[]
   spendingLimits SpendingLimit[]
   approvalRequests ApprovalRequest[]
+  tags           Tag[]
+  config         OrgConfig?
+  invoices       Invoice[]
+  contractInterfaces ContractInterface[]
 
   @@map("organizations")
 }
@@ -48,6 +55,9 @@ model User {
 
   @@unique([orgId, email])
   @@unique([orgId, phone])
+  @@index([email])
+  @@index([phone])
+  @@index([orgId, role])
   @@map("users")
 }
 
@@ -82,7 +92,7 @@ model ApiKey {
   id          String    @id @default(uuid())
   orgId       String    @map("org_id")
   name        String
-  keyHash     String    @map("key_hash")
+  keyHash     String    @unique @map("key_hash")
   keyPrefix   String    @map("key_prefix")
   permissions String[]  @default([])
   allowedIps  String[]  @default([]) @map("allowed_ips")
@@ -108,10 +118,14 @@ model Wallet {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   org      Organization     @relation(fields: [orgId], references: [id])
-  user     User?            @relation(fields: [userId], references: [id])
+  user   User?        @relation(fields: [userId], references: [id])
   accounts WalletAccount[]
   spendingLimits SpendingLimit[]
 
+  @@index([orgId])
+  @@index([userId])
+  @@index([ownerType, ownerId])
+  @@index([status])
   @@map("wallets")
 }
 
@@ -147,6 +161,9 @@ model WalletAccount {
   chain        Chain         @relation(fields: [chainId], references: [id])
   transactions Transaction[]
 
+  @@index([walletId])
+  @@index([chainId])
+  @@index([address])
   @@map("wallet_accounts")
 }
 
@@ -213,6 +230,11 @@ model Transaction {
 
   account WalletAccount @relation(fields: [accountId], references: [id])
 
+  @@index([orgId, createdAt])
+  @@index([accountId])
+  @@index([status])
+  @@index([txHash])
+  @@index([replacementFor])
   @@map("transactions")
 }
 
@@ -230,6 +252,7 @@ model Policy {
 
   org Organization @relation(fields: [orgId], references: [id])
 
+  @@index([orgId, active, priority])
   @@map("policies")
 }
 
@@ -304,4 +327,66 @@ model WebhookDelivery {
   @@index([status, nextAttemptAt])
   @@index([webhookId])
   @@map("webhook_deliveries")
+}
+
+model Tag {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  name      String
+  type      String   @default("user")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, name, type])
+  @@map("tags")
+}
+
+model OrgConfig {
+  id        String   @id @default(uuid())
+  orgId     String   @unique @map("org_id")
+  config    Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@map("org_configs")
+}
+
+model Invoice {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  number    String
+  period    String
+  plan      String
+  amount    String
+  status    String   @default("pending")
+  dueDate   DateTime @map("due_date")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, period])
+  @@unique([number])
+  @@index([orgId])
+  @@map("invoices")
+}
+
+model ContractInterface {
+  id            String   @id @default(uuid())
+  orgId         String   @map("org_id")
+  name          String
+  notes         String   @default("")
+  address       String   @default("")
+  interfaceType String   @default("custom") @map("interface_type")
+  abi           Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId])
+  @@map("contract_interfaces")
 }

@@ -84,7 +84,7 @@ export async function checkVelocity(walletId: string): Promise<{ exceeded: boole
       count,
     };
   } catch {
-    return { exceeded: false, count: 0 };
+    return { exceeded: true, count: 0, reason: "Redis unavailable — velocity check could not be performed" };
   }
 }
 

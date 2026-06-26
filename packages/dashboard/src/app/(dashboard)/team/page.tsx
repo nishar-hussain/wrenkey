@@ -79,7 +79,7 @@ export default function TeamPage() {
       const serviceUsers = agentList.length;
       setStats({ users: totalUsers, rootUsers, serviceUsers });
       setTotal(totalUsers);
-    } catch {} finally { setLoading(false); }
+    } catch { addToast("Failed to load data", "error"); } finally { setLoading(false); }
   }, [token, limit, offset, search]);
 
   useEffect(() => { if (!isAuthenticated) { router.push("/login"); return; } fetchMembers(); }, [isAuthenticated, fetchMembers, router]);

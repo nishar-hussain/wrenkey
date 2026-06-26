@@ -46,7 +46,9 @@ export function sendError(reply: FastifyReply, error: unknown) {
     });
   }
   const err = error as any;
-  console.error("[sendError] Unhandled error:", err?.message || err, err?.stack || "");
+  if (process.env.NODE_ENV !== "production") {
+    console.error("[sendError] Unhandled error:", err?.message || err, err?.stack || "");
+  }
   return reply.status(500).send({
     error: { code: "INTERNAL_ERROR", message: err?.message || "Internal server error" },
   });

@@ -77,43 +77,99 @@ export default function ConfigurationPage() {
     async function load() {
       setLoading(true);
       try {
-        const [apikeys]: any[] = await Promise.all([
+        const [cfgRes, apikeysRes]: any[] = await Promise.all([
+          apiFetch<any>("/configuration", { token: token! }),
           apiFetch<any>("/api-keys?limit=50", { token: token! }),
         ]);
-        if (apikeys?.data?.length > 0) {
-          setConfigId(apikeys.data[0].id?.slice(0, 4) + "····" + apikeys.data[0].id?.slice(-4) || configId);
+        const c = cfgRes || {};
+        setSessionExpiry(String(c.sessionExpiry || 900));
+        setAllowedOrigins(c.allowedOrigins || "");
+        setOtpEnabled(c.otpEnabled ?? true);
+        setOtpLength(String(c.otpLength || 6));
+        setOtpType(c.otpType || "alphanumeric");
+        setOtpEmail(c.otpEmail ?? true);
+        setOtpSms(c.otpSms ?? false);
+        setAppName(c.appName || org?.name || "");
+        setAppLogo(c.appLogo || "");
+        setRequireTokenLookup(c.requireTokenLookup ?? false);
+        setSocialOAuth(c.socialOAuth ?? true);
+        setGoogleLogin(c.googleLogin ?? true);
+        setAppleLogin(c.appleLogin ?? false);
+        setXLogin(c.xLogin ?? false);
+        setDiscordLogin(c.discordLogin ?? false);
+        setRedirectUrl(c.redirectUrl || "https://example.com/auth/callback");
+        setPasskeyAuth(c.passkeyAuth ?? true);
+        setWalletAuth(c.walletAuth ?? true);
+        setAuthProxyEnabled(c.authProxyEnabled ?? false);
+        setOauthCredentials(c.oauthCredentials || []);
+        setOnRampProviders(c.onRampProviders || []);
+        if (apikeysRes?.data?.length > 0) {
+          setConfigId(apikeysRes.data[0].id?.slice(0, 4) + "····" + apikeysRes.data[0].id?.slice(-4));
         }
-      } catch {} finally { setLoading(false); }
+      } catch { addToast("Failed to load data", "error"); } finally { setLoading(false); }
     }
     load();
-  }, [isAuthenticated, router, token]);
+  }, [isAuthenticated, router, token, org]);
 
   const handleSave = async () => {
-    setSaved(true);
-    addToast("Configuration saved", "success");
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      await apiFetch("/configuration", {
+        method: "PATCH",
+        body: JSON.stringify({
+          sessionExpiry: parseInt(sessionExpiry),
+          allowedOrigins,
+          otpEnabled, otpLength: parseInt(otpLength), otpType, otpEmail, otpSms,
+          appName, appLogo, requireTokenLookup,
+          socialOAuth, googleLogin, appleLogin, xLogin, discordLogin, redirectUrl,
+          passkeyAuth, walletAuth, authProxyEnabled,
+          oauthCredentials, onRampProviders,
+        }),
+        token: token!,
+      });
+      setSaved(true);
+      addToast("Configuration saved", "success");
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      addToast(err.message || "Failed to save", "error");
+    }
   };
 
-  const addOAuthCredential = () => {
+  const addOAuthCredential = async () => {
     if (!newOAuthProvider || !newOAuthClientId) return;
-    setOauthCredentials([...oauthCredentials, { provider: newOAuthProvider, clientId: newOAuthClientId, credentialId: `cred_${Date.now().toString(36)}` }]);
-    setNewOAuthProvider(""); setNewOAuthClientId(""); setShowAddOAuth(false);
-    addToast("OAuth credential added", "success");
+    const updated = [...oauthCredentials, { provider: newOAuthProvider, clientId: newOAuthClientId, clientSecret: newOAuthClientSecret, credentialId: `cred_${Date.now().toString(36)}` }];
+    try {
+      await apiFetch("/configuration", { method: "PATCH", body: JSON.stringify({ oauthCredentials: updated }), token: token! });
+      setOauthCredentials(updated);
+      addToast("OAuth credential added", "success");
+    } catch (err: any) { addToast(err.message || "Failed", "error"); }
+    setNewOAuthProvider("google"); setNewOAuthClientId(""); setNewOAuthClientSecret(""); setShowAddOAuth(false);
   };
 
-  const removeOAuthCredential = (id: string) => {
-    setOauthCredentials(oauthCredentials.filter(c => c.credentialId !== id));
+  const removeOAuthCredential = async (id: string) => {
+    const updated = oauthCredentials.filter(c => c.credentialId !== id);
+    try {
+      await apiFetch("/configuration", { method: "PATCH", body: JSON.stringify({ oauthCredentials: updated }), token: token! });
+      setOauthCredentials(updated);
+    } catch (err: any) { addToast(err.message || "Failed", "error"); }
   };
 
-  const addOnRampProvider = () => {
+  const addOnRampProvider = async () => {
     if (!newRampProvider || !newRampKey) return;
-    setOnRampProviders([...onRampProviders, { provider: newRampProvider, publishableKey: newRampKey, credentialId: `ramp_${Date.now().toString(36)}`, environment: newRampEnv }]);
+    const updated = [...onRampProviders, { provider: newRampProvider, publishableKey: newRampKey, secretKey: newRampSecret, projectId: newRampProjectId, privateKey: newRampPrivateKey, environment: newRampEnv, credentialId: `ramp_${Date.now().toString(36)}` }];
+    try {
+      await apiFetch("/configuration", { method: "PATCH", body: JSON.stringify({ onRampProviders: updated }), token: token! });
+      setOnRampProviders(updated);
+      addToast("On-ramp provider added", "success");
+    } catch (err: any) { addToast(err.message || "Failed", "error"); }
     setNewRampProvider("coinbase"); setNewRampKey(""); setNewRampSecret(""); setNewRampProjectId(""); setNewRampPrivateKey(""); setNewRampEnv("production"); setShowAddOnRamp(false);
-    addToast("On-ramp provider added", "success");
   };
 
-  const removeOnRampProvider = (id: string) => {
-    setOnRampProviders(onRampProviders.filter(p => p.credentialId !== id));
+  const removeOnRampProvider = async (id: string) => {
+    const updated = onRampProviders.filter(p => p.credentialId !== id);
+    try {
+      await apiFetch("/configuration", { method: "PATCH", body: JSON.stringify({ onRampProviders: updated }), token: token! });
+      setOnRampProviders(updated);
+    } catch (err: any) { addToast(err.message || "Failed", "error"); }
   };
 
   if (!isAuthenticated) return null;

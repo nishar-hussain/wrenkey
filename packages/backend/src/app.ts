@@ -19,6 +19,11 @@ import { webhookRoutes } from "./modules/webhook/routes.js";
 import { chainRoutes } from "./modules/chain/routes.js";
 import { spendingLimitRoutes } from "./modules/spending-limit/routes.js";
 import { approvalRoutes } from "./modules/approval/routes.js";
+import { tagRoutes } from "./modules/tag/routes.js";
+import { configRoutes } from "./modules/config/routes.js";
+import { billingRoutes } from "./modules/billing/routes.js";
+import { subOrgRoutes } from "./modules/sub-org/routes.js";
+import { contractInterfaceRoutes } from "./modules/contract-interface/routes.js";
 
 export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
   const app = Fastify({ logger: false, bodyLimit: 1048576 });
@@ -141,6 +146,11 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
     await api.register(chainRoutes);
     await api.register(spendingLimitRoutes);
     await api.register(approvalRoutes);
+    await api.register(tagRoutes);
+    await api.register(configRoutes);
+    await api.register(billingRoutes);
+    await api.register(subOrgRoutes);
+    await api.register(contractInterfaceRoutes);
   }, { prefix: "/api/v1" });
 
   return app;

@@ -17,6 +17,12 @@ import { parsePagination } from "../../utils/pagination.js";
 import { signToken } from "../../utils/jwt.js";
 import { hashSha256, generateRandomToken } from "../../utils/crypto.js";
 
+function validateEmail(email: string) {
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new ValidationError("Invalid email format");
+  }
+}
+
 const OTP_PREFIX = "otp:";
 const RATELIMIT_PREFIX = "ratelimit:otp:";
 const RP_NAME = "WranKey";
@@ -488,10 +494,11 @@ export async function authRoutes(app: FastifyInstance) {
       const credentialId = regInfo?.credentialId;
       const credentialPublicKey = regInfo?.credentialPublicKey;
       const counter = regInfo?.counter;
+      if (!credentialPublicKey) throw new ValidationError("Missing credentialPublicKey in WebAuthn response");
       await prisma.authenticator.create({
         data: {
           userId, type: "PASSKEY", credentialId,
-          credentialData: { publicKey: Buffer.from(credentialPublicKey!).toString("base64"), counter },
+          credentialData: { publicKey: Buffer.from(credentialPublicKey).toString("base64"), counter },
           verified: true,
         },
       });
@@ -504,9 +511,9 @@ export async function authRoutes(app: FastifyInstance) {
         data: { userId, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
       });
 
-      await createAuditLog(user!.orgId, "LOGIN", { method: "PASSKEY" }, userId, request);
-      triggerWebhookEvents(user!.orgId, "user.login", { userId, method: "PASSKEY" });
-      return sendSuccess(reply, { sessionToken: token, user: { id: user!.id, email: user!.email, role: user!.role }, expiresAt: session.expiresAt }, 201);
+      await createAuditLog(user.orgId, "LOGIN", { method: "PASSKEY" }, userId, request);
+      triggerWebhookEvents(user.orgId, "user.login", { userId, method: "PASSKEY" });
+      return sendSuccess(reply, { sessionToken: token, user: { id: user.id, email: user.email, role: user.role }, expiresAt: session.expiresAt }, 201);
     } catch (err) {
       return sendError(reply, err);
     }
@@ -556,14 +563,15 @@ export async function authRoutes(app: FastifyInstance) {
       await redis.del(`webauthn:challenge:${userId}`);
 
       const user = await prisma.user.findUnique({ where: { id: userId } });
-      const token = signToken({ sub: user!.id, orgId: user!.orgId, role: user!.role });
+      if (!user) throw new ValidationError("User not found");
+      const token = signToken({ sub: user.id, orgId: user.orgId, role: user.role });
       const session = await prisma.session.create({
         data: { userId, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
       });
 
-      await createAuditLog(user!.orgId, "LOGIN", { method: "PASSKEY" }, userId, request);
-      triggerWebhookEvents(user!.orgId, "user.login", { userId, method: "PASSKEY" });
-      return sendSuccess(reply, { sessionToken: token, user: { id: user!.id, email: user!.email, role: user!.role }, expiresAt: session.expiresAt }, 200);
+      await createAuditLog(user.orgId, "LOGIN", { method: "PASSKEY" }, userId, request);
+      triggerWebhookEvents(user.orgId, "user.login", { userId, method: "PASSKEY" });
+      return sendSuccess(reply, { sessionToken: token, user: { id: user.id, email: user.email, role: user.role }, expiresAt: session.expiresAt }, 200);
     } catch (err) {
       return sendError(reply, err);
     }
@@ -832,7 +840,9 @@ export async function authRoutes(app: FastifyInstance) {
           const payload = verifyToken(authHeader.slice(7));
           await prisma.session.deleteMany({ where: { token: authHeader.slice(7) } });
           await createAuditLog(payload.orgId, "LOGOUT", {}, payload.sub, request);
-        } catch {}
+        } catch (e) {
+          app.log?.warn?.("Logout: session cleanup failed, continuing", (e as any)?.message);
+        }
       }
       return sendSuccess(reply, { message: "Logged out" });
     } catch (err) {
@@ -1086,6 +1096,7 @@ export async function authRoutes(app: FastifyInstance) {
       const credentialId = regInfo?.credentialId;
       const credentialPublicKey = regInfo?.credentialPublicKey;
       const counter = regInfo?.counter;
+      if (!credentialPublicKey) throw new ValidationError("Missing credentialPublicKey in WebAuthn response");
 
       // Atomic creation of Org, User, and Authenticator records
       const result = await prisma.$transaction(async (tx) => {
@@ -1105,7 +1116,7 @@ export async function authRoutes(app: FastifyInstance) {
             type: "PASSKEY",
             credentialId,
             credentialData: {
-              publicKey: Buffer.from(credentialPublicKey!).toString("base64"),
+              publicKey: Buffer.from(credentialPublicKey).toString("base64"),
               counter,
             },
             verified: true,

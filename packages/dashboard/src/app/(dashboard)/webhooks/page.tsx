@@ -74,7 +74,7 @@ export default function WebhooksPage() {
       const res: any = await apiFetch(`/webhooks?limit=${limit}&offset=${offset}`, { token });
       setWebhooks((res.data || []).map((w: any) => ({ ...w, name: w.url?.replace(/https?:\/\//, "").split("/")[0] || "Webhook" })));
       setTotal(res.total || 0);
-    } catch { } finally { setLoading(false); }
+    } catch { addToast("Failed to load data", "error"); } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => { if (!isAuthenticated) { router.push("/login"); return; } fetchData(); }, [isAuthenticated, fetchData, router]);

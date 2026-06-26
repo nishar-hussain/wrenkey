@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, API_BASE } from "@/lib/api";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,14 +51,14 @@ export default function SettingsPage() {
       try {
         setOrgName(org?.name || "");
         const [healthRes, walletsRes, usersRes] = await Promise.all([
-          fetch("http://localhost:3001/health/services").then(r => r.json()).catch(() => ({ services: {} })),
+          fetch(`${API_BASE}/health/services`).then(r => r.json()).catch(() => ({ services: {} })),
           apiFetch<any>("/wallets?limit=1", { token: token! }),
           apiFetch<any>("/users?limit=1", { token: token! }),
         ]);
         setHealth(healthRes.services || {});
         setWalletCount(walletsRes.total || 0);
         setUserCount(usersRes.total || 0);
-      } catch {} finally { setLoading(false); }
+      } catch { addToast("Failed to load data", "error"); } finally { setLoading(false); }
     }
     load();
   }, [isAuthenticated, router, user, org, token]);

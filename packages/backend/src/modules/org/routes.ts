@@ -154,16 +154,56 @@ export async function orgRoutes(app: FastifyInstance) {
   });
 
   // Audit Logs
+  app.get("/activities", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+
+      const [logs, users, approvals] = await Promise.all([
+        prisma.auditLog.findMany({ where: { orgId: request.orgId }, orderBy: { createdAt: "desc" }, take: limit, skip: offset, select: { id: true, action: true, details: true, createdAt: true, userId: true } }),
+        prisma.user.findMany({ where: { orgId: request.orgId }, select: { id: true, email: true, role: true } }),
+        prisma.approvalRequest.findMany({ where: { orgId: request.orgId }, select: { id: true, status: true } }),
+      ]);
+
+      const userMap = new Map(users.map(u => [u.id, u]));
+      const pendingApprovals = approvals.filter(a => a.status === "PENDING").length;
+
+      const data = logs.map(log => {
+        const u = log.userId ? userMap.get(log.userId) : null;
+        return {
+          id: log.id,
+          type: (log.action || "").replace(/_/g, " ").toLowerCase(),
+          action: log.action,
+          initiator: u?.role === "ORG_ADMIN" ? "Root user" : u?.email?.split("@")[0] || "System",
+          initiatorEmail: u?.email || "",
+          approvals: 1,
+          denials: 0,
+          createdAt: log.createdAt,
+          updatedAt: log.createdAt,
+          status: "Completed",
+          details: log.details,
+        };
+      });
+
+      const total = await prisma.auditLog.count({ where: { orgId: request.orgId } });
+
+      return sendSuccess(reply, { data, total, pendingCount: pendingApprovals, limit, offset });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
   app.get("/audit-logs", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const { action, resource } = request.query as { action?: string; resource?: string };
+
+      const where: any = { orgId: request.orgId };
+      if (action) where.action = action;
+      if (resource) where.resource = resource;
+
       const [data, total] = await Promise.all([
-        prisma.auditLog.findMany({
-          where: { orgId: request.orgId },
-          orderBy: { createdAt: "desc" }, take: limit, skip: offset,
-          select: { id: true, action: true, resource: true, details: true, ip: true, userAgent: true, createdAt: true, userId: true },
-        }),
-        prisma.auditLog.count({ where: { orgId: request.orgId } }),
+        prisma.auditLog.findMany({ where, orderBy: { createdAt: "desc" }, take: limit, skip: offset, select: { id: true, action: true, resource: true, details: true, ip: true, userAgent: true, createdAt: true, userId: true } }),
+        prisma.auditLog.count({ where }),
       ]);
       return sendSuccess(reply, { data, total, limit, offset });
     } catch (err) {

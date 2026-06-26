@@ -65,15 +65,22 @@ export default function PoliciesPage() {
       const res: any = await apiFetch(`/policies?limit=${limit}&offset=${offset}`, { token });
       setPolicies(res.data || []);
       setTotal(res.total || 0);
-    } catch {} finally { setLoading(false); }
+    } catch { addToast("Failed to load data", "error"); } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {
     if (!isAuthenticated) { router.push("/login"); return; }
     fetchPolicies();
-    const saved = localStorage.getItem("wrankey_contract_interfaces");
-    if (saved) setInterfaces(JSON.parse(saved));
+    fetchInterfaces();
   }, [isAuthenticated, fetchPolicies, router]);
+
+  const fetchInterfaces = async () => {
+    if (!token) return;
+    try {
+      const res: any = await apiFetch("/contract-interfaces?limit=50", { token });
+      setInterfaces(res.data || []);
+    } catch { addToast("Failed to load data", "error"); }
+  };
 
   const createPolicy = async () => {
     if (!policyName.trim()) { addToast("Name required", "error"); return; }
@@ -94,32 +101,32 @@ export default function PoliciesPage() {
     } catch (err: any) { addToast(err.message || "Failed", "error"); }
   };
 
-  const createInterface = () => {
+  const createInterface = async () => {
     if (!ifaceName.trim()) { addToast("Name required", "error"); return; }
     setIfaceLoading(true);
-    const newIface: ContractInterface = {
-      id: `iface_${Date.now().toString(36)}`,
-      name: ifaceName.trim(),
-      address: ifaceAddress.trim(),
-      notes: ifaceNotes.trim(),
-      interfaceType: ifaceType,
-      abi: ifaceAbi.trim(),
-      createdAt: new Date().toISOString(),
-    };
-    const updated = [newIface, ...interfaces];
-    setInterfaces(updated);
-    localStorage.setItem("wrankey_contract_interfaces", JSON.stringify(updated));
-    setShowNewInterface(false);
-    setIfaceName(""); setIfaceNotes(""); setIfaceAddress(""); setIfaceAbi("");
-    addToast("Interface added", "success");
-    setIfaceLoading(false);
+    try {
+      await apiFetch("/contract-interfaces", {
+        method: "POST",
+        body: JSON.stringify({
+          name: ifaceName.trim(), notes: ifaceNotes.trim(),
+          address: ifaceAddress.trim(), interfaceType: ifaceType,
+          abi: ifaceAbi.trim() ? ifaceAbi.trim() : undefined,
+        }),
+        token: token!,
+      });
+      setShowNewInterface(false);
+      setIfaceName(""); setIfaceNotes(""); setIfaceAddress(""); setIfaceAbi("");
+      addToast("Interface added", "success");
+      fetchInterfaces();
+    } catch (err: any) { addToast(err.message || "Failed", "error"); } finally { setIfaceLoading(false); }
   };
 
-  const deleteInterface = (id: string) => {
-    const updated = interfaces.filter(i => i.id !== id);
-    setInterfaces(updated);
-    localStorage.setItem("wrankey_contract_interfaces", JSON.stringify(updated));
-    addToast("Interface deleted", "success");
+  const deleteInterface = async (id: string) => {
+    try {
+      await apiFetch(`/contract-interfaces/${id}`, { method: "DELETE", token: token! });
+      addToast("Interface deleted", "success");
+      fetchInterfaces();
+    } catch (err: any) { addToast(err.message || "Failed", "error"); }
   };
 
   if (!isAuthenticated) return null;

@@ -1,12 +1,13 @@
 import prisma from "../db.js";
 import { getRedis } from "../redis.js";
+import { randomUUID } from "crypto";
 
 const NONCE_LOCK_PREFIX = "nonce_lock:";
 
 export async function acquireNonceLock(address: string, timeoutMs = 15000): Promise<string> {
   const redis = getRedis();
   const lockKey = `${NONCE_LOCK_PREFIX}${address}`;
-  const lockId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const lockId = `${Date.now()}-${randomUUID()}`;
 
   const acquired = await redis.set(lockKey, lockId, "PX", timeoutMs, "NX");
   if (!acquired) {

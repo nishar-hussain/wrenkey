@@ -45,7 +45,7 @@ export default function CompanyWalletsPage() {
     try {
       const res: any = await apiFetch(`/wallets?limit=${limit}&offset=${offset}&ownerType=ORG`, { token });
       setWallets(res.data); setTotal(res.total);
-    } catch { setWallets([]); } finally { setLoading(false); }
+    } catch { addToast("Failed to load data", "error"); setWallets([]); } finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => { if (!isAuthenticated) { router.push("/login"); return; } fetchWallets(); }, [isAuthenticated, fetchWallets, router]);
