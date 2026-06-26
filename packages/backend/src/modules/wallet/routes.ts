@@ -119,10 +119,11 @@ export async function walletRoutes(app: FastifyInstance) {
   app.get("/wallets", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
-      const { status, search } = request.query as { status?: string; search?: string };
+      const { status, search, ownerType } = request.query as { status?: string; search?: string; ownerType?: string };
 
       const where: any = { orgId: request.orgId };
       if (status) where.status = status;
+      if (ownerType) where.ownerType = ownerType;
       if (search) {
         where.OR = [
           { name: { contains: search, mode: "insensitive" } },

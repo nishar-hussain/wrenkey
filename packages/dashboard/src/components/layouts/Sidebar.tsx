@@ -21,6 +21,7 @@ import {
   BarChart3,
   CreditCard,
   Activity,
+  Settings,
   Menu,
   X,
 } from "lucide-react";
@@ -42,6 +43,7 @@ const analyticsNav = [
 
 const secondaryNav = [
   { href: "/profile", label: "My Profile", icon: User },
+  { href: "/settings", label: "Settings", icon: Settings },
   { href: "/team", label: "Team", icon: UsersRound },
   { href: "/webhooks", label: "Webhooks", icon: Webhook },
   { href: "/api-keys", label: "API Keys", icon: Key },

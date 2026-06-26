@@ -38,8 +38,10 @@ export default function WalletsPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [ownerFilter, setOwnerFilter] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
+  const [createOwnerType, setCreateOwnerType] = useState<"USER" | "ORG">("USER");
   const [newName, setNewName] = useState("");
   const [newChain, setNewChain] = useState("sepolia");
   const [newTags, setNewTags] = useState("");
@@ -58,6 +60,7 @@ export default function WalletsPage() {
     try {
       let qs = `/wallets?limit=${limit}&offset=${offset}`;
       if (statusFilter) qs += `&status=${statusFilter}`;
+      if (ownerFilter) qs += `&ownerType=${ownerFilter}`;
       if (search) qs += `&search=${encodeURIComponent(search)}`;
       const res: any = await apiFetch(qs, { token });
       setWallets(res.data);
@@ -69,7 +72,7 @@ export default function WalletsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, limit, offset, search, statusFilter]);
+  }, [token, limit, offset, search, statusFilter, ownerFilter]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -87,7 +90,7 @@ export default function WalletsPage() {
         method: "POST",
         body: JSON.stringify({
           name: newName,
-          ownerType: "USER",
+          ownerType: createOwnerType,
           chain: newChain,
           tags: newTags ? newTags.split(",").map((s) => s.trim()).filter(Boolean) : [],
         }),
@@ -174,7 +177,19 @@ export default function WalletsPage() {
           <span className="text-xs text-slate-400">—</span>
         ),
     },
-    { key: "ownerType", header: "Owner" },
+    {
+      key: "ownerType",
+      header: "Owner",
+      render: (w: Wallet) => (
+        <span className={`inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full border ${
+          w.ownerType === "ORG"
+            ? "bg-violet-50 text-violet-700 border-violet-100 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-900/30"
+            : "bg-slate-50 text-slate-600 border-slate-100 dark:bg-slate-950/30 dark:text-slate-400 dark:border-slate-900/30"
+        }`}>
+          {w.ownerType === "ORG" ? "Company" : "Personal"}
+        </span>
+      ),
+    },
     {
       key: "address",
       header: "Address",
@@ -225,7 +240,10 @@ export default function WalletsPage() {
           <Button variant="secondary" onClick={() => { setShowImport(true); setImportName(""); setImportMnemonic(""); setImportChain("sepolia"); }}>
             Import
           </Button>
-          <Button onClick={() => { setShowCreate(true); setNewName(""); setNewChain("sepolia"); setNewTags(""); setCreatedRecoveryPhrase(""); }}>
+          <Button variant="secondary" onClick={() => { setShowCreate(true); setNewName(""); setNewChain("sepolia"); setNewTags(""); setCreatedRecoveryPhrase(""); setCreateOwnerType("ORG"); }}>
+            + Company Wallet
+          </Button>
+          <Button onClick={() => { setShowCreate(true); setNewName(""); setNewChain("sepolia"); setNewTags(""); setCreatedRecoveryPhrase(""); setCreateOwnerType("USER"); }}>
             Create Wallet
           </Button>
         </div>
@@ -246,6 +264,15 @@ export default function WalletsPage() {
           <option value="">All Statuses</option>
           <option value="ACTIVE">Active</option>
           <option value="FROZEN">Frozen</option>
+        </select>
+        <select
+          value={ownerFilter}
+          onChange={(e) => { setOwnerFilter(e.target.value); setOffset(0); }}
+          className="border rounded-md px-3 py-2 text-sm bg-white"
+        >
+          <option value="">All Wallets</option>
+          <option value="USER">Personal</option>
+          <option value="ORG">Company</option>
         </select>
         <Button variant="secondary" size="sm" onClick={fetchWallets}>
           Refresh
