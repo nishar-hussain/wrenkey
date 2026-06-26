@@ -9,229 +9,222 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
-import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { Plus, Search, Copy, Trash2 } from "lucide-react";
 
 interface Policy {
   id: string;
   name: string;
   effect: string;
-  consensus: string;
-  priority: number;
-  active: boolean;
   createdAt: string;
 }
 
-const CONDITION_TYPES = ["LESS_THAN", "GREATER_THAN", "EQUAL", "INCLUDE", "NOT_INCLUDE", "REGEX_MATCH", "BEFORE", "AFTER", "WINDOW"];
-const FIELDS = [
-  { value: "params.value", label: "Amount (value)" },
-  { value: "params.to", label: "Recipient (to)" },
-  { value: "params.chain", label: "Chain" },
-  { value: "params.gasLimit", label: "Gas Limit" },
-  { value: "user.role", label: "User Role" },
-];
+interface ContractInterface {
+  id: string;
+  name: string;
+  address: string;
+  notes: string;
+  interfaceType: string;
+  abi: string;
+  createdAt: string;
+}
 
 export default function PoliciesPage() {
   const router = useRouter();
   const { isAuthenticated, token } = useAuth();
   const { addToast } = useToast();
+  const [activeTab, setActiveTab] = useState<"policies" | "interfaces">("policies");
   const [policies, setPolicies] = useState<Policy[]>([]);
+  const [interfaces, setInterfaces] = useState<ContractInterface[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [limit, setLimit] = useState(20);
   const [offset, setOffset] = useState(0);
-  const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ name: "", effect: "EFFECT_ALLOW", consensus: "ANY", priority: 0 });
-  const [conditions, setConditions] = useState<Array<{ type: string; field: string; value: string }>>([
-    { type: "LESS_THAN", field: "params.value", value: "1000000" },
-  ]);
+  const [search, setSearch] = useState("");
+
+  const [showNewPolicy, setShowNewPolicy] = useState(false);
+  const [policyName, setPolicyName] = useState("");
+  const [policyDesc, setPolicyDesc] = useState("");
+  const [policyJson, setPolicyJson] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  const [showNewInterface, setShowNewInterface] = useState(false);
+  const [ifaceName, setIfaceName] = useState("");
+  const [ifaceNotes, setIfaceNotes] = useState("");
+  const [ifaceAddress, setIfaceAddress] = useState("");
+  const [ifaceType, setIfaceType] = useState("erc20");
+  const [ifaceAbi, setIfaceAbi] = useState("");
+  const [ifaceLoading, setIfaceLoading] = useState(false);
+
+  const fetchPolicies = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
       const res: any = await apiFetch(`/policies?limit=${limit}&offset=${offset}`, { token });
-      setPolicies(res.data);
-      setTotal(res.total);
-    } catch (err: any) {
-      addToast(err.message || "Failed to load policies", "error");
-    } finally { setLoading(false); }
+      setPolicies(res.data || []);
+      setTotal(res.total || 0);
+    } catch {} finally { setLoading(false); }
   }, [token, limit, offset]);
 
   useEffect(() => {
     if (!isAuthenticated) { router.push("/login"); return; }
-    fetchData();
-  }, [isAuthenticated, fetchData, router]);
-
-  const togglePolicyActive = async (policy: Policy) => {
-    try {
-      await apiFetch(`/policies/${policy.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ active: !policy.active }),
-        token: token!,
-      });
-      addToast(`Policy ${policy.active ? "disabled" : "enabled"}`, "success");
-      fetchData();
-    } catch (err: any) {
-      addToast(err.message || "Failed to update policy", "error");
-    }
-  };
+    fetchPolicies();
+    const saved = localStorage.getItem("wrankey_contract_interfaces");
+    if (saved) setInterfaces(JSON.parse(saved));
+  }, [isAuthenticated, fetchPolicies, router]);
 
   const createPolicy = async () => {
-    if (!form.name) {
-      addToast("Name is required", "error");
-      return;
-    }
+    if (!policyName.trim()) { addToast("Name required", "error"); return; }
     setCreateLoading(true);
     try {
-      const parsedConditions = conditions
-        .filter((c) => c.type && c.field && c.value)
-        .map((c) => ({
-          type: c.type,
-          field: c.field,
-          value: c.type === "INCLUDE" || c.type === "NOT_INCLUDE" ? c.value.split(",").map((s: string) => s.trim()) : c.value,
-        }));
-
-      await apiFetch("/policies", {
-        method: "POST",
-        body: JSON.stringify({ ...form, conditions: parsedConditions }),
-        token: token!,
-      });
-      setShowCreate(false);
-      setForm({ name: "", effect: "EFFECT_ALLOW", consensus: "ANY", priority: 0 });
-      setConditions([{ type: "LESS_THAN", field: "params.value", value: "1000000" }]);
-      addToast("Policy created", "success");
-      fetchData();
-    } catch (err: any) {
-      addToast(err.message || "Failed to create policy", "error");
-    } finally { setCreateLoading(false); }
+      const body: any = { name: policyName, effect: "EFFECT_ALLOW", consensus: "ANY", priority: 0 };
+      if (policyDesc) body.conditions = [{ type: "EQUAL", field: "params.chain", value: policyDesc }];
+      await apiFetch("/policies", { method: "POST", body: JSON.stringify(body), token: token! });
+      setShowNewPolicy(false); setPolicyName(""); setPolicyDesc(""); setPolicyJson("");
+      addToast("Policy created", "success"); fetchPolicies();
+    } catch (err: any) { addToast(err.message || "Failed", "error"); } finally { setCreateLoading(false); }
   };
 
   const deletePolicy = async (id: string) => {
     try {
       await apiFetch(`/policies/${id}`, { method: "DELETE", token: token! });
-      addToast("Policy deleted", "success");
-      fetchData();
-    } catch (err: any) {
-      addToast(err.message || "Failed to delete policy", "error");
-    }
+      addToast("Policy deleted", "success"); fetchPolicies();
+    } catch (err: any) { addToast(err.message || "Failed", "error"); }
   };
 
-  const addCondition = () => {
-    setConditions([...conditions, { type: "LESS_THAN", field: "params.value", value: "" }]);
+  const createInterface = () => {
+    if (!ifaceName.trim()) { addToast("Name required", "error"); return; }
+    setIfaceLoading(true);
+    const newIface: ContractInterface = {
+      id: `iface_${Date.now().toString(36)}`,
+      name: ifaceName.trim(),
+      address: ifaceAddress.trim(),
+      notes: ifaceNotes.trim(),
+      interfaceType: ifaceType,
+      abi: ifaceAbi.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    const updated = [newIface, ...interfaces];
+    setInterfaces(updated);
+    localStorage.setItem("wrankey_contract_interfaces", JSON.stringify(updated));
+    setShowNewInterface(false);
+    setIfaceName(""); setIfaceNotes(""); setIfaceAddress(""); setIfaceAbi("");
+    addToast("Interface added", "success");
+    setIfaceLoading(false);
   };
 
-  const removeCondition = (index: number) => {
-    setConditions(conditions.filter((_, i) => i !== index));
-  };
-
-  const updateCondition = (index: number, field: string, value: string) => {
-    setConditions(conditions.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
+  const deleteInterface = (id: string) => {
+    const updated = interfaces.filter(i => i.id !== id);
+    setInterfaces(updated);
+    localStorage.setItem("wrankey_contract_interfaces", JSON.stringify(updated));
+    addToast("Interface deleted", "success");
   };
 
   if (!isAuthenticated) return null;
 
-  const columns = [
-    { key: "name", header: "Name" },
-    { key: "effect", header: "Effect", render: (p: Policy) => <StatusBadge status={p.effect} /> },
-    { key: "consensus", header: "Consensus" },
-    { key: "priority", header: "Priority", render: (p: Policy) => String(p.priority) },
-    {
-      key: "active", header: "Active",
-      render: (p: Policy) => (
-        <button onClick={() => togglePolicyActive(p)} className="cursor-pointer">
-          <StatusBadge status={String(p.active)} />
-        </button>
-      ),
-    },
-    { key: "createdAt", header: "Created", render: (p: Policy) => new Date(p.createdAt).toLocaleDateString() },
-    {
-      key: "actions", header: "",
-      render: (p: Policy) => <Button variant="destructive" size="sm" onClick={() => deletePolicy(p.id)}>Delete</Button>,
-    },
+  const policyColumns = [
+    { key: "name", header: "Name", render: (p: Policy) => <span className="font-medium text-sm">{p.name}</span> },
+    { key: "description", header: "Description", render: (p: Policy) => <span className="text-xs text-slate-500">{p.effect === "EFFECT_ALLOW" ? "Allow" : "Deny"} rule — priority {p.effect.includes("ALLOW") ? "allow" : "block"}</span> },
+    { key: "createdAt", header: "Created", render: (p: Policy) => <span className="text-xs text-slate-500">{new Date(p.createdAt).toLocaleDateString()}</span> },
+    { key: "id", header: "Policy ID", render: (p: Policy) => <div className="flex items-center gap-1"><span className="font-mono text-[11px]">{p.id.slice(0, 4)}····{p.id.slice(-4)}</span><button onClick={() => { navigator.clipboard.writeText(p.id); addToast("Copied", "success"); }} className="text-slate-400 hover:text-slate-600"><Copy className="w-3 h-3" /></button></div> },
+    { key: "actions", header: "", render: (p: Policy) => <Button size="sm" variant="ghost" className="h-7 text-red-500" onClick={() => deletePolicy(p.id)}><Trash2 className="w-3 h-3" /></Button> },
+  ];
+
+  const interfaceColumns = [
+    { key: "name", header: "Name", render: (i: ContractInterface) => <span className="font-medium text-sm">{i.name}</span> },
+    { key: "address", header: "Address", render: (i: ContractInterface) => i.address ? <span className="font-mono text-[11px]">{i.address.slice(0, 8)}...{i.address.slice(-6)}</span> : <span className="text-xs text-slate-400">—</span> },
+    { key: "createdAt", header: "Created", render: (i: ContractInterface) => <span className="text-xs text-slate-500">{new Date(i.createdAt).toLocaleDateString()}</span> },
+    { key: "actions", header: "", render: (i: ContractInterface) => <Button size="sm" variant="ghost" className="h-7 text-red-500" onClick={() => deleteInterface(i.id)}><Trash2 className="w-3 h-3" /></Button> },
   ];
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Policies</h1>
-        <Button onClick={() => setShowCreate(true)}>Create Policy</Button>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Policies</h1>
+
+      <div className="flex gap-1 border-b border-slate-200 dark:border-slate-800">
+        {[
+          { key: "policies", label: "Policies" },
+          { key: "interfaces", label: "Smart Contract Interfaces" },
+        ].map(tab => (
+          <button key={tab.key} onClick={() => { setActiveTab(tab.key as any); setSearch(""); }}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-[1px] ${activeTab === tab.key ? "border-brand-600 text-brand-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 space-y-3">
-              <Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" />
+      {activeTab === "policies" && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Button onClick={() => { setShowNewPolicy(true); setPolicyName(""); setPolicyDesc(""); setPolicyJson(""); }}>
+              <Plus className="w-4 h-4 mr-1.5" /> New Policy
+            </Button>
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className="pl-9 text-sm" />
             </div>
-          ) : (
-            <>
-              <Table columns={columns} data={policies} loading={false} emptyMessage="No policies defined." />
-              <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => { setLimit(l); setOffset(o); }} />
-            </>
-          )}
-        </CardContent>
-      </Card>
+          </div>
 
-      <Modal open={showCreate} onClose={() => { setShowCreate(false); setConditions([{ type: "LESS_THAN", field: "params.value", value: "1000000" }]); }} title="Create Policy">
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+          <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+            <CardContent className="p-0">
+              {loading ? (
+                <div className="p-6 space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div>
+              ) : (
+                <Table columns={policyColumns} data={policies.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()))} loading={false} emptyMessage="No policies found." />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === "interfaces" && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Button onClick={() => { setShowNewInterface(true); setIfaceName(""); setIfaceNotes(""); setIfaceAddress(""); setIfaceAbi(""); }}>
+              <Plus className="w-4 h-4 mr-1.5" /> New Interface
+            </Button>
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className="pl-9 text-sm" />
+            </div>
+          </div>
+
+          <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+            <CardContent className="p-0">
+              <Table columns={interfaceColumns} data={interfaces.filter(i => !search || i.name.toLowerCase().includes(search.toLowerCase()) || i.address.includes(search))} loading={false} emptyMessage="No smart contract interfaces found." />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Modal open={showNewPolicy} onClose={() => { setShowNewPolicy(false); setPolicyName(""); setPolicyDesc(""); setPolicyJson(""); }} title="New Policy">
+        <div className="space-y-4">
+          <div className="space-y-1"><label className="text-sm font-medium">Name</label><Input value={policyName} onChange={e => setPolicyName(e.target.value)} placeholder="Policy name" /></div>
+          <div className="space-y-1"><label className="text-sm font-medium">Description</label><Input value={policyDesc} onChange={e => setPolicyDesc(e.target.value)} placeholder="What this policy enforces" /></div>
+          <div className="space-y-1"><label className="text-sm font-medium">JSON</label><textarea value={policyJson} onChange={e => setPolicyJson(e.target.value)} placeholder='{"type": "EQUAL", "field": "params.chain"}' rows={4} className="w-full border rounded-md px-3 py-2 text-xs font-mono resize-none" /></div>
+          <div className="space-y-1"><label className="text-sm font-medium">JSON</label><textarea value={policyJson} onChange={e => setPolicyJson(e.target.value)} placeholder='{"type": "LESS_THAN", "field": "params.value", "value": "100"}' rows={3} className="w-full border rounded-md px-3 py-2 text-xs font-mono resize-none" /></div>
+          <Button onClick={createPolicy} disabled={createLoading} className="w-full">Submit</Button>
+        </div>
+      </Modal>
+
+      <Modal open={showNewInterface} onClose={() => { setShowNewInterface(false); }} title="New Smart Contract Interface">
+        <div className="space-y-4">
+          <div className="space-y-1"><label className="text-sm font-medium">Name</label><Input value={ifaceName} onChange={e => setIfaceName(e.target.value)} placeholder="Interface name" /></div>
+          <div className="space-y-1"><label className="text-sm font-medium">Notes</label><Input value={ifaceNotes} onChange={e => setIfaceNotes(e.target.value)} placeholder="Optional notes" /></div>
+          <div className="space-y-1"><label className="text-sm font-medium">Contract address</label><Input value={ifaceAddress} onChange={e => setIfaceAddress(e.target.value)} placeholder="0x..." className="font-mono text-xs" /></div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">Name</label>
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Allow small transfers" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Effect</label>
-            <select value={form.effect} onChange={(e) => setForm({ ...form, effect: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm">
-              <option value="EFFECT_ALLOW">Allow</option>
-              <option value="EFFECT_DENY">Deny</option>
+            <label className="text-sm font-medium">Select interface type</label>
+            <select value={ifaceType} onChange={e => setIfaceType(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm">
+              <option value="erc20">ERC-20</option>
+              <option value="erc721">ERC-721</option>
+              <option value="erc1155">ERC-1155</option>
+              <option value="custom">Custom</option>
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Consensus</label>
-            <select value={form.consensus} onChange={(e) => setForm({ ...form, consensus: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm">
-              <option value="ANY">Any</option>
-              <option value="ALL">All</option>
-              <option value="REQUIRES_CONSENSUS">Requires Consensus</option>
-            </select>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-slate-700">Conditions</label>
-              <Button size="sm" variant="secondary" type="button" onClick={addCondition}>+ Add</Button>
-            </div>
-            <div className="space-y-3">
-              {conditions.map((cond, i) => (
-                <div key={i} className="border rounded-md p-3 space-y-2 bg-slate-50">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-slate-500">Condition {i + 1}</span>
-                    {conditions.length > 1 && (
-                      <button onClick={() => removeCondition(i)} className="text-xs text-red-500 hover:text-red-700">Remove</button>
-                    )}
-                  </div>
-                  <select value={cond.type} onChange={(e) => updateCondition(i, "type", e.target.value)}
-                    className="w-full border rounded-md px-2 py-1 text-xs">
-                    {CONDITION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                  <select value={cond.field} onChange={(e) => updateCondition(i, "field", e.target.value)}
-                    className="w-full border rounded-md px-2 py-1 text-xs">
-                    {FIELDS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-                  </select>
-                  <Input
-                    value={cond.value}
-                    onChange={(e) => updateCondition(i, "value", e.target.value)}
-                    placeholder={cond.type === "INCLUDE" || cond.type === "NOT_INCLUDE" ? "value1,value2,..." : "e.g. 1000"}
-                    className="text-sm"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <Button onClick={createPolicy} disabled={createLoading} className="w-full">Create</Button>
+          <div className="space-y-1"><label className="text-sm font-medium">ABI / IDL JSON</label><textarea value={ifaceAbi} onChange={e => setIfaceAbi(e.target.value)} placeholder='[{"type":"function","name":"transfer",...}]' rows={6} className="w-full border rounded-md px-3 py-2 text-xs font-mono resize-none" /></div>
+          <Button onClick={createInterface} disabled={ifaceLoading} className="w-full">Submit</Button>
         </div>
       </Modal>
     </div>
