@@ -10,219 +10,203 @@ import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Activity, X } from "lucide-react";
+import { CheckCircle, Clock, Copy, ChevronRight } from "lucide-react";
 
-interface AuditLog {
+interface ActivityItem {
   id: string;
-  action: string;
-  resource?: string;
-  details?: any;
-  ip?: string;
-  userAgent?: string;
+  type: string;
+  initiator: string;
+  initiatorEmail: string;
+  approvals: number;
+  denials: number;
   createdAt: string;
-  userId?: string;
+  updatedAt: string;
+  status: "Completed" | "Pending";
 }
 
-const ACTION_GROUPS: Record<string, string[]> = {
-  Auth: ["SIGNUP", "LOGIN", "LOGOUT"],
-  Wallet: ["WALLET_CREATE", "WALLET_IMPORT", "WALLET_DELETE", "WALLET_FREEZE", "WALLET_UNFREEZE", "WALLET_EXPORT", "WALLET_ROTATE", "WALLET_SIGN_MESSAGE", "ACCOUNT_CREATE"],
-  Transaction: ["TX_SIGN", "TX_BROADCAST", "TX_SIMULATE", "TX_RETRY", "TX_CANCEL", "TX_REPLACE"],
-  Policy: ["POLICY_EVAL", "POLICY_DENY"],
-  Agent: ["AGENT_CREATE", "AGENT_DELETE"],
-  Org: ["ORG_CREATE", "ORG_UPDATE"],
-  User: ["USER_CREATE", "USER_UPDATE", "USER_DELETE"],
-  Approval: ["APPROVAL_REQUEST"],
-};
+function toActivityItem(log: any, userEmail: string): ActivityItem {
+  const actionLabels: Record<string, string> = {
+    WALLET_CREATE: "Create wallet", WALLET_IMPORT: "Import wallet", WALLET_DELETE: "Delete wallet",
+    WALLET_FREEZE: "Freeze wallet", WALLET_UNFREEZE: "Unfreeze wallet", WALLET_EXPORT: "Export wallet",
+    WALLET_ROTATE: "Rotate wallet", ACCOUNT_CREATE: "Create account", TX_SIGN: "Sign transaction",
+    TX_BROADCAST: "Broadcast transaction", TX_RETRY: "Retry transaction", TX_CANCEL: "Cancel transaction",
+    TX_SIMULATE: "Simulate transaction", TX_REPLACE: "Replace transaction",
+    AGENT_CREATE: "Create agent", AGENT_DELETE: "Revoke agent",
+    ORG_CREATE: "Create organization", ORG_UPDATE: "Update organization",
+    USER_CREATE: "Create user", USER_UPDATE: "Update user", USER_DELETE: "Delete user",
+    SIGNUP: "Create organization", LOGIN: "Sign in", LOGOUT: "Sign out",
+    POLICY_EVAL: "Evaluate policy", POLICY_DENY: "Policy deny",
+    APPROVAL_REQUEST: "Request approval", WALLET_SIGN_MESSAGE: "Sign message",
+    ENABLE_AUTH_PROXY: "Enable auth proxy", CREATE_USER_TAG: "Create user tag",
+  };
 
-function groupForAction(action: string): string {
-  for (const [group, actions] of Object.entries(ACTION_GROUPS)) {
-    if (actions.includes(action)) return group;
-  }
-  return "Other";
-}
-
-function formatTime(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleString(undefined, {
-    month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  });
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
-}
-
-function isSameDay(a: string, b: string): boolean {
-  return new Date(a).toDateString() === new Date(b).toDateString();
+  return {
+    id: log.id,
+    type: actionLabels[log.action] || log.action?.replace(/_/g, " ").toLowerCase() || "Activity",
+    initiator: "Root user",
+    initiatorEmail: userEmail,
+    approvals: 1,
+    denials: 0,
+    createdAt: log.createdAt,
+    updatedAt: log.createdAt,
+    status: "Completed",
+  };
 }
 
 export default function ActivityLogsPage() {
   const router = useRouter();
-  const { isAuthenticated, token } = useAuth();
+  const { isAuthenticated, token, user } = useAuth();
   const { addToast } = useToast();
-  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [activeTab, setActiveTab] = useState<"pending" | "history">("history");
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [limit, setLimit] = useState(50);
+  const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
-  const [selectedGroup, setSelectedGroup] = useState<string>("");
-  const [autoRefresh, setAutoRefresh] = useState(true);
-
-  const allGroups = Object.keys(ACTION_GROUPS);
 
   const fetchData = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      params.set("limit", String(limit));
-      params.set("offset", String(offset));
-      const res: any = await apiFetch(`/audit-logs?${params.toString()}`, { token });
-      let data = res.data || [];
-      if (selectedGroup && ACTION_GROUPS[selectedGroup]) {
-        data = data.filter((log: AuditLog) => ACTION_GROUPS[selectedGroup].includes(log.action));
-      }
-      setLogs(data);
-      setTotal(res.total);
-    } catch (err: any) {
-      addToast(err.message || "Failed to load activity logs", "error");
-    } finally { setLoading(false); }
-  }, [token, limit, offset, selectedGroup]);
+      const res: any = await apiFetch(`/audit-logs?limit=${limit}&offset=${offset}`, { token });
+      const data = (res.data || []).map((log: any) => toActivityItem(log, user?.email || "admin@wrankey.io"));
+      setActivities(data);
+      setTotal(res.total || data.length);
+    } catch {} finally { setLoading(false); }
+  }, [token, limit, offset, user]);
 
   useEffect(() => {
     if (!isAuthenticated) { router.push("/login"); return; }
     fetchData();
-    if (!autoRefresh) return;
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
-  }, [isAuthenticated, fetchData, router, autoRefresh]);
+  }, [isAuthenticated, fetchData, router]);
 
   if (!isAuthenticated) return null;
 
-  const groupColors: Record<string, string> = {
-    Auth: "bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-900/30",
-    Wallet: "bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/30",
-    Transaction: "bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-900/30",
-    Policy: "bg-violet-50 text-violet-700 border-violet-100 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-900/30",
-    Agent: "bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-900/30",
-    Org: "bg-cyan-50 text-cyan-700 border-cyan-100 dark:bg-cyan-950/30 dark:text-cyan-400 dark:border-cyan-900/30",
-    User: "bg-indigo-50 text-indigo-700 border-indigo-100 dark:bg-indigo-950/30 dark:text-indigo-400 dark:border-indigo-900/30",
-    Approval: "bg-orange-50 text-orange-700 border-orange-100 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-900/30",
-    Other: "bg-slate-50 text-slate-700 border-slate-100 dark:bg-slate-950/30 dark:text-slate-400 dark:border-slate-900/30",
-  };
-
   const columns = [
     {
-      key: "action",
-      header: "Event",
-      render: (log: AuditLog) => {
-        const group = groupForAction(log.action);
-        return (
-          <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded border ${groupColors[group] || groupColors.Other}`}>
-            {log.action.replace(/_/g, " ")}
-          </span>
-        );
-      },
+      key: "type",
+      header: "Type",
+      render: (a: ActivityItem) => (
+        <span className="text-sm font-medium text-slate-700 dark:text-slate-300 capitalize">{a.type}</span>
+      ),
     },
     {
-      key: "details",
-      header: "Details",
-      render: (log: AuditLog) => {
-        if (!log.details) return <span className="text-xs text-slate-400">—</span>;
-        const entries = Object.entries(log.details).filter(([k]) => k !== "walletId" && k !== "orgId" && k !== "userId");
-        if (entries.length === 0) return <span className="text-xs text-slate-400">—</span>;
-        return (
-          <span className="text-xs text-slate-600 dark:text-slate-400">
-            {entries.slice(0, 3).map(([k, v]) => (
-              <span key={k} className="mr-2">
-                <span className="font-medium">{k}:</span> {typeof v === "string" && v.length > 40 ? `${v.slice(0, 8)}...${v.slice(-6)}` : String(v)}
-              </span>
-            ))}
-            {entries.length > 3 && <span className="text-slate-400">+{entries.length - 3} more</span>}
-          </span>
-        );
-      },
+      key: "id",
+      header: "ID",
+      render: (a: ActivityItem) => (
+        <div className="flex items-center gap-1">
+          <span className="font-mono text-[11px] text-slate-500">{a.id.slice(0, 4)}····{a.id.slice(-4)}</span>
+          <button onClick={() => { navigator.clipboard.writeText(a.id); addToast("Copied", "success"); }} className="text-slate-400 hover:text-slate-600"><Copy className="w-3 h-3" /></button>
+        </div>
+      ),
     },
     {
-      key: "ip",
-      header: "IP",
-      render: (log: AuditLog) => log.ip ? <span className="font-mono text-[11px] text-slate-500">{log.ip}</span> : <span className="text-xs text-slate-400">—</span>,
+      key: "initiator",
+      header: "Initiator",
+      render: (a: ActivityItem) => (
+        <div>
+          <p className="text-sm font-medium">{a.initiator}</p>
+          <p className="text-[11px] text-slate-400">{a.initiatorEmail}</p>
+        </div>
+      ),
+    },
+    {
+      key: "approvals",
+      header: "Approvals",
+      render: (a: ActivityItem) => (
+        <span className="inline-flex items-center gap-1 text-sm font-medium text-emerald-600">
+          <CheckCircle className="w-3.5 h-3.5" />{a.approvals}
+        </span>
+      ),
+    },
+    {
+      key: "denials",
+      header: "Denials",
+      render: (a: ActivityItem) => <span className="text-sm text-slate-500">{a.denials}</span>,
     },
     {
       key: "createdAt",
-      header: "Time",
-      render: (log: AuditLog) => (
-        <span className="text-xs text-slate-500 font-mono whitespace-nowrap">{formatTime(log.createdAt)}</span>
+      header: "Created",
+      render: (a: ActivityItem) => (
+        <span className="text-xs text-slate-500 whitespace-nowrap">
+          {new Date(a.createdAt).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit", hour: "numeric", minute: "2-digit" })}
+        </span>
+      ),
+    },
+    {
+      key: "updatedAt",
+      header: "Updated",
+      render: (a: ActivityItem) => (
+        <span className="text-xs text-slate-500 whitespace-nowrap">
+          {new Date(a.updatedAt).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit", hour: "numeric", minute: "2-digit" })}
+        </span>
+      ),
+    },
+    {
+      key: "action",
+      header: "Your Action",
+      render: () => (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+          <CheckCircle className="w-3 h-3" />Approved
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (a: ActivityItem) => (
+        <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${a.status === "Completed" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-amber-50 text-amber-700 border-amber-100"}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${a.status === "Completed" ? "bg-emerald-500" : "bg-amber-500"}`} />
+          {a.status}
+        </span>
       ),
     },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-1.5">
-        <h1 className="text-2xl font-bold">Activity Logs</h1>
-        <p className="text-sm text-slate-500">Real-time audit trail of all platform events</p>
+      <h1 className="text-2xl font-bold">Activity Log</h1>
+
+      <div className="flex gap-1 border-b border-slate-200 dark:border-slate-800">
+        {[
+          { key: "pending", label: "Pending" },
+          { key: "history", label: "History" },
+        ].map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key as any)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-[1px] ${activeTab === tab.key ? "border-brand-600 text-brand-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex gap-2 flex-wrap">
-          <Button
-            size="sm"
-            variant={selectedGroup === "" ? "default" : "secondary"}
-            onClick={() => { setSelectedGroup(""); setOffset(0); }}
-          >
-            All
-          </Button>
-          {allGroups.map((group) => (
-            <Button
-              key={group}
-              size="sm"
-              variant={selectedGroup === group ? "default" : "secondary"}
-              onClick={() => { setSelectedGroup(selectedGroup === group ? "" : group); setOffset(0); }}
-            >
-              {group}
+      {activeTab === "pending" && (
+        <Card className="border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <Clock className="w-12 h-12 text-slate-300 mb-4" />
+            <h2 className="text-lg font-semibold text-slate-600 mb-2">Pending Activities</h2>
+            <p className="text-sm text-slate-500 mb-1">You&apos;re All Caught Up</p>
+            <p className="text-xs text-slate-400 mb-4">View your previous activities in History.</p>
+            <Button variant="secondary" size="sm" onClick={() => setActiveTab("history")}>
+              View History <ChevronRight className="w-3.5 h-3.5 ml-1" />
             </Button>
-          ))}
-        </div>
-        <div className="flex-1" />
-        <Button
-          size="sm"
-          variant={autoRefresh ? "default" : "secondary"}
-          onClick={() => setAutoRefresh(!autoRefresh)}
-        >
-          <Activity className="w-3.5 h-3.5 mr-1.5" />
-          {autoRefresh ? "Auto-refresh On" : "Auto-refresh Off"}
-        </Button>
-      </div>
+          </CardContent>
+        </Card>
+      )}
 
-      <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 space-y-3">
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-full" />
-            </div>
-          ) : (
-            <>
-              <Table
-                columns={columns}
-                data={logs}
-                loading={false}
-                emptyMessage={selectedGroup ? `No ${selectedGroup} events recorded.` : "No activity recorded yet."}
-              />
-              <Pagination
-                limit={limit}
-                offset={offset}
-                total={total}
-                onPageChange={(l, o) => { setLimit(l); setOffset(o); }}
-              />
-            </>
-          )}
-        </CardContent>
-      </Card>
+      {activeTab === "history" && (
+        <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="p-6 space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div>
+            ) : (
+              <>
+                <Table columns={columns} data={activities} loading={false} emptyMessage="No activity recorded yet." />
+                <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => setOffset(o)} />
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
