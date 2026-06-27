@@ -36,6 +36,7 @@ interface WalletDetail {
     address: string;
     derivationPath: string;
     index: number;
+    createdAt: string;
   }>;
   createdAt: string;
 }
@@ -385,6 +386,66 @@ export default function WalletDetailPage() {
           <Table columns={accountColumns} data={filteredAccounts} emptyMessage="No accounts derived." />
         </CardContent>
       </Card>
+
+      {/* Private Keys */}
+      <div className="mt-8">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold">Private Keys</h3>
+            <span className="text-xs text-slate-400">({wallet.accounts.length})</span>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setShowNewAccount(true)}>
+            New Private Key
+          </Button>
+        </div>
+        <Card>
+          <CardContent className="p-0">
+            <Table
+              columns={[
+                {
+                  key: "name",
+                  header: "Key",
+                  render: (a: any) => <span className="text-sm font-medium">{a.chain?.name ? a.chain.name.charAt(0).toUpperCase() + a.chain.name.slice(1) : "arkey"}</span>,
+                },
+                {
+                  key: "id",
+                  header: "Private ID",
+                  render: (a: any) => <span className="font-mono text-xs text-slate-500">{a.id.slice(0, 4)}&middot;&middot;&middot;&middot;{a.id.slice(-4)}</span>,
+                },
+                {
+                  key: "tags",
+                  header: "Tags",
+                  render: () => (
+                    <button
+                      onClick={() => { setEditName(wallet.name); setEditTags(wallet.tags.filter((t) => !t.startsWith("custom-token:")).join(", ")); setShowEdit(true); }}
+                      className="text-xs text-blue-500 hover:text-blue-700"
+                    >
+                      Add Tag
+                    </button>
+                  ),
+                },
+                {
+                  key: "exported",
+                  header: "Exported",
+                  render: () => <span className="text-xs">{showSeedPhrase ? "Yes" : "No"}</span>,
+                },
+                {
+                  key: "curve",
+                  header: "Curve Type",
+                  render: () => <span className="text-xs font-mono">SECP256K1</span>,
+                },
+                {
+                  key: "createdAt",
+                  header: "Created",
+                  render: (a: any) => <span className="text-xs text-slate-500">{new Date(a.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>,
+                },
+              ]}
+              data={filteredAccounts}
+              emptyMessage="No private keys derived."
+            />
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Parameters Popover */}
       {activeParamId && (() => {

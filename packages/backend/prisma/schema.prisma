@@ -30,6 +30,7 @@ model Organization {
   config         OrgConfig?
   invoices       Invoice[]
   contractInterfaces ContractInterface[]
+  privateKeys    PrivateKey[]
 
   @@map("organizations")
 }
@@ -120,6 +121,7 @@ model Wallet {
   org      Organization     @relation(fields: [orgId], references: [id])
   user   User?        @relation(fields: [userId], references: [id])
   accounts WalletAccount[]
+  privateKeys PrivateKey[]
   spendingLimits SpendingLimit[]
 
   @@index([orgId])
@@ -144,6 +146,7 @@ model Chain {
 
   accounts        WalletAccount[]
   spendingLimits  SpendingLimit[]
+  privateKeyAddresses PrivateKeyAddress[]
 
   @@map("chains")
 }
@@ -165,6 +168,44 @@ model WalletAccount {
   @@index([chainId])
   @@index([address])
   @@map("wallet_accounts")
+}
+
+model PrivateKey {
+  id                  String   @id @default(uuid())
+  orgId               String   @map("org_id")
+  walletId            String   @map("wallet_id")
+  name                String
+  curve               String   @default("SECP256K1")
+  tags                String[] @default([])
+  encryptedPrivateKey String   @map("encrypted_private_key")
+  publicKey           String   @map("public_key")
+  exported            Boolean  @default(false)
+  status              String   @default("ACTIVE")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  org      Organization        @relation(fields: [orgId], references: [id])
+  wallet   Wallet              @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  addresses PrivateKeyAddress[]
+
+  @@index([orgId])
+  @@index([walletId])
+  @@map("private_keys")
+}
+
+model PrivateKeyAddress {
+  id           String   @id @default(uuid())
+  privateKeyId String   @map("private_key_id")
+  chainId      String   @map("chain_id")
+  address      String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  privateKey PrivateKey @relation(fields: [privateKeyId], references: [id], onDelete: Cascade)
+  chain      Chain      @relation(fields: [chainId], references: [id])
+
+  @@index([privateKeyId])
+  @@index([chainId])
+  @@map("private_key_addresses")
 }
 
 model SpendingLimit {
