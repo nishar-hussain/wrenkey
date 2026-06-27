@@ -292,7 +292,11 @@ export default function WalletDetailPage() {
           <h1 className="text-xl font-bold">Wallet</h1>
           <h2 className="text-xl font-bold text-slate-700">{wallet.name}</h2>
         </div>
-        <Button onClick={() => { setShowExport(true); setExportData(null); setExportPassphrase(""); setExportPassConfirm(""); }}>Export</Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => { setShowExport(true); setExportData(null); setExportPassphrase(""); setExportPassConfirm(""); }}>Export</Button>
+          <Button variant="secondary" onClick={() => { setEditName(wallet.name); setEditTags(wallet.tags.filter((t) => !t.startsWith("custom-token:")).join(", ")); setShowEdit(true); }}>Edit</Button>
+          <Button variant="secondary" onClick={() => setShowDeleteConfirm(true)}>Delete</Button>
+        </div>
       </div>
 
       {/* Seed Phrase Card */}
