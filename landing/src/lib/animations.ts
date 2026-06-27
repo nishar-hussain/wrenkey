@@ -168,22 +168,35 @@ export function transitionToModel(
     0,
   );
 
-  // 3. Snowboard image crossfade
+  // 3. Snowboard image crossfade with spin/flip
   tl.to(
     refs.snowboard,
     {
       opacity: 0,
-      y: 20,
-      duration: 0.3,
+      y: goingDown ? 60 : -60,
+      scale: 0.8,
+      rotationZ: goingDown ? -15 : 15,
+      duration: 0.4,
       ease: "power3.in",
       onComplete: () => {
         refs.snowboard.src = newModel.img;
-        gsap.set(refs.snowboard, { y: -20 });
+        gsap.set(refs.snowboard, { 
+          y: goingDown ? -60 : 60,
+          scale: 0.8,
+          rotationZ: goingDown ? 15 : -15
+        });
       },
     },
     0,
   );
-  tl.to(refs.snowboard, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.35);
+  tl.to(refs.snowboard, { 
+    opacity: 1, 
+    y: 0, 
+    scale: 1,
+    rotationZ: 0,
+    duration: 0.7, 
+    ease: "back.out(1.5)" 
+  }, 0.4);
 
   // 4. Indicator thumb — elastic stretch effect
   const segmentPct = 100 / models.length;
