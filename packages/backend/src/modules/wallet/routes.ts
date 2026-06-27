@@ -268,6 +268,27 @@ export async function walletRoutes(app: FastifyInstance) {
     }
   });
 
+  app.delete("/wallets/:id/accounts/:accountId", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id, accountId } = request.params as { id: string; accountId: string };
+
+      const wallet = await prisma.wallet.findFirst({ where: { id, orgId: request.orgId } });
+      if (!wallet) throw new NotFoundError("Wallet");
+
+      const result = await prisma.walletAccount.deleteMany({
+        where: { id: accountId, walletId: id },
+      });
+      if (result.count === 0) throw new NotFoundError("Account");
+
+      await createAuditLog(request.orgId, "ACCOUNT_DELETE", { walletId: id, accountId }, request.userId, request);
+      triggerWebhookEvents(request.orgId, "account.deleted", { walletId: id, accountId });
+
+      return sendSuccess(reply, { message: "Account deleted" });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
   app.post("/wallets/:id/export", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };

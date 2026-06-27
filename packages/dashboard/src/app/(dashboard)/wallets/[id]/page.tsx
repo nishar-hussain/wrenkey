@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
@@ -12,13 +12,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ChainInfo {
   id: string;
@@ -26,34 +20,6 @@ interface ChainInfo {
   chainId: number;
   symbol: string;
   blockExplorerUrl?: string;
-}
-
-interface BalanceEntry {
-  chainId: string;
-  chain: string;
-  address: string;
-  balance: string;
-  balanceWei: string;
-  symbol: string;
-}
-
-interface TokenBalance {
-  token: { address: string; name: string; symbol: string; decimals: number };
-  balance: string;
-  balanceFormatted: string;
-}
-
-interface TokenBalanceEntry {
-  address: string;
-  chain: string;
-  chainId: number;
-  tokens: TokenBalance[];
-}
-
-interface ExportInfo {
-  mnemonic?: string;
-  encryptedMnemonic?: string;
-  accounts: Array<{ chainId: string; address: string; derivationPath: string; index: number }>;
 }
 
 interface WalletDetail {
@@ -74,6 +40,12 @@ interface WalletDetail {
   createdAt: string;
 }
 
+interface ExportInfo {
+  mnemonic?: string;
+  encryptedMnemonic?: string;
+  accounts: Array<{ chainId: string; address: string; derivationPath: string; index: number }>;
+}
+
 interface TxItem {
   id: string;
   txHash?: string;
@@ -85,22 +57,13 @@ interface TxItem {
   createdAt: string;
 }
 
-interface SpendingLimitItem {
-  id: string;
-  name: string;
-  maxPerTx?: string;
-  maxDaily?: string;
-  maxMonthly?: string;
-  allowlist: string[];
-  denylist: string[];
-  active: boolean;
-}
-
-interface GasPrice {
+interface BalanceEntry {
+  chainId: string;
   chain: string;
-  slow: string;
-  standard: string;
-  fast: string;
+  address: string;
+  balance: string;
+  balanceWei: string;
+  symbol: string;
 }
 
 function copyToClipboard(text: string, addToast: (msg: string, type: "success" | "error") => void) {
@@ -110,15 +73,7 @@ function copyToClipboard(text: string, addToast: (msg: string, type: "success" |
   );
 }
 
-function explorerUrl(address: string, chain?: ChainInfo): string | null {
-  if (!chain?.blockExplorerUrl) return null;
-  return `${chain.blockExplorerUrl}/address/${address}`;
-}
-
-function txExplorerUrl(txHash: string, chain?: ChainInfo): string | null {
-  if (!chain?.blockExplorerUrl) return null;
-  return `${chain.blockExplorerUrl}/tx/${txHash}`;
-}
+const CHAIN_OPTIONS = ["sepolia", "ethereum", "polygon", "arbitrum", "optimism", "base"];
 
 export default function WalletDetailPage() {
   const params = useParams();
@@ -126,14 +81,17 @@ export default function WalletDetailPage() {
   const { isAuthenticated, token } = useAuth();
   const { addToast } = useToast();
   const [wallet, setWallet] = useState<WalletDetail | null>(null);
-  const [transactions, setTransactions] = useState<TxItem[]>([]);
-  const [balances, setBalances] = useState<BalanceEntry[]>([]);
-  const [tokenBalances, setTokenBalances] = useState<TokenBalanceEntry[]>([]);
-  const [spendingLimits, setSpendingLimits] = useState<SpendingLimitItem[]>([]);
-  const [gasPrice, setGasPrice] = useState<GasPrice | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "security">("overview");
+
+  const [accountSearch, setAccountSearch] = useState("");
+  const [showNewAccount, setShowNewAccount] = useState(false);
+  const [newAccountChain, setNewAccountChain] = useState("sepolia");
+  const [newAccountLoading, setNewAccountLoading] = useState(false);
+
+  const [showSeedPhrase, setShowSeedPhrase] = useState(false);
+  const [seedPhrase, setSeedPhrase] = useState("");
+  const [seedLoading, setSeedLoading] = useState(false);
 
   const [showExport, setShowExport] = useState(false);
   const [exportData, setExportData] = useState<ExportInfo | null>(null);
@@ -141,123 +99,68 @@ export default function WalletDetailPage() {
   const [exportPassConfirm, setExportPassConfirm] = useState("");
   const [exportLoading, setExportLoading] = useState(false);
 
-  const [showSpendingLimitModal, setShowSpendingLimitModal] = useState(false);
-  const [editingSpendingLimit, setEditingSpendingLimit] = useState<SpendingLimitItem | null>(null);
-  const [slName, setSlName] = useState("");
-  const [slMaxPerTx, setSlMaxPerTx] = useState("");
-  const [slMaxDaily, setSlMaxDaily] = useState("");
-  const [slMaxMonthly, setSlMaxMonthly] = useState("");
-  const [slDenylist, setSlDenylist] = useState("");
-  const [slLoading, setSlLoading] = useState(false);
-
-  const [showFreezeConfirm, setShowFreezeConfirm] = useState(false);
-  const [freezeLoading, setFreezeLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [showEdit, setShowEdit] = useState(false);
   const [editName, setEditName] = useState("");
   const [editTags, setEditTags] = useState("");
   const [editLoading, setEditLoading] = useState(false);
 
-  const [showTrackTokenModal, setShowTrackTokenModal] = useState(false);
-  const [trackTokenAddress, setTrackTokenAddress] = useState("");
-  const [trackTokenChain, setTrackTokenChain] = useState("sepolia");
-  const [trackTokenLoading, setTrackTokenLoading] = useState(false);
-
-  const [showSignMessageModal, setShowSignMessageModal] = useState(false);
-  const [signMessageText, setSignMessageText] = useState("");
-  const [signMessageChain, setSignMessageChain] = useState("sepolia");
-  const [signMessageSignature, setSignMessageSignature] = useState("");
-  const [signMessageLoading, setSignMessageLoading] = useState(false);
-
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-
-  const [txActionLoading, setTxActionLoading] = useState<Record<string, boolean>>({});
-  const [balanceError, setBalanceError] = useState("");
-  const [balLoading, setBalLoading] = useState(false);
+  const [activeParamId, setActiveParamId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError("");
-    setBalanceError("");
     try {
-      const [walletRes, txRes, balRes, tokenRes, slRes, gpRes]: any[] = await Promise.all([
-        apiFetch(`/wallets/${params.id}`, { token }),
-        apiFetch(`/transactions?limit=50&chain=&walletId=${params.id}`, { token }),
-        apiFetch(`/wallets/${params.id}/balance`, { token }).catch((e) => { setBalanceError(e.message || "Balance fetch failed"); return null; }),
-        apiFetch(`/wallets/${params.id}/tokens`, { token }).catch(() => null),
-        apiFetch(`/spending-limits?limit=20&walletId=${params.id}`, { token }).catch(() => null),
-        apiFetch(`/wallets/${params.id}/gas-price`, { token }).catch(() => null),
-      ]);
-      setWallet(walletRes);
-      setTransactions(txRes.data);
-      if (balRes?.balances) { setBalances(balRes.balances); setBalanceError(""); }
-      if (tokenRes?.tokenBalances) setTokenBalances(tokenRes.tokenBalances);
-      if (slRes?.data) setSpendingLimits(slRes.data);
-      if (gpRes) setGasPrice(gpRes);
+      const res: any = await apiFetch(`/wallets/${params.id}`, { token });
+      setWallet(res);
     } catch (err: any) {
       setError(err.message || "Failed to load wallet");
-      addToast(err.message || "Failed to load wallet", "error");
     } finally {
       setLoading(false);
     }
   }, [token, params.id]);
 
-  const refreshBalances = async () => {
-    if (!token) return;
-    setBalLoading(true);
-    setBalanceError("");
-    try {
-      const balRes: any = await apiFetch(`/wallets/${params.id}/balance`, { token });
-      if (balRes?.balances) { setBalances(balRes.balances); setBalanceError(""); }
-    } catch (e: any) {
-      setBalanceError(e.message || "Balance fetch failed");
-    }
-    try {
-      const tokenRes: any = await apiFetch(`/wallets/${params.id}/tokens`, { token });
-      if (tokenRes?.tokenBalances) setTokenBalances(tokenRes.tokenBalances);
-    } catch {}
-    try {
-      const gpRes: any = await apiFetch(`/wallets/${params.id}/gas-price`, { token });
-      if (gpRes) setGasPrice(gpRes);
-    } catch {}
-    setBalLoading(false);
-  };
-
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push("/login");
-      return;
-    }
+    if (!isAuthenticated) { router.push("/login"); return; }
     fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
   }, [isAuthenticated, fetchData, router]);
 
-  const handleFreeze = async () => {
-    setFreezeLoading(true);
+  const handleRevealSeedPhrase = async () => {
+    setSeedLoading(true);
     try {
-      const action = wallet?.status === "FROZEN" ? "unfreeze" : "freeze";
-      await apiFetch(`/wallets/${params.id}/${action}`, { method: "POST", token: token! });
-      addToast(action === "freeze" ? "Wallet frozen" : "Wallet unfrozen", "success");
-      setShowFreezeConfirm(false);
-      fetchData();
+      const res: any = await apiFetch(`/wallets/${params.id}/export`, {
+        method: "POST",
+        body: JSON.stringify({}),
+        token: token!,
+      });
+      setSeedPhrase(res.mnemonic || "");
+      setShowSeedPhrase(true);
     } catch (err: any) {
-      addToast(err.message || "Action failed", "error");
+      addToast(err.message || "Failed to reveal seed phrase", "error");
     } finally {
-      setFreezeLoading(false);
+      setSeedLoading(false);
     }
   };
 
-  const handleRotate = async () => {
-    if (!confirm("Rotate will generate a new seed phrase. Old accounts will be replaced. Continue?")) return;
+  const handleAddAccount = async () => {
+    setNewAccountLoading(true);
     try {
-      await apiFetch(`/wallets/${params.id}/rotate`, { method: "POST", token: token! });
-      addToast("Wallet rotated successfully", "success");
+      await apiFetch(`/wallets/${params.id}/accounts`, {
+        method: "POST",
+        body: JSON.stringify({ chain: newAccountChain }),
+        token: token!,
+      });
+      setShowNewAccount(false);
+      setNewAccountChain("sepolia");
+      addToast("Account derived", "success");
       fetchData();
     } catch (err: any) {
-      addToast(err.message || "Rotation failed", "error");
+      addToast(err.message || "Failed to derive account", "error");
+    } finally {
+      setNewAccountLoading(false);
     }
   };
 
@@ -269,138 +172,8 @@ export default function WalletDetailPage() {
       router.push("/wallets");
     } catch (err: any) {
       addToast(err.message || "Failed to delete", "error");
-    } finally {
       setDeleteLoading(false);
       setShowDeleteConfirm(false);
-    }
-  };
-
-  const handleEdit = async () => {
-    if (!editName.trim()) {
-      addToast("Name is required", "error");
-      return;
-    }
-    setEditLoading(true);
-    try {
-      const body: any = { name: editName };
-      const systemTags = wallet?.tags.filter((t) => t.startsWith("custom-token:")) || [];
-      const userTags = editTags
-        ? editTags.split(",").map((s) => s.trim()).filter(Boolean)
-        : [];
-      body.tags = [...systemTags, ...userTags];
-      await apiFetch(`/wallets/${params.id}`, { method: "PATCH", body: JSON.stringify(body), token: token! });
-      addToast("Wallet updated", "success");
-      setShowEdit(false);
-      fetchData();
-    } catch (err: any) {
-      addToast(err.message || "Failed to update", "error");
-    } finally {
-      setEditLoading(false);
-    }
-  };
-
-  const isCustomToken = (chainId: number, address: string) => {
-    const tag = `custom-token:${chainId}:${address.toLowerCase()}`;
-    return wallet?.tags.includes(tag) || false;
-  };
-
-  const handleTrackToken = async () => {
-    if (!trackTokenAddress.trim()) {
-      addToast("Token contract address is required", "error");
-      return;
-    }
-    if (!trackTokenAddress.startsWith("0x") || trackTokenAddress.length !== 42) {
-      addToast("Invalid contract address format", "error");
-      return;
-    }
-    const acc = wallet?.accounts.find((a) => a.chain.name === trackTokenChain);
-    if (!acc) {
-      addToast(`Wallet has no account derived on ${trackTokenChain}`, "error");
-      return;
-    }
-    const numericChainId = acc.chain.chainId;
-    const tagToAdd = `custom-token:${numericChainId}:${trackTokenAddress.toLowerCase()}`;
-    
-    if (wallet?.tags.includes(tagToAdd)) {
-      addToast("Token is already being tracked on this chain", "info");
-      setShowTrackTokenModal(false);
-      return;
-    }
-
-    setTrackTokenLoading(true);
-    try {
-      const updatedTags = [...(wallet?.tags || []), tagToAdd];
-      await apiFetch(`/wallets/${params.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ tags: updatedTags }),
-        token: token!,
-      });
-      addToast("Token tracked successfully", "success");
-      setShowTrackTokenModal(false);
-      setTrackTokenAddress("");
-      fetchData();
-    } catch (err: any) {
-      addToast(err.message || "Failed to track token", "error");
-    } finally {
-      setTrackTokenLoading(false);
-    }
-  };
-
-  const handleUntrackToken = async (chainId: number, tokenAddress: string) => {
-    if (!confirm("Are you sure you want to stop tracking this token?")) return;
-    try {
-      const tagToRemove = `custom-token:${chainId}:${tokenAddress.toLowerCase()}`;
-      const updatedTags = (wallet?.tags || []).filter((t) => t !== tagToRemove);
-      await apiFetch(`/wallets/${params.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ tags: updatedTags }),
-        token: token!,
-      });
-      addToast("Token untracked", "success");
-      fetchData();
-    } catch (err: any) {
-      addToast(err.message || "Failed to untrack token", "error");
-    }
-  };
-
-  const handleSignMessage = async () => {
-    if (!signMessageText.trim()) {
-      addToast("Message text is required", "error");
-      return;
-    }
-    setSignMessageLoading(true);
-    setSignMessageSignature("");
-    try {
-      const res: any = await apiFetch("/transactions/sign-message", {
-        method: "POST",
-        body: JSON.stringify({
-          walletId: params.id as string,
-          chain: signMessageChain,
-          message: signMessageText,
-        }),
-        token: token!,
-      });
-      setSignMessageSignature(res.signature);
-      addToast("Message signed successfully", "success");
-    } catch (err: any) {
-      addToast(err.message || "Failed to sign message", "error");
-    } finally {
-      setSignMessageLoading(false);
-    }
-  };
-
-  const deriveNewAccount = async () => {
-    try {
-      const chain = prompt("Chain name (default: sepolia):") || "sepolia";
-      await apiFetch(`/wallets/${params.id}/accounts`, {
-        method: "POST",
-        body: JSON.stringify({ chain }),
-        token: token!,
-      });
-      addToast("Account derived successfully", "success");
-      fetchData();
-    } catch (err: any) {
-      addToast(err.message || "Failed to derive account", "error");
     }
   };
 
@@ -432,130 +205,37 @@ export default function WalletDetailPage() {
     }
   };
 
-  const openEditSpendingLimit = (sl: SpendingLimitItem) => {
-    setEditingSpendingLimit(sl);
-    setSlName(sl.name);
-    setSlMaxPerTx(sl.maxPerTx || "");
-    setSlMaxDaily(sl.maxDaily || "");
-    setSlMaxMonthly(sl.maxMonthly || "");
-    setSlDenylist(sl.denylist.join(", "));
-    setShowSpendingLimitModal(true);
-  };
-
-  const openCreateSpendingLimit = () => {
-    setEditingSpendingLimit(null);
-    setSlName("");
-    setSlMaxPerTx("");
-    setSlMaxDaily("");
-    setSlMaxMonthly("");
-    setSlDenylist("");
-    setShowSpendingLimitModal(true);
-  };
-
-  const saveSpendingLimit = async () => {
-    if (!slName.trim()) {
-      addToast("Name required", "error");
-      return;
-    }
-    setSlLoading(true);
+  const handleEdit = async () => {
+    if (!editName.trim()) { addToast("Name is required", "error"); return; }
+    setEditLoading(true);
     try {
-      const body: any = {
-        walletId: params.id as string,
-        name: slName,
-        maxPerTx: slMaxPerTx || undefined,
-        maxDaily: slMaxDaily || undefined,
-        maxMonthly: slMaxMonthly || undefined,
-        denylist: slDenylist ? slDenylist.split(",").map((s) => s.trim()).filter(Boolean) : [],
-      };
-
-      if (editingSpendingLimit) {
-        await apiFetch(`/spending-limits/${editingSpendingLimit.id}`, {
-          method: "PATCH",
-          body: JSON.stringify(body),
-          token: token!,
-        });
-        addToast("Spending limit updated", "success");
-      } else {
-        await apiFetch("/spending-limits", {
-          method: "POST",
-          body: JSON.stringify(body),
-          token: token!,
-        });
-        addToast("Spending limit created", "success");
-      }
-      setShowSpendingLimitModal(false);
-      setEditingSpendingLimit(null);
+      const body: any = { name: editName };
+      const systemTags = wallet?.tags.filter((t) => t.startsWith("custom-token:")) || [];
+      const userTags = editTags ? editTags.split(",").map((s) => s.trim()).filter(Boolean) : [];
+      body.tags = [...systemTags, ...userTags];
+      await apiFetch(`/wallets/${params.id}`, { method: "PATCH", body: JSON.stringify(body), token: token! });
+      addToast("Wallet updated", "success");
+      setShowEdit(false);
       fetchData();
     } catch (err: any) {
-      addToast(err.message || "Failed to save limit", "error");
+      addToast(err.message || "Failed to update", "error");
     } finally {
-      setSlLoading(false);
+      setEditLoading(false);
     }
-  };
-
-  const toggleSpendingLimit = async (id: string, active: boolean) => {
-    try {
-      await apiFetch(`/spending-limits/${id}`, { method: "PATCH", body: JSON.stringify({ active }), token: token! });
-      fetchData();
-    } catch (err: any) {
-      addToast(err.message || "Failed", "error");
-    }
-  };
-
-  const deleteSpendingLimit = async (id: string) => {
-    if (!confirm("Delete this spending limit?")) return;
-    try {
-      await apiFetch(`/spending-limits/${id}`, { method: "DELETE", token: token! });
-      addToast("Spending limit deleted", "success");
-      fetchData();
-    } catch (err: any) {
-      addToast(err.message || "Failed to delete limit", "error");
-    }
-  };
-
-  const txAction = async (txId: string, action: "retry" | "cancel" | "speed-up") => {
-    setTxActionLoading((prev) => ({ ...prev, [txId]: true }));
-    try {
-      if (action === "speed-up") {
-        await apiFetch(`/transactions/${txId}/speed-up`, {
-          method: "POST",
-          body: JSON.stringify({ gasMultiplier: 1.2 }),
-          token: token!,
-        });
-      } else {
-        await apiFetch(`/transactions/${txId}/${action}`, { method: "POST", token: token! });
-      }
-      addToast(`Transaction ${action === "speed-up" ? "sped up" : action === "cancel" ? "cancelled" : "retrying"}`, "success");
-      fetchData();
-    } catch (err: any) {
-      addToast(err.message || `Failed to ${action} transaction`, "error");
-    } finally {
-      setTxActionLoading((prev) => ({ ...prev, [txId]: false }));
-    }
-  };
-
-  const getChainForAccount = (chainId: string): ChainInfo | undefined => {
-    return wallet?.accounts.find((a) => a.chainId === chainId)?.chain;
   };
 
   if (!isAuthenticated) return null;
 
+  const filteredAccounts = wallet?.accounts.filter(
+    (a) => !accountSearch || a.address.toLowerCase().includes(accountSearch.toLowerCase()) || a.chain.name.toLowerCase().includes(accountSearch.toLowerCase())
+  ) || [];
+
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-8 w-48" />
-        </div>
-        <Card>
-          <CardContent>
-            <Skeleton className="h-32 w-full" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent>
-            <Skeleton className="h-48 w-full" />
-          </CardContent>
-        </Card>
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-48 w-full" />
       </div>
     );
   }
@@ -564,606 +244,175 @@ export default function WalletDetailPage() {
     return (
       <div className="text-center py-12">
         <p className="text-slate-400 mb-4">{error || "Wallet not found"}</p>
-        <Button variant="secondary" onClick={() => router.push("/wallets")}>
-          Back to Wallets
-        </Button>
+        <Button variant="secondary" onClick={() => router.push("/wallets")}>Back to Wallets</Button>
       </div>
     );
   }
 
   const accountColumns = [
-    { key: "index", header: "#" },
     {
       key: "chainName",
-      header: "Chain",
-      render: (a: any) => a.chain?.name || a.chainId,
+      header: "Accounts",
+      render: (a: any) => (
+        <span className="text-sm font-medium">{a.chain?.name ? a.chain.name.charAt(0).toUpperCase() + a.chain.name.slice(1) : a.chainId}</span>
+      ),
     },
     {
       key: "address",
       header: "Address",
       render: (a: any) => (
         <div className="flex items-center gap-1">
-          <span className="font-mono text-xs break-all">{a.address}</span>
-          <button
-            onClick={() => copyToClipboard(a.address, addToast)}
-            className="text-slate-400 hover:text-slate-600 text-xs flex-shrink-0"
-            title="Copy address"
-          >
-            &#x2398;
-          </button>
-          {a.chain?.blockExplorerUrl && (
-            <a
-              href={explorerUrl(a.address, a.chain)!}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-500 hover:text-blue-700 text-xs flex-shrink-0"
-              title="View on explorer"
-            >
-              &#x2197;
-            </a>
-          )}
+          <span className="font-mono text-xs">{a.address.slice(0, 6)}&middot;&middot;&middot;&middot;{a.address.slice(-4)}</span>
+          <button onClick={() => copyToClipboard(a.address, addToast)} className="text-slate-400 hover:text-slate-600 text-xs">&#x2398;</button>
         </div>
       ),
     },
     {
       key: "derivationPath",
-      header: "Path",
-      render: (a: any) => <span className="font-mono text-xs">{a.derivationPath}</span>,
-    },
-  ];
-
-  const txColumns = [
-    {
-      key: "txHash",
-      header: "Tx Hash",
-      render: (tx: TxItem) =>
-        tx.txHash ? (
-          <div className="flex items-center gap-1">
-            <span className="font-mono text-xs">{tx.txHash.slice(0, 10)}...</span>
-            <button
-              onClick={() => copyToClipboard(tx.txHash!, addToast)}
-              className="text-slate-400 hover:text-slate-600 text-xs"
-              title="Copy tx hash"
-            >
-              &#x2398;
-            </button>
-            {wallet?.accounts?.[0]?.chain?.blockExplorerUrl && (
-              <a
-                href={txExplorerUrl(tx.txHash, wallet.accounts[0].chain)!}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-500 hover:text-blue-700 text-xs"
-                title="View on explorer"
-              >
-                &#x2197;
-              </a>
-            )}
-          </div>
-        ) : (
-          "-"
-        ),
-    },
-    {
-      key: "to",
-      header: "To",
-      render: (tx: TxItem) => (
-        <div className="flex items-center gap-1">
-          <span className="font-mono text-xs">{tx.to.slice(0, 8)}...</span>
-          <button
-            onClick={() => copyToClipboard(tx.to, addToast)}
-            className="text-slate-400 hover:text-slate-600 text-xs"
-            title="Copy address"
-          >
-            &#x2398;
-          </button>
-        </div>
+      header: "Parameters",
+      render: (a: any) => (
+        <button
+          onClick={() => setActiveParamId(activeParamId === a.id ? null : a.id)}
+          className="p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100"
+          title="View derivation details"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        </button>
       ),
-    },
-    { key: "value", header: "Value" },
-    { key: "nonce", header: "Nonce", render: (tx: TxItem) => tx.nonce ?? "-" },
-    {
-      key: "status",
-      header: "Status",
-      render: (tx: TxItem) => <StatusBadge status={tx.status} />,
-    },
-    {
-      key: "riskScore",
-      header: "Risk",
-      render: (tx: TxItem) =>
-        tx.riskScore != null ? (
-          <span className={tx.riskScore > 70 ? "text-red-500 font-bold" : "text-slate-500"}>
-            {tx.riskScore}
-          </span>
-        ) : (
-          "-"
-        ),
-    },
-    {
-      key: "createdAt",
-      header: "Date",
-      render: (tx: TxItem) => new Date(tx.createdAt).toLocaleString(),
-    },
-    {
-      key: "actions",
-      header: "",
-      render: (tx: TxItem) => {
-        const canAct = ["PENDING", "SIGNED", "BROADCAST", "FAILED"].includes(tx.status);
-        const loading = txActionLoading[tx.id];
-        return canAct ? (
-          <div className="flex gap-1">
-            {tx.status === "FAILED" && (
-              <Button size="sm" variant="secondary" disabled={loading} onClick={() => txAction(tx.id, "retry")}>
-                Retry
-              </Button>
-            )}
-            {["PENDING", "SIGNED", "BROADCAST"].includes(tx.status) && (
-              <>
-                <Button size="sm" variant="secondary" disabled={loading} onClick={() => txAction(tx.id, "cancel")}>
-                  Cancel
-                </Button>
-                <Button size="sm" variant="secondary" disabled={loading} onClick={() => txAction(tx.id, "speed-up")}>
-                  Speed Up
-                </Button>
-              </>
-            )}
-          </div>
-        ) : null;
-      },
     },
   ];
 
   return (
-    <div>
+    <div className="max-w-3xl">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">{wallet.name}</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Status: <StatusBadge status={wallet.status} /> | Owner: {wallet.ownerType}
-          </p>
-          {wallet.tags.filter((t) => !t.startsWith("custom-token:")).length > 0 && (
-            <div className="flex gap-1 mt-2 flex-wrap">
-              {wallet.tags
-                .filter((t) => !t.startsWith("custom-token:"))
-                .map((t, i) => (
-                  <span key={i} className="text-xs bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.5 rounded">
-                    {t}
-                  </span>
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.push("/wallets")} className="text-slate-400 hover:text-slate-600">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          </button>
+          <h1 className="text-xl font-bold">Wallet</h1>
+          <h2 className="text-xl font-bold text-slate-700">{wallet.name}</h2>
+        </div>
+        <Button onClick={() => { setShowExport(true); setExportData(null); setExportPassphrase(""); setExportPassConfirm(""); }}>Export</Button>
+      </div>
+
+      {/* Seed Phrase Card */}
+      <Card className="mb-6">
+        <CardContent className="p-5">
+          {!showSeedPhrase ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">Seed Phrase</p>
+                <p className="text-sm text-slate-500 mt-0.5">Your seed phrase is the key to your wallet. Save it in a secure location.</p>
+              </div>
+              <Button variant="secondary" onClick={handleRevealSeedPhrase} disabled={seedLoading}>
+                {seedLoading ? "Loading..." : "Reveal"}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="font-medium">Seed Phrase</p>
+              <p className="text-sm text-slate-500">Your seed phrase is the key to your wallet. Save it in a secure location.</p>
+              <div className="p-3 bg-slate-100 rounded-md font-mono text-sm break-words">
+                {seedPhrase}
+              </div>
+              <Button variant="secondary" onClick={() => { setShowSeedPhrase(false); setSeedPhrase(""); }}>
+                Done
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Info Bar */}
+      <Card className="mb-6">
+        <CardContent className="p-4 flex items-center gap-8 text-sm">
+          <div>
+            <span className="text-slate-500">ID</span>
+            <p className="font-mono text-xs mt-0.5">{wallet.id.slice(0, 4)}&middot;&middot;&middot;&middot;{wallet.id.slice(-4)}</p>
+          </div>
+          <div>
+            <span className="text-slate-500">Created</span>
+            <p className="text-xs mt-0.5">{new Date(wallet.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Accounts */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold">Accounts</h3>
+          <span className="text-xs text-slate-400">({wallet.accounts.length})</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Input
+              value={accountSearch}
+              onChange={(e) => setAccountSearch(e.target.value)}
+              placeholder="Search accounts..."
+              className="w-48 text-sm"
+            />
+          </div>
+          {!showNewAccount ? (
+            <Button variant="secondary" size="sm" onClick={() => setShowNewAccount(true)}>
+              New account
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <select
+                value={newAccountChain}
+                onChange={(e) => setNewAccountChain(e.target.value)}
+                className="border rounded-md px-2 py-1.5 text-sm"
+              >
+                {CHAIN_OPTIONS.map((c) => (
+                  <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
                 ))}
+              </select>
+              <Button size="sm" onClick={handleAddAccount} disabled={newAccountLoading}>
+                {newAccountLoading ? "Adding..." : "Add"}
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setShowNewAccount(false)}>Cancel</Button>
             </div>
           )}
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="secondary" onClick={() => router.push("/wallets")}>
-            Back
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setEditName(wallet.name);
-              setEditTags(wallet.tags.filter((t) => !t.startsWith("custom-token:")).join(", "));
-              setShowEdit(true);
-            }}
-          >
-            Edit
-          </Button>
-          <Button variant="secondary" onClick={() => setShowDeleteConfirm(true)}>
-            Delete
-          </Button>
-          <Button
-            variant={wallet.status === "FROZEN" ? "secondary" : "secondary"}
-            onClick={() => setShowFreezeConfirm(true)}
-          >
-            {wallet.status === "FROZEN" ? "Unfreeze" : "Freeze"}
-          </Button>
-          <Button variant="secondary" onClick={handleRotate}>
-            Rotate
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setShowExport(true);
-              setExportData(null);
-              setExportPassphrase("");
-              setExportPassConfirm("");
-            }}
-          >
-            Export
-          </Button>
-          <Button onClick={deriveNewAccount}>Derive Account</Button>
-          <Button onClick={() => router.push(`/transactions/send?walletId=${wallet.id}`)}>
-            Send
-          </Button>
-        </div>
       </div>
 
-      <div className="flex gap-2 mb-6">
-        {(["overview", "transactions", "security"] as const).map((tab) => (
-          <Button
-            key={tab}
-            variant={activeTab === tab ? "default" : "secondary"}
-            size="sm"
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </Button>
-        ))}
-      </div>
+      <Card>
+        <CardContent className="p-0">
+          <Table columns={accountColumns} data={filteredAccounts} emptyMessage="No accounts derived." />
+        </CardContent>
+      </Card>
 
-      {activeTab === "overview" && (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <h2 className="font-semibold">Native Balances</h2>
-              <Button size="sm" variant="secondary" onClick={refreshBalances} disabled={balLoading}>
-                {balLoading ? "Refreshing..." : "Refresh Balance"}
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {balanceError ? (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-sm">
-                  <p className="font-medium text-amber-700">Balance unavailable</p>
-                  <p className="text-amber-600 mt-1">{balanceError}</p>
-                  <Button size="sm" variant="secondary" className="mt-2" onClick={refreshBalances}>Retry</Button>
+      {/* Parameters Popover */}
+      {activeParamId && (() => {
+        const acc = wallet.accounts.find((a) => a.id === activeParamId);
+        if (!acc) return null;
+        return (
+          <div className="fixed inset-0 z-30" onClick={() => setActiveParamId(null)}>
+            <div className="fixed right-6 top-1/2 -translate-y-1/2 z-40 w-64 p-4 bg-white border border-slate-200 rounded-lg shadow-xl text-sm" onClick={(e) => e.stopPropagation()}>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs text-slate-400 font-medium">Curve Type</p>
+                  <p className="font-mono text-slate-800 mt-0.5">SECP&middot;&middot;&middot;&middot;56K1</p>
                 </div>
-              ) : balances.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {balances.map((b, i) => (
-                    <div key={i} className="p-4 bg-slate-50 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-slate-500 font-mono break-all">{b.address}</p>
-                        <button
-                          onClick={() => copyToClipboard(b.address, addToast)}
-                          className="text-slate-400 hover:text-slate-600 text-xs"
-                          title="Copy address"
-                        >
-                          &#x2398;
-                        </button>
-                      </div>
-                      <p className="text-2xl font-bold mt-1">
-                        {parseFloat(b.balance).toFixed(6)}{" "}
-                        <span className="text-sm text-slate-500">
-                          {b.symbol} ({b.chain})
-                        </span>
-                      </p>
-                    </div>
-                  ))}
+                <div>
+                  <p className="text-xs text-slate-400 font-medium">Path Type</p>
+                  <p className="font-mono text-slate-800 mt-0.5">{acc.derivationPath?.startsWith("m/44'") ? "BIP44" : acc.derivationPath?.startsWith("m/0'") ? "BIP32" : "Legacy"}</p>
                 </div>
-              ) : (
-                <p className="text-sm text-slate-400 py-2">
-                  No balance data. Click "Refresh Balance" to check.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-              <h2 className="font-semibold">Token Balances</h2>
-              <Button size="sm" variant="secondary" onClick={() => setShowTrackTokenModal(true)}>
-                Track Custom Token
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {tokenBalances.length > 0 && tokenBalances.some((tb) => tb.tokens.length > 0) ? (
-                <div className="space-y-4">
-                  {tokenBalances
-                    .filter((tb) => tb.tokens.length > 0)
-                    .map((tb, i) => (
-                      <div key={i}>
-                        <p className="text-xs text-slate-500 font-mono mb-2">
-                          {tb.address.slice(0, 12)}... ({tb.chain})
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {tb.tokens.map((t, j) => {
-                            const custom = isCustomToken(tb.chainId, t.token.address);
-                            return (
-                              <div key={j} className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-lg flex justify-between items-center group relative">
-                                <div>
-                                  <div className="flex items-center gap-1.5">
-                                    <p className="font-medium text-sm">{t.token.symbol}</p>
-                                    {custom && (
-                                      <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 px-1 rounded font-medium">Custom</span>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-slate-400 font-mono truncate max-w-[120px] sm:max-w-[160px] md:max-w-[200px]" title={t.token.address}>{t.token.name}</p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <p className="font-mono text-sm font-medium">
-                                    {parseFloat(t.balanceFormatted).toFixed(4)}
-                                  </p>
-                                  {custom && (
-                                    <button
-                                      onClick={() => handleUntrackToken(tb.chainId, t.token.address)}
-                                      className="text-slate-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 font-bold text-xs"
-                                      title="Untrack token"
-                                    >
-                                      &#x2715;
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              ) : (
-                <p className="text-sm text-slate-400 py-2">
-                  No token balances. Track a custom token to get started.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <h2 className="font-semibold">Accounts ({wallet.accounts.length})</h2>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table columns={accountColumns} data={wallet.accounts} emptyMessage="No accounts derived." />
-            </CardContent>
-          </Card>
-
-          {gasPrice && (
-            <Card>
-              <CardHeader>
-                <h2 className="font-semibold">Gas Price ({gasPrice.chain})</h2>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div>
-                    <p className="text-xs text-slate-500">Slow</p>
-                    <p className="font-mono text-sm">{gasPrice.slow}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Standard</p>
-                    <p className="font-mono text-sm">{gasPrice.standard}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Fast</p>
-                    <p className="font-mono text-sm">{gasPrice.fast}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {activeTab === "transactions" && (
-        <div className="space-y-4">
-          <div className="flex justify-end">
-            <Button onClick={() => router.push(`/transactions/send?walletId=${wallet.id}`)}>
-              Send Transaction
-            </Button>
-          </div>
-          <Card>
-            <CardContent className="p-0">
-              <Table columns={txColumns} data={transactions} emptyMessage="No transactions yet." />
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {activeTab === "security" && (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold">Spending Limits</h2>
-                <Button size="sm" onClick={openCreateSpendingLimit}>
-                  Add Limit
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {spendingLimits.length === 0 ? (
-                <p className="text-sm text-slate-400">
-                  No spending limits configured. Add limits to control transaction authorization.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {spendingLimits.map((sl) => (
-                    <div key={sl.id} className="p-4 bg-slate-50 rounded-lg flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">{sl.name}</p>
-                        <div className="text-xs text-slate-500 space-x-3 mt-1">
-                          {sl.maxPerTx && <span>Max/tx: {sl.maxPerTx}</span>}
-                          {sl.maxDaily && <span>Max/day: {sl.maxDaily}</span>}
-                          {sl.maxMonthly && <span>Max/mo: {sl.maxMonthly}</span>}
-                          {sl.denylist.length > 0 && (
-                            <span>Denied: {sl.denylist.length} addrs</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => openEditSpendingLimit(sl)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={sl.active ? "default" : "secondary"}
-                          onClick={() => toggleSpendingLimit(sl.id, !sl.active)}
-                        >
-                          {sl.active ? "Active" : "Disabled"}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => deleteSpendingLimit(sl.id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <h2 className="font-semibold">Wallet Security Actions</h2>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded">
-                  <div>
-                    <p className="font-medium">Freeze Wallet</p>
-                    <p className="text-slate-500">Block all transactions temporarily</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => setShowFreezeConfirm(true)}
-                  >
-                    {wallet.status === "FROZEN" ? "Unfreeze" : "Freeze"}
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded">
-                  <div>
-                    <p className="font-medium">Rotate Keys</p>
-                    <p className="text-slate-500">
-                      Generate new seed phrase and migrate accounts
-                    </p>
-                  </div>
-                  <Button size="sm" variant="secondary" onClick={handleRotate}>
-                    Rotate
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded">
-                  <div>
-                    <p className="font-medium">Export Recovery Phrase</p>
-                    <p className="text-slate-500">
-                      Reveal or password-protect your seed phrase
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      setShowExport(true);
-                      setExportData(null);
-                      setExportPassphrase("");
-                      setExportPassConfirm("");
-                    }}
-                  >
-                    Export
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded">
-                  <div>
-                    <p className="font-medium">Sign Message</p>
-                    <p className="text-slate-500">
-                      Sign an arbitrary text message with derived key credentials
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      setShowSignMessageModal(true);
-                      setSignMessageText("");
-                      setSignMessageSignature("");
-                      if (wallet.accounts.length > 0) {
-                        setSignMessageChain(wallet.accounts[0].chain.name);
-                      } else {
-                        setSignMessageChain("sepolia");
-                      }
-                    }}
-                  >
-                    Sign Message
-                  </Button>
+                <div>
+                  <p className="text-xs text-slate-400 font-medium">Path</p>
+                  <p className="font-mono text-slate-800 mt-0.5 break-all">{acc.derivationPath}</p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+            </div>
+          </div>
+        );
+      })()}
 
-      <Modal open={showEdit} onClose={() => setShowEdit(false)} title="Edit Wallet">
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Wallet Name</label>
-            <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Wallet name" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Tags (comma-separated)</label>
-            <Input value={editTags} onChange={(e) => setEditTags(e.target.value)} placeholder="trading, dev, cold" />
-          </div>
-          <Button onClick={handleEdit} disabled={editLoading} className="w-full">
-            {editLoading ? "Saving..." : "Save Changes"}
-          </Button>
-        </div>
-      </Modal>
-
-      <Modal open={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Delete Wallet">
-        <div className="space-y-4">
-          <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm">
-            <p className="font-medium text-red-700">Warning: This action cannot be undone!</p>
-            <p className="text-red-600 mt-1">
-              Deleting this wallet will permanently remove all associated accounts, spending limits, and transaction history.
-            </p>
-          </div>
-          <p className="text-sm">
-            Are you sure you want to delete <strong>{wallet.name}</strong>?
-          </p>
-          <div className="flex gap-2">
-            <Button onClick={handleDelete} disabled={deleteLoading} className="flex-1" variant="default">
-              {deleteLoading ? "Deleting..." : "Yes, Delete"}
-            </Button>
-            <Button onClick={() => setShowDeleteConfirm(false)} variant="secondary" className="flex-1">
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        open={showFreezeConfirm}
-        onClose={() => setShowFreezeConfirm(false)}
-        title={wallet.status === "FROZEN" ? "Unfreeze Wallet" : "Freeze Wallet"}
-      >
-        <div className="space-y-4">
-          <p className="text-sm">
-            {wallet.status === "FROZEN"
-              ? "Unfreeze will allow transactions on this wallet again."
-              : "Freezing will block all future transactions on this wallet until unfrozen."}
-          </p>
-          <div className="flex gap-2">
-            <Button
-              onClick={handleFreeze}
-              disabled={freezeLoading}
-              className="flex-1"
-              variant={wallet.status === "FROZEN" ? "default" : "default"}
-            >
-              {freezeLoading
-                ? "Processing..."
-                : wallet.status === "FROZEN"
-                ? "Unfreeze"
-                : "Freeze"}
-            </Button>
-            <Button onClick={() => setShowFreezeConfirm(false)} variant="secondary" className="flex-1">
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
+      {/* Export Modal (encrypted export) */}
       <Modal
         open={showExport}
-        onClose={() => {
-          setShowExport(false);
-          setExportData(null);
-          setExportPassphrase("");
-        }}
-        title="Export Wallet"
+        onClose={() => { setShowExport(false); setExportData(null); setExportPassphrase(""); setExportPassConfirm(""); }}
+        title={`Export Wallet: ${wallet.name}`}
       >
         {exportData ? (
           <div className="space-y-4">
@@ -1175,33 +424,9 @@ export default function WalletDetailPage() {
               <label className="text-sm font-medium">
                 {exportPassphrase ? "Encrypted Recovery Phrase" : "Recovery Phrase"}
               </label>
-              <Input
-                value={exportData.mnemonic || exportData.encryptedMnemonic || ""}
-                readOnly
-                className="font-mono text-sm"
-              />
+              <Input value={exportData.mnemonic || exportData.encryptedMnemonic || ""} readOnly className="font-mono text-sm" />
             </div>
-            {exportData.accounts.length > 0 && (
-              <div>
-                <p className="text-sm font-medium mb-2">Accounts ({exportData.accounts.length})</p>
-                <div className="space-y-1 text-xs font-mono">
-                  {exportData.accounts.map((acc, i) => (
-                    <div key={i} className="p-2 bg-slate-50 rounded">
-                      {acc.address} [{acc.derivationPath}]
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            <Button
-              onClick={() => {
-                setShowExport(false);
-                setExportData(null);
-                setExportPassphrase("");
-              }}
-              variant="secondary"
-              className="w-full"
-            >
+            <Button onClick={() => { setShowExport(false); setExportData(null); setExportPassphrase(""); setExportPassConfirm(""); }} variant="secondary" className="w-full">
               Close
             </Button>
           </div>
@@ -1209,209 +434,55 @@ export default function WalletDetailPage() {
           <div className="space-y-4">
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm">
               <p className="font-medium text-amber-700">Export wallet seed phrase</p>
-              <p className="text-amber-600 mt-1">
-                This will reveal the seed phrase. Leave passphrase blank for plaintext export.
-              </p>
+              <p className="text-amber-600 mt-1">Leave passphrase blank for plaintext export.</p>
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">Passphrase (optional, for encrypted export)</label>
-              <Input
-                type="password"
-                value={exportPassphrase}
-                onChange={(e) => setExportPassphrase(e.target.value)}
-                placeholder="Min 8 characters"
-              />
+              <label className="text-sm font-medium">Passphrase (optional)</label>
+              <Input type="password" value={exportPassphrase} onChange={(e) => setExportPassphrase(e.target.value)} placeholder="Min 8 characters" />
             </div>
             {exportPassphrase && (
               <div className="space-y-1">
                 <label className="text-sm font-medium">Confirm Passphrase</label>
-                <Input
-                  type="password"
-                  value={exportPassConfirm}
-                  onChange={(e) => setExportPassConfirm(e.target.value)}
-                  placeholder="Re-enter passphrase"
-                />
+                <Input type="password" value={exportPassConfirm} onChange={(e) => setExportPassConfirm(e.target.value)} placeholder="Re-enter passphrase" />
               </div>
             )}
             <Button onClick={handleExport} disabled={exportLoading} className="w-full">
               {exportLoading ? "Exporting..." : "Export Wallet"}
             </Button>
-            <Button onClick={() => setShowExport(false)} variant="secondary" className="w-full">
-              Cancel
-            </Button>
+            <Button onClick={() => { setShowExport(false); setExportPassphrase(""); }} variant="secondary" className="w-full">Cancel</Button>
           </div>
         )}
       </Modal>
 
-      <Modal
-        open={showSpendingLimitModal}
-        onClose={() => {
-          setShowSpendingLimitModal(false);
-          setEditingSpendingLimit(null);
-        }}
-        title={editingSpendingLimit ? "Edit Spending Limit" : "Add Spending Limit"}
-      >
+      {/* Delete Confirm Modal */}
+      <Modal open={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Delete Wallet">
         <div className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Name</label>
-            <Input
-              value={slName}
-              onChange={(e) => setSlName(e.target.value)}
-              placeholder="e.g. Dev Wallet Cap"
-            />
+          <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm">
+            <p className="font-medium text-red-700">Warning: This action cannot be undone!</p>
+            <p className="text-red-600 mt-1">Deleting this wallet will permanently remove all associated accounts, spending limits, and transaction history.</p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Max Per Transaction</label>
-              <Input
-                value={slMaxPerTx}
-                onChange={(e) => setSlMaxPerTx(e.target.value)}
-                placeholder="e.g. 1.0"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Max Daily Total</label>
-              <Input
-                value={slMaxDaily}
-                onChange={(e) => setSlMaxDaily(e.target.value)}
-                placeholder="e.g. 10.0"
-              />
-            </div>
+          <p className="text-sm">Are you sure you want to delete <strong>{wallet.name}</strong>?</p>
+          <div className="flex gap-2">
+            <Button onClick={handleDelete} disabled={deleteLoading} className="flex-1">Yes, Delete</Button>
+            <Button onClick={() => setShowDeleteConfirm(false)} variant="secondary" className="flex-1">Cancel</Button>
           </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Max Monthly Total</label>
-            <Input
-              value={slMaxMonthly}
-              onChange={(e) => setSlMaxMonthly(e.target.value)}
-              placeholder="e.g. 100.0"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Denylist Addresses (comma-separated)</label>
-            <Input
-              value={slDenylist}
-              onChange={(e) => setSlDenylist(e.target.value)}
-              placeholder="0x..., 0x..."
-            />
-          </div>
-          {editingSpendingLimit && (
-            <div className="flex gap-2 pt-2">
-              <Button
-                variant="secondary"
-                onClick={() => deleteSpendingLimit(editingSpendingLimit!.id)}
-              >
-                Delete Limit
-              </Button>
-            </div>
-          )}
-          <Button onClick={saveSpendingLimit} disabled={slLoading} className="w-full">
-            {slLoading ? "Saving..." : editingSpendingLimit ? "Update" : "Create"}
-          </Button>
-        </div>
-      </Modal>
-      
-      <Modal
-        open={showTrackTokenModal}
-        onClose={() => {
-          setShowTrackTokenModal(false);
-          setTrackTokenAddress("");
-        }}
-        title="Track Custom ERC-20 Token"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-slate-500">
-            Enter the contract address of the ERC-20 token you wish to track. The system will query the token's name, symbol, and decimals on-chain.
-          </p>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Chain</label>
-            <Select value={trackTokenChain} onValueChange={setTrackTokenChain}>
-              <SelectTrigger className="w-full bg-slate-50 dark:bg-slate-900 border-slate-200">
-                <SelectValue placeholder="Select chain" />
-              </SelectTrigger>
-              <SelectContent>
-                {wallet.accounts.map((acc) => (
-                  <SelectItem key={acc.chain.name} value={acc.chain.name}>
-                    {acc.chain.name.charAt(0).toUpperCase() + acc.chain.name.slice(1)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Token Contract Address</label>
-            <Input
-              value={trackTokenAddress}
-              onChange={(e) => setTrackTokenAddress(e.target.value)}
-              placeholder="0x..."
-              className="bg-slate-50 dark:bg-slate-900 border-slate-200"
-            />
-          </div>
-          <Button onClick={handleTrackToken} disabled={trackTokenLoading} className="w-full">
-            {trackTokenLoading ? "Tracking..." : "Track Token"}
-          </Button>
         </div>
       </Modal>
 
-      <Modal
-        open={showSignMessageModal}
-        onClose={() => {
-          setShowSignMessageModal(false);
-          setSignMessageText("");
-          setSignMessageSignature("");
-        }}
-        title="Sign Message"
-      >
+      {/* Edit Modal */}
+      <Modal open={showEdit} onClose={() => setShowEdit(false)} title="Edit Wallet">
         <div className="space-y-4">
-          <p className="text-sm text-slate-500">
-            Sign a text message using the private key derived for a specific account/chain.
-          </p>
           <div className="space-y-1">
-            <label className="text-sm font-medium">Select Account / Chain</label>
-            <Select value={signMessageChain} onValueChange={setSignMessageChain}>
-              <SelectTrigger className="w-full bg-slate-50 dark:bg-slate-900 border-slate-200">
-                <SelectValue placeholder="Select chain" />
-              </SelectTrigger>
-              <SelectContent>
-                {wallet.accounts.map((acc) => (
-                  <SelectItem key={acc.chain.name} value={acc.chain.name}>
-                    {acc.chain.name.charAt(0).toUpperCase() + acc.chain.name.slice(1)} ({acc.address.slice(0, 6)}...{acc.address.slice(-4)})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <label className="text-sm font-medium">Wallet Name</label>
+            <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">Message to Sign</label>
-            <textarea
-              value={signMessageText}
-              onChange={(e) => setSignMessageText(e.target.value)}
-              placeholder="Enter your message here..."
-              rows={4}
-              className="w-full p-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-slate-500 text-slate-900 dark:text-slate-100"
-            />
+            <label className="text-sm font-medium">Tags (comma-separated)</label>
+            <Input value={editTags} onChange={(e) => setEditTags(e.target.value)} placeholder="trading, dev, cold" />
           </div>
-          <Button onClick={handleSignMessage} disabled={signMessageLoading} className="w-full">
-            {signMessageLoading ? "Signing..." : "Sign Message"}
+          <Button onClick={handleEdit} disabled={editLoading} className="w-full">
+            {editLoading ? "Saving..." : "Save Changes"}
           </Button>
-
-          {signMessageSignature && (
-            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <label className="text-sm font-medium">Signature</label>
-              <div className="flex gap-2">
-                <Input
-                  value={signMessageSignature}
-                  readOnly
-                  className="font-mono text-xs bg-slate-50 dark:bg-slate-900 border-slate-200"
-                />
-                <Button
-                  variant="secondary"
-                  onClick={() => copyToClipboard(signMessageSignature, addToast)}
-                >
-                  Copy
-                </Button>
-              </div>
-            </div>
-          )}
         </div>
       </Modal>
     </div>

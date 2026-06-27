@@ -46,6 +46,7 @@ function generateDerivationPath(chain: string, derivation: string, index: number
 }
 
 interface DerivedAccount {
+  id: string;
   chain: string;
   address: string;
   derivationPath: string;
@@ -171,7 +172,7 @@ export default function WalletsPage() {
         body: JSON.stringify(body),
         token: token!,
       });
-      setDerivedAccounts((prev) => [...prev, { chain: chooseChain, address: res.address, derivationPath: res.derivationPath }]);
+      setDerivedAccounts((prev) => [...prev, { id: res.id, chain: chooseChain, address: res.address, derivationPath: res.derivationPath }]);
       setCreateStep(3);
     } catch (err: any) {
       addToast(err.message || "Failed to derive account", "error");
@@ -192,6 +193,18 @@ export default function WalletsPage() {
     setShowAdvanced(false);
     setChooseDerivation("BIP44");
     setChooseDerivationPath(generateDerivationPath("sepolia", "BIP44", 0).replace(/\/\d+$/, ""));
+  };
+
+  const handleRemoveAccount = async (accountId: string, index: number) => {
+    try {
+      await apiFetch(`/wallets/${createdWalletId}/accounts/${accountId}`, {
+        method: "DELETE",
+        token: token!,
+      });
+      setDerivedAccounts((prev) => prev.filter((_, i) => i !== index));
+    } catch (err: any) {
+      addToast(err.message || "Failed to remove account", "error");
+    }
   };
 
   const importWallet = async () => {
@@ -512,10 +525,19 @@ export default function WalletsPage() {
             {derivedAccounts.length > 0 ? (
               <div className="space-y-3">
                 {derivedAccounts.map((acc, i) => (
-                  <div key={i} className="p-3 bg-slate-50 rounded-md">
-                    <p className="text-sm font-medium">{acc.chain.charAt(0).toUpperCase() + acc.chain.slice(1)}</p>
-                    <p className="text-xs font-mono text-slate-500 mt-0.5">{acc.derivationPath}</p>
-                    <p className="text-xs font-mono text-slate-400 mt-0.5 truncate">{acc.address}</p>
+                  <div key={i} className="p-3 bg-slate-50 rounded-md flex items-start justify-between">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{acc.chain.charAt(0).toUpperCase() + acc.chain.slice(1)}</p>
+                      <p className="text-xs font-mono text-slate-500 mt-0.5">{acc.derivationPath}</p>
+                      <p className="text-xs font-mono text-slate-400 mt-0.5 truncate">{acc.address}</p>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveAccount(acc.id, i)}
+                      className="ml-2 p-1 text-slate-400 hover:text-red-500 flex-shrink-0"
+                      title="Remove account"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
                   </div>
                 ))}
               </div>
