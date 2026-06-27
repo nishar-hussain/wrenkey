@@ -7,9 +7,12 @@ export interface FetchOptions extends RequestInit {
 export async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
   const { token, ...fetchOpts } = options;
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...((fetchOpts.headers as Record<string, string>) || {}),
   };
+
+  if (fetchOpts.body) {
+    headers["Content-Type"] = "application/json";
+  }
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;

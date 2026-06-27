@@ -228,7 +228,7 @@ model Transaction {
   createdAt    DateTime  @default(now()) @map("created_at")
   confirmedAt  DateTime? @map("confirmed_at")
 
-  account WalletAccount @relation(fields: [accountId], references: [id])
+  account WalletAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@index([orgId, createdAt])
   @@index([accountId])

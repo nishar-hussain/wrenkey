@@ -26,6 +26,31 @@ interface Wallet {
 
 const CHAIN_OPTIONS = ["sepolia", "ethereum", "polygon", "arbitrum", "optimism", "base"];
 
+function getCoinTypeForChain(chain: string): string {
+  const map: Record<string, string> = { ethereum: "60", sepolia: "60", polygon: "60", arbitrum: "60", optimism: "60", base: "60" };
+  return map[chain] || "60";
+}
+
+function generateDerivationPath(chain: string, derivation: string, index: number): string {
+  const coinType = getCoinTypeForChain(chain);
+  switch (derivation) {
+    case "BIP44":
+      return `m/44'/${coinType}'/0'/0/${index}`;
+    case "BIP32":
+      return `m/0'/${index}`;
+    case "Legacy":
+      return `m/44'/${coinType}'/0'/${index}`;
+    default:
+      return `m/44'/${coinType}'/0'/0/${index}`;
+  }
+}
+
+interface DerivedAccount {
+  chain: string;
+  address: string;
+  derivationPath: string;
+}
+
 export default function WalletsPage() {
   const router = useRouter();
   const { isAuthenticated, token } = useAuth();
@@ -41,18 +66,30 @@ export default function WalletsPage() {
   const [ownerFilter, setOwnerFilter] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
+  const [createStep, setCreateStep] = useState<1 | 2 | 3>(1);
   const [createOwnerType, setCreateOwnerType] = useState<"USER" | "ORG">("USER");
   const [newName, setNewName] = useState("");
-  const [newChain, setNewChain] = useState("sepolia");
-  const [newTags, setNewTags] = useState("");
-  const [createLoading, setCreateLoading] = useState(false);
-  const [createdRecoveryPhrase, setCreatedRecoveryPhrase] = useState("");
+  const [createdWalletId, setCreatedWalletId] = useState("");
+  const [chooseChain, setChooseChain] = useState("sepolia");
+  const [derivedAccounts, setDerivedAccounts] = useState<DerivedAccount[]>([]);
+  const [stepLoading, setStepLoading] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [chooseDerivation, setChooseDerivation] = useState("BIP44");
+  const [chooseDerivationPath, setChooseDerivationPath] = useState("m/44'/60'/0'/0");
 
   const [showImport, setShowImport] = useState(false);
   const [importName, setImportName] = useState("");
   const [importMnemonic, setImportMnemonic] = useState("");
   const [importChain, setImportChain] = useState("sepolia");
   const [importLoading, setImportLoading] = useState(false);
+
+  const [showExport, setShowExport] = useState(false);
+  const [exportWalletId, setExportWalletId] = useState("");
+  const [exportWalletName, setExportWalletName] = useState("");
+  const [exportData, setExportData] = useState<{ mnemonic?: string; encryptedMnemonic?: string; accounts: Array<{ chainId: string; address: string; derivationPath: string; index: number }> } | null>(null);
+  const [exportPassphrase, setExportPassphrase] = useState("");
+  const [exportPassConfirm, setExportPassConfirm] = useState("");
+  const [exportLoading, setExportLoading] = useState(false);
 
   const fetchWallets = useCallback(async () => {
     if (!token) return;
@@ -82,35 +119,79 @@ export default function WalletsPage() {
     fetchWallets();
   }, [isAuthenticated, fetchWallets, router]);
 
-  const createWallet = async () => {
+  const resetCreate = () => {
+    setShowCreate(false);
+    setCreateStep(1);
+    setNewName("");
+    setCreatedWalletId("");
+    setChooseChain("sepolia");
+    setDerivedAccounts([]);
+    setShowAdvanced(false);
+    setChooseDerivation("BIP44");
+    setChooseDerivationPath("m/44'/60'/0'/0");
+  };
+
+  const openCreate = (ownerType: "USER" | "ORG") => {
+    resetCreate();
+    setCreateOwnerType(ownerType);
+    setShowCreate(true);
+  };
+
+  const handleStep1Create = async () => {
     if (!newName.trim()) return;
-    setCreateLoading(true);
+    setStepLoading(true);
     try {
       const res: any = await apiFetch("/wallets", {
         method: "POST",
         body: JSON.stringify({
           name: newName,
           ownerType: createOwnerType,
-          chain: newChain,
-          tags: newTags ? newTags.split(",").map((s) => s.trim()).filter(Boolean) : [],
+          skipInitialAccount: true,
         }),
         token: token!,
       });
-      if (res.recoveryPhrase) {
-        setCreatedRecoveryPhrase(res.recoveryPhrase);
-      } else {
-        setShowCreate(false);
-        setNewName("");
-        setNewChain("sepolia");
-        setNewTags("");
-        addToast("Wallet created", "success");
-        fetchWallets();
-      }
+      setCreatedWalletId(res.walletId);
+      setCreateStep(2);
     } catch (err: any) {
       addToast(err.message || "Failed to create wallet", "error");
     } finally {
-      setCreateLoading(false);
+      setStepLoading(false);
     }
+  };
+
+  const handleStep2Continue = async () => {
+    setStepLoading(true);
+    try {
+      const body: any = { chain: chooseChain };
+      if (showAdvanced) {
+        body.derivationPath = `${chooseDerivationPath}/0`;
+      }
+      const res: any = await apiFetch(`/wallets/${createdWalletId}/accounts`, {
+        method: "POST",
+        body: JSON.stringify(body),
+        token: token!,
+      });
+      setDerivedAccounts((prev) => [...prev, { chain: chooseChain, address: res.address, derivationPath: res.derivationPath }]);
+      setCreateStep(3);
+    } catch (err: any) {
+      addToast(err.message || "Failed to derive account", "error");
+    } finally {
+      setStepLoading(false);
+    }
+  };
+
+  const handleFinalCreate = () => {
+    resetCreate();
+    addToast("Wallet created", "success");
+    fetchWallets();
+  };
+
+  const handleAddAnother = () => {
+    setCreateStep(2);
+    setChooseChain("sepolia");
+    setShowAdvanced(false);
+    setChooseDerivation("BIP44");
+    setChooseDerivationPath(generateDerivationPath("sepolia", "BIP44", 0).replace(/\/\d+$/, ""));
   };
 
   const importWallet = async () => {
@@ -145,6 +226,34 @@ export default function WalletsPage() {
       addToast(err.message || "Failed to import wallet", "error");
     } finally {
       setImportLoading(false);
+    }
+  };
+
+  const handleExport = async () => {
+    if (exportPassphrase) {
+      if (exportPassphrase !== exportPassConfirm) {
+        addToast("Passphrases do not match", "error");
+        return;
+      }
+      if (exportPassphrase.length < 8) {
+        addToast("Passphrase must be at least 8 characters", "error");
+        return;
+      }
+    }
+    setExportLoading(true);
+    try {
+      const body: any = {};
+      if (exportPassphrase) body.passphrase = exportPassphrase;
+      const res: any = await apiFetch(`/wallets/${exportWalletId}/export`, {
+        method: "POST",
+        body: JSON.stringify(body),
+        token: token!,
+      });
+      setExportData(res);
+    } catch (err: any) {
+      addToast(err.message || "Failed to export wallet", "error");
+    } finally {
+      setExportLoading(false);
     }
   };
 
@@ -224,6 +333,16 @@ export default function WalletsPage() {
           <Button size="sm" variant="secondary" onClick={() => router.push(`/wallets/${w.id}`)}>
             View
           </Button>
+          <Button size="sm" variant="secondary" onClick={() => {
+            setShowExport(true);
+            setExportWalletId(w.id);
+            setExportWalletName(w.name);
+            setExportData(null);
+            setExportPassphrase("");
+            setExportPassConfirm("");
+          }}>
+            Export
+          </Button>
           <Button size="sm" variant="secondary" onClick={() => handleDelete(w.id)}>
             Delete
           </Button>
@@ -240,10 +359,10 @@ export default function WalletsPage() {
           <Button variant="secondary" onClick={() => { setShowImport(true); setImportName(""); setImportMnemonic(""); setImportChain("sepolia"); }}>
             Import
           </Button>
-          <Button variant="secondary" onClick={() => { setShowCreate(true); setNewName(""); setNewChain("sepolia"); setNewTags(""); setCreatedRecoveryPhrase(""); setCreateOwnerType("ORG"); }}>
-            + Company Wallet
+          <Button variant="secondary" onClick={() => openCreate("ORG")}>
+            New Wallet
           </Button>
-          <Button onClick={() => { setShowCreate(true); setNewName(""); setNewChain("sepolia"); setNewTags(""); setCreatedRecoveryPhrase(""); setCreateOwnerType("USER"); }}>
+          <Button onClick={() => openCreate("USER")}>
             Create Wallet
           </Button>
         </div>
@@ -304,65 +423,112 @@ export default function WalletsPage() {
         </CardContent>
       </Card>
 
-      <Modal open={showCreate} onClose={() => { setShowCreate(false); setCreatedRecoveryPhrase(""); setNewName(""); }} title="Create Wallet">
-        {createdRecoveryPhrase ? (
+      {/* ── Multi-step Create Wallet Modal ── */}
+      <Modal open={showCreate} onClose={resetCreate} title={createStep === 1 ? "New Wallet" : createStep === 2 ? `Add account to "${newName}"` : `Accounts for "${newName}"`}>
+        {createStep === 1 && (
           <div className="space-y-4">
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm">
-              <p className="font-medium text-amber-700">Save your recovery phrase!</p>
-              <p className="text-amber-600 mt-1">
-                This is the ONLY time it will be shown. Write it down and store it securely.
-                Anyone with this phrase can access your wallet.
-              </p>
-            </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">Recovery Phrase (12 words)</label>
-              <div className="p-3 bg-slate-100 rounded-md font-mono text-sm break-words">
-                {createdRecoveryPhrase}
-              </div>
+              <label className="text-sm font-medium">Wallet name</label>
+              <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="My Wallet" />
             </div>
-            <Button
-              onClick={() => {
-                setShowCreate(false);
-                setCreatedRecoveryPhrase("");
-                setNewName("");
-                setNewChain("sepolia");
-                setNewTags("");
-                addToast("Wallet created — recovery phrase shown once", "success");
-                fetchWallets();
-              }}
-              className="w-full"
-            >
-              I've Saved My Recovery Phrase
+            <Button onClick={handleStep1Create} disabled={stepLoading} className="w-full">
+              {stepLoading ? "Creating..." : "Create Wallet"}
             </Button>
           </div>
-        ) : (
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Wallet Name</label>
-            <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="My Wallet" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Chain</label>
-            <select
-              value={newChain}
-              onChange={(e) => setNewChain(e.target.value)}
-              className="w-full border rounded-md px-3 py-2 text-sm"
+        )}
+
+        {createStep === 2 && (
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Select account type</label>
+              <select
+                value={chooseChain}
+                onChange={(e) => {
+                  setChooseChain(e.target.value);
+                  setChooseDerivationPath(generateDerivationPath(e.target.value, chooseDerivation, 0).replace(/\/\d+$/, ""));
+                }}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              >
+                {CHAIN_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c.charAt(0).toUpperCase() + c.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"
             >
-              {CHAIN_OPTIONS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              <span className={`transform transition-transform ${showAdvanced ? "rotate-90" : ""}`}>&#9654;</span>
+              Advanced Settings
+            </button>
+
+            {showAdvanced && (
+              <div className="space-y-3 p-3 bg-slate-50 rounded-md border border-slate-100">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-500">Curve</label>
+                  <Input value="SECP256K1" readOnly className="bg-white text-sm font-mono" />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-500">Derivation</label>
+                  <select
+                    value={chooseDerivation}
+                    onChange={(e) => {
+                      setChooseDerivation(e.target.value);
+                      setChooseDerivationPath(generateDerivationPath(chooseChain, e.target.value, 0).replace(/\/\d+$/, ""));
+                    }}
+                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                  >
+                    <option value="BIP44">BIP44</option>
+                    <option value="BIP32">BIP32</option>
+                    <option value="Legacy">Legacy</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-500">Path</label>
+                  <Input
+                    value={chooseDerivationPath}
+                    onChange={(e) => setChooseDerivationPath(e.target.value)}
+                    placeholder="m/44'/60'/0'/0"
+                    className="bg-white text-sm font-mono"
+                  />
+                </div>
+              </div>
+            )}
+
+            <Button onClick={handleStep2Continue} disabled={stepLoading} className="w-full">
+              {stepLoading ? "Deriving..." : "Continue"}
+            </Button>
           </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Tags (comma-separated)</label>
-            <Input value={newTags} onChange={(e) => setNewTags(e.target.value)} placeholder="trading, dev, cold" />
+        )}
+
+        {createStep === 3 && (
+          <div className="space-y-4">
+            {derivedAccounts.length > 0 ? (
+              <div className="space-y-3">
+                {derivedAccounts.map((acc, i) => (
+                  <div key={i} className="p-3 bg-slate-50 rounded-md">
+                    <p className="text-sm font-medium">{acc.chain.charAt(0).toUpperCase() + acc.chain.slice(1)}</p>
+                    <p className="text-xs font-mono text-slate-500 mt-0.5">{acc.derivationPath}</p>
+                    <p className="text-xs font-mono text-slate-400 mt-0.5 truncate">{acc.address}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400 text-center py-4">No accounts added yet.</p>
+            )}
+            <Button onClick={handleAddAnother} variant="secondary" className="w-full">
+              Add another account
+            </Button>
+            <Button onClick={handleFinalCreate} className="w-full">
+              Create Wallet
+            </Button>
           </div>
-          <Button onClick={createWallet} disabled={createLoading} className="w-full">
-            {createLoading ? "Creating..." : "Create"}
-          </Button>
-        </div>
         )}
       </Modal>
 
@@ -404,6 +570,96 @@ export default function WalletsPage() {
             {importLoading ? "Importing..." : "Import"}
           </Button>
         </div>
+      </Modal>
+
+      {/* ── Export Modal ── */}
+      <Modal
+        open={showExport}
+        onClose={() => {
+          setShowExport(false);
+          setExportData(null);
+          setExportPassphrase("");
+          setExportPassConfirm("");
+        }}
+        title={`Export Wallet: ${exportWalletName}`}
+      >
+        {exportData ? (
+          <div className="space-y-4">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm">
+              <p className="font-medium text-amber-700">Warning: Never share your recovery phrase!</p>
+              <p className="text-amber-600 mt-1">Anyone with this can access your wallet.</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">
+                {exportPassphrase ? "Encrypted Recovery Phrase" : "Recovery Phrase"}
+              </label>
+              <Input
+                value={exportData.mnemonic || exportData.encryptedMnemonic || ""}
+                readOnly
+                className="font-mono text-sm"
+              />
+            </div>
+            {exportData.accounts.length > 0 && (
+              <div>
+                <p className="text-sm font-medium mb-2">Accounts ({exportData.accounts.length})</p>
+                <div className="space-y-1 text-xs font-mono">
+                  {exportData.accounts.map((acc, i) => (
+                    <div key={i} className="p-2 bg-slate-50 rounded">
+                      {acc.address} [{acc.derivationPath}]
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <Button
+              onClick={() => {
+                setShowExport(false);
+                setExportData(null);
+                setExportPassphrase("");
+                setExportPassConfirm("");
+              }}
+              variant="secondary"
+              className="w-full"
+            >
+              Close
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm">
+              <p className="font-medium text-amber-700">Export wallet seed phrase</p>
+              <p className="text-amber-600 mt-1">
+                This will reveal the seed phrase. Leave passphrase blank for plaintext export.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Passphrase (optional, for encrypted export)</label>
+              <Input
+                type="password"
+                value={exportPassphrase}
+                onChange={(e) => setExportPassphrase(e.target.value)}
+                placeholder="Min 8 characters"
+              />
+            </div>
+            {exportPassphrase && (
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Confirm Passphrase</label>
+                <Input
+                  type="password"
+                  value={exportPassConfirm}
+                  onChange={(e) => setExportPassConfirm(e.target.value)}
+                  placeholder="Re-enter passphrase"
+                />
+              </div>
+            )}
+            <Button onClick={handleExport} disabled={exportLoading} className="w-full">
+              {exportLoading ? "Exporting..." : "Export Wallet"}
+            </Button>
+            <Button onClick={() => { setShowExport(false); setExportPassphrase(""); }} variant="secondary" className="w-full">
+              Cancel
+            </Button>
+          </div>
+        )}
       </Modal>
     </div>
   );

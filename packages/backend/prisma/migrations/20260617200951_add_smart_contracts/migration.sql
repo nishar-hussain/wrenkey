@@ -1,0 +1,1 @@
+-- This migration was applied manually. See schema for details.

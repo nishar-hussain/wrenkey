@@ -20,18 +20,27 @@ import { triggerWebhookEvents } from "../webhook/routes.js";
 export async function walletRoutes(app: FastifyInstance) {
   app.post("/wallets", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
-      const { name, ownerType, ownerId, tags, chain } = request.body as {
-        name: string; ownerType?: string; ownerId?: string; tags?: string[]; chain?: string;
+      const { name, ownerType, ownerId, tags, chain, skipInitialAccount } = request.body as {
+        name: string; ownerType?: string; ownerId?: string; tags?: string[]; chain?: string; skipInitialAccount?: boolean;
       };
       if (!name) throw new ValidationError("Wallet name is required");
 
-      const chainInfo = chain ? (await getChainByName(chain).catch(() => null)) || await getDefaultChain() : await getDefaultChain();
-      if (!chainInfo) throw new ValidationError("Invalid or no active chain found");
-
       const { mnemonic } = generateHdWallet();
       const encryptedSeed = encryptSeedForStorage(mnemonic);
-      const fullPath = `${chainInfo.derivationPath}/0`;
-      const hdNode = deriveAccount(mnemonic, 0, chainInfo.derivationPath);
+
+      const accountsCreate: any[] = [];
+      if (!skipInitialAccount) {
+        const chainInfo = chain ? (await getChainByName(chain).catch(() => null)) || await getDefaultChain() : await getDefaultChain();
+        if (!chainInfo) throw new ValidationError("Invalid or no active chain found");
+        const fullPath = `${chainInfo.derivationPath}/0`;
+        const hdNode = deriveAccount(mnemonic, 0, chainInfo.derivationPath);
+        accountsCreate.push({
+          chainId: chainInfo.id,
+          address: hdNode.address,
+          derivationPath: fullPath,
+          index: 0,
+        });
+      }
 
       const wallet = await prisma.wallet.create({
         data: {
@@ -42,25 +51,17 @@ export async function walletRoutes(app: FastifyInstance) {
           name,
           tags: tags || [],
           encryptedSeed,
-          accounts: {
-            create: {
-              chainId: chainInfo.id,
-              address: hdNode.address,
-              derivationPath: fullPath,
-              index: 0,
-            },
-          },
+          accounts: accountsCreate.length > 0 ? { create: accountsCreate } : undefined,
         },
         include: { accounts: true },
       });
 
-      await createAuditLog(request.orgId, "WALLET_CREATE", { walletId: wallet.id, name, address: hdNode.address, chain: chainInfo.name }, request.userId, request);
-      triggerWebhookEvents(request.orgId, "wallet.created", { walletId: wallet.id, name, address: hdNode.address, chain: chainInfo.name, ownerType: wallet.ownerType, ownerId: wallet.ownerId });
+      await createAuditLog(request.orgId, "WALLET_CREATE", { walletId: wallet.id, name, ...(accountsCreate.length > 0 ? { address: accountsCreate[0].address, chain: chain || "default" } : {}) }, request.userId, request);
+      triggerWebhookEvents(request.orgId, "wallet.created", { walletId: wallet.id, name, ownerType: wallet.ownerType, ownerId: wallet.ownerId });
 
       return sendSuccess(reply, {
         walletId: wallet.id, name: wallet.name, ownerType: wallet.ownerType, ownerId: wallet.ownerId,
         addresses: wallet.accounts.map((a: any) => ({ chainId: a.chainId, address: a.address, derivationPath: a.derivationPath, index: a.index })),
-        recoveryPhrase: mnemonic,
       }, 201);
     } catch (err) {
       if (process.env.NODE_ENV === "development") {
@@ -162,12 +163,28 @@ export async function walletRoutes(app: FastifyInstance) {
   app.delete("/wallets/:id", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      const result = await prisma.wallet.deleteMany({ where: { id, orgId: request.orgId } });
-      if (result.count === 0) throw new NotFoundError("Wallet");
-      await createAuditLog(request.orgId, "WALLET_DELETE", { walletId: id }, request.userId, request);
+
+      const wallet = await prisma.wallet.findFirst({
+        where: { id, orgId: request.orgId },
+        select: { id: true, name: true },
+      });
+      if (!wallet) throw new NotFoundError("Wallet");
+
+      const accountCount = await prisma.walletAccount.count({ where: { walletId: id } });
+      if (accountCount > 0) {
+        await prisma.$executeRaw`DELETE FROM transactions WHERE account_id IN (SELECT id FROM wallet_accounts WHERE wallet_id = ${id})`;
+      }
+      await prisma.$executeRaw`DELETE FROM spending_limits WHERE wallet_id = ${id}`;
+      await prisma.$executeRaw`DELETE FROM wallet_accounts WHERE wallet_id = ${id}`;
+      await prisma.$executeRaw`DELETE FROM wallets WHERE id = ${id}`;
+
+      await createAuditLog(request.orgId, "WALLET_DELETE", { walletId: id, name: wallet.name }, request.userId, request);
       triggerWebhookEvents(request.orgId, "wallet.deleted", { walletId: id });
       return sendSuccess(reply, { message: "Wallet deleted" });
     } catch (err) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("[wallet.delete] Error:", (err as any)?.message, (err as any)?.stack);
+      }
       return sendError(reply, err);
     }
   });
@@ -193,7 +210,7 @@ export async function walletRoutes(app: FastifyInstance) {
   app.post("/wallets/:id/accounts", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      const { chain: chainName } = request.body as { chain?: string };
+      const { chain: chainName, derivationPath: customPath } = request.body as { chain?: string; derivationPath?: string };
 
       const wallet = await prisma.wallet.findFirst({ where: { id, orgId: request.orgId } });
       if (!wallet) throw new NotFoundError("Wallet");
@@ -202,14 +219,29 @@ export async function walletRoutes(app: FastifyInstance) {
       if (!chainInfo) throw new ValidationError("Invalid or no active chain found");
 
       const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
-      const count = await prisma.walletAccount.count({ where: { walletId: id } });
-      const fullPath = `${chainInfo.derivationPath}/${count}`;
-      const hdNode = deriveAccount(mnemonic, count, chainInfo.derivationPath);
+
+      let derivationPath: string;
+      let accountIndex: number;
+
+      if (customPath) {
+        const segments = customPath.split("/");
+        const lastSegment = segments[segments.length - 1];
+        accountIndex = parseInt(lastSegment.replace(/'/g, ""), 10);
+        if (isNaN(accountIndex)) accountIndex = 0;
+        derivationPath = segments.slice(0, -1).join("/");
+        if (!derivationPath.startsWith("m")) derivationPath = "m";
+      } else {
+        accountIndex = await prisma.walletAccount.count({ where: { walletId: id } });
+        derivationPath = chainInfo.derivationPath;
+      }
+
+      const fullPath = `${derivationPath}/${accountIndex}`;
+      const hdNode = deriveAccount(mnemonic, accountIndex, derivationPath);
 
       const account = await prisma.walletAccount.create({
         data: {
           walletId: id, chainId: chainInfo.id, address: hdNode.address,
-          derivationPath: fullPath, index: count,
+          derivationPath: fullPath, index: accountIndex,
         },
       });
 
