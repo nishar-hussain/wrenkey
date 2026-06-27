@@ -15,7 +15,7 @@ export function SnowboardImage({
 
   useEffect(() => {
     if (!floatRef.current || !parallaxRef.current) return;
-    
+
     // Continuous smooth floating animation
     const tl = gsap.to(floatRef.current, {
       y: 15,
@@ -35,7 +35,7 @@ export function SnowboardImage({
       const { innerWidth, innerHeight } = window;
       const x = (e.clientX / innerWidth - 0.5) * 2; // -1 to 1
       const y = (e.clientY / innerHeight - 0.5) * 2; // -1 to 1
-      
+
       xTo(x * 40);
       yTo(y * 40);
       rotXTo(y * -15);

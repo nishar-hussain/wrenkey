@@ -180,7 +180,7 @@ export function transitionToModel(
       ease: "power3.in",
       onComplete: () => {
         refs.snowboard.src = newModel.img;
-        gsap.set(refs.snowboard, { 
+        gsap.set(refs.snowboard, {
           y: goingDown ? -60 : 60,
           scale: 0.8,
           rotationZ: goingDown ? 15 : -15
@@ -189,13 +189,13 @@ export function transitionToModel(
     },
     0,
   );
-  tl.to(refs.snowboard, { 
-    opacity: 1, 
-    y: 0, 
+  tl.to(refs.snowboard, {
+    opacity: 1,
+    y: 0,
     scale: 1,
     rotationZ: 0,
-    duration: 0.7, 
-    ease: "back.out(1.5)" 
+    duration: 0.7,
+    ease: "back.out(1.5)"
   }, 0.4);
 
   // 4. Indicator thumb — elastic stretch effect
@@ -298,7 +298,7 @@ export function transitionToModel(
         }
 
         gsap.set(refs.detailsCard, { x: 20 });
-        
+
         // Reset element opacities for stagger animation
         const newElements = refs.detailsCard.querySelectorAll(".card-title, .card-tagline, .card-description, .card-features li, .card-cta, .card-docs");
         if (newElements.length > 0) {
@@ -308,9 +308,9 @@ export function transitionToModel(
     },
     0,
   );
-  
+
   tl.to(refs.detailsCard, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" }, 0.35);
-  
+
   const cardElements = refs.detailsCard.querySelectorAll(".card-title, .card-tagline, .card-description, .card-features li, .card-cta, .card-docs");
   if (cardElements.length > 0) {
     tl.to(cardElements, { opacity: 1, y: 0, duration: 0.4, stagger: 0.04, ease: "power2.out" }, 0.45);

@@ -60,7 +60,7 @@ export function SnowboardSelector() {
     }
 
     // GSAP context scoped to wrapper element
-    const ctx = gsap.context(() => {}, wrapper);
+    const ctx = gsap.context(() => { }, wrapper);
 
     // Chart.js setup
     registerChartComponents();
@@ -168,7 +168,7 @@ export function SnowboardSelector() {
       ref={wrapperRef}
       className="relative w-screen h-screen overflow-hidden bg-zinc-950"
     >
-      <div 
+      <div
         ref={bgGlowRef}
         className="absolute top-1/2 left-1/2 md:left-[60%] lg:left-[62%] -translate-x-1/2 -translate-y-1/2 w-[120vw] h-[120vw] md:w-[60vw] md:h-[60vw] rounded-full blur-[140px] opacity-0 pointer-events-none"
       />
