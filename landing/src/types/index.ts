@@ -4,6 +4,11 @@ export interface SnowboardModel {
   img: string;
   color: string;
   borderColor: string;
+  tagline: string;
+  description: string;
+  features: string[];
+  ctaUrl: string;
 }
 
 export type RadarLabels = [string, string, string, string, string];
+

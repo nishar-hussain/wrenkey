@@ -11,6 +11,8 @@ import { ModelName } from "./ModelName";
 import { RadarChart } from "./RadarChart";
 import { SnowboardImage } from "./SnowboardImage";
 import { SlideIndicator } from "./SlideIndicator";
+import { Header } from "./Header";
+import { DetailsCard } from "./DetailsCard";
 
 const SWIPE_THRESHOLD = 50;
 
@@ -22,6 +24,7 @@ export function SnowboardSelector() {
   const snowboardRef = useRef<HTMLImageElement>(null);
   const indicatorRef = useRef<HTMLDivElement>(null);
   const thumbRef = useRef<HTMLDivElement>(null);
+  const detailsCardRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<Chart | null>(null);
   const currentIndexRef = useRef(0);
   const isAnimatingRef = useRef(false);
@@ -34,6 +37,7 @@ export function SnowboardSelector() {
     const snowboard = snowboardRef.current;
     const indicator = indicatorRef.current;
     const thumb = thumbRef.current;
+    const detailsCard = detailsCardRef.current;
 
     if (
       !wrapper ||
@@ -42,7 +46,8 @@ export function SnowboardSelector() {
       !canvas ||
       !snowboard ||
       !indicator ||
-      !thumb
+      !thumb ||
+      !detailsCard
     )
       return;
 
@@ -67,6 +72,7 @@ export function SnowboardSelector() {
       snowboard,
       indicator,
       thumb,
+      detailsCard,
     };
 
     // Reset state for StrictMode
@@ -105,6 +111,7 @@ export function SnowboardSelector() {
       else if (e.deltaY < 0) go(-1);
     }
 
+    // Capture standard touch events to support swipe
     function onTouchStart(e: TouchEvent) {
       touchStartY = e.touches[0].clientY;
     }
@@ -156,9 +163,16 @@ export function SnowboardSelector() {
   return (
     <div
       ref={wrapperRef}
-      className="relative w-screen h-screen overflow-hidden"
+      className="relative w-screen h-screen overflow-hidden bg-gradient-to-br from-white via-slate-50 to-zinc-100"
     >
+      <Header />
       <ModelName ref={modelNameRef} />
+      <DetailsCard
+        model={MODELS[0]}
+        index={0}
+        total={MODELS.length}
+        innerRef={detailsCardRef}
+      />
       <RadarChart containerRef={chartContainerRef} canvasRef={canvasRef} />
       <SnowboardImage ref={snowboardRef} initialSrc={MODELS[0].img} />
       <SlideIndicator
@@ -169,3 +183,4 @@ export function SnowboardSelector() {
     </div>
   );
 }
+

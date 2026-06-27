@@ -10,6 +10,7 @@ interface Refs {
   snowboard: HTMLImageElement;
   indicator: HTMLDivElement;
   thumb: HTMLDivElement;
+  detailsCard: HTMLDivElement;
 }
 
 export function playEntrance(
@@ -29,7 +30,7 @@ export function playEntrance(
 
   const tl = gsap.timeline();
 
-  // 1. Model name
+  // 1. Model name background
   gsap.set(refs.modelName, { opacity: 0, y: 20 });
   tl.to(refs.modelName, { opacity: 0.1, y: 0, duration: 0.5, ease: "power2.out" }, 0);
 
@@ -61,13 +62,17 @@ export function playEntrance(
   gsap.set(refs.indicator, { opacity: 0 });
   tl.to(refs.indicator, { opacity: 1, duration: 0.3, ease: "power2.out" }, 0.3);
 
-  // 5. Snowboard
-  gsap.set(refs.snowboard, { opacity: 0, y: 20 });
+  // 5. Snowboard image
+  gsap.set(refs.snowboard, { opacity: 0, y: 20, xPercent: -50, yPercent: -50 });
   tl.to(refs.snowboard, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 0.15);
 
   // 6. Indicator thumb
   gsap.set(refs.thumb, { scaleY: 0, transformOrigin: "top" });
   tl.to(refs.thumb, { scaleY: 1, duration: 0.4, ease: "power2.inOut" }, 0.4);
+
+  // 7. Details card floating on the left
+  gsap.set(refs.detailsCard, { opacity: 0, x: -30 });
+  tl.to(refs.detailsCard, { opacity: 1, x: 0, duration: 0.5, ease: "power2.out" }, 0.2);
 
   return tl;
 }
@@ -99,7 +104,7 @@ export function transitionToModel(
     },
   });
 
-  // 1. Model name crossfade
+  // 1. Model name background crossfade
   tl.to(
     refs.modelName,
     {
@@ -149,7 +154,7 @@ export function transitionToModel(
     0,
   );
 
-  // 3. Snowboard crossfade
+  // 3. Snowboard image crossfade
   tl.to(
     refs.snowboard,
     {
@@ -159,7 +164,7 @@ export function transitionToModel(
       ease: "power2.in",
       onComplete: () => {
         refs.snowboard.src = newModel.img;
-        gsap.set(refs.snowboard, { y: -20 });
+        gsap.set(refs.snowboard, { y: -20, xPercent: -50, yPercent: -50 });
       },
     },
     0,
@@ -204,4 +209,71 @@ export function transitionToModel(
     },
     0.08,
   );
+
+  // 5. Details card content swap and fade transition
+  tl.to(
+    refs.detailsCard,
+    {
+      opacity: 0,
+      x: -20,
+      duration: 0.35,
+      ease: "power2.in",
+      onComplete: () => {
+        const indexEl = refs.detailsCard.querySelector(".card-index");
+        const pillEl = refs.detailsCard.querySelector(".card-pill") as HTMLElement;
+        const titleEl = refs.detailsCard.querySelector(".card-title");
+        const taglineEl = refs.detailsCard.querySelector(".card-tagline") as HTMLElement;
+        const descEl = refs.detailsCard.querySelector(".card-description");
+        const featuresEl = refs.detailsCard.querySelector(".card-features");
+        const ctaEl = refs.detailsCard.querySelector(".card-cta") as HTMLElement;
+
+        const formattedIndex = String(newIndex + 1).padStart(2, "0");
+        const formattedTotal = String(models.length).padStart(2, "0");
+
+        if (indexEl) indexEl.textContent = `${formattedIndex} / ${formattedTotal}`;
+        if (pillEl) pillEl.style.backgroundColor = newModel.color;
+        if (titleEl) titleEl.textContent = newModel.name.replace("\n", " ");
+        if (taglineEl) {
+          taglineEl.textContent = newModel.tagline;
+          taglineEl.style.color = newModel.color;
+        }
+        if (descEl) descEl.textContent = newModel.description;
+        if (ctaEl) {
+          ctaEl.setAttribute("href", newModel.ctaUrl);
+          ctaEl.style.backgroundColor = newModel.color;
+        }
+
+        if (featuresEl) {
+          featuresEl.innerHTML = newModel.features
+            .map(
+              (feat) => `
+              <li class="flex items-start text-xs text-black/80 font-medium leading-normal">
+                <svg
+                  class="w-4 h-4 mr-2.5 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="3"
+                  viewBox="0 0 24 24"
+                  style="color: ${newModel.color}"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M4.5 12.75l6 6 9-13.5"
+                  />
+                </svg>
+                <span>${feat}</span>
+              </li>
+            `
+            )
+            .join("");
+        }
+
+        gsap.set(refs.detailsCard, { x: 20 });
+      },
+    },
+    0,
+  );
+  tl.to(refs.detailsCard, { opacity: 1, x: 0, duration: 0.45, ease: "power2.out" }, 0.35);
 }
+
