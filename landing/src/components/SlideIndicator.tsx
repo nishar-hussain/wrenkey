@@ -16,7 +16,7 @@ export function SlideIndicator({
     >
       <div
         ref={thumbRef}
-        className="absolute top-0 left-0 w-[2px] bg-[#cf081f]"
+        className="absolute top-0 left-0 w-[2px] bg-[#2563eb]"
         style={{ height: `${100 / modelCount}%` }}
       />
     </div>

@@ -12,7 +12,7 @@ export function SnowboardImage({
     <img
       ref={ref}
       src={initialSrc}
-      alt="Snowboard"
+      alt="WranKey Wrenchy"
       className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[60vh] z-[5] pointer-events-none object-contain"
     />
   );

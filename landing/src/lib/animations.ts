@@ -24,6 +24,9 @@ export function playEntrance(
   refs.thumb.style.height = segmentHeight + "%";
   refs.thumb.style.top = "0%";
 
+  chart.data.datasets[0].backgroundColor = firstModel.color;
+  chart.data.datasets[0].borderColor = firstModel.borderColor;
+
   const tl = gsap.timeline();
 
   // 1. Model name
@@ -84,7 +87,8 @@ export function transitionToModel(
   isAnimatingRef.current = true;
 
   const oldIndex = currentIndexRef.current;
-  const oldValues = models[oldIndex].values;
+  const oldModel = models[oldIndex];
+  const oldValues = oldModel.values;
   const newModel = models[newIndex];
   const newValues = newModel.values;
 
@@ -120,6 +124,8 @@ export function transitionToModel(
     v2: oldValues[2],
     v3: oldValues[3],
     v4: oldValues[4],
+    backgroundColor: oldModel.color,
+    borderColor: oldModel.borderColor,
   };
   tl.to(
     proxy,
@@ -129,10 +135,14 @@ export function transitionToModel(
       v2: newValues[2],
       v3: newValues[3],
       v4: newValues[4],
+      backgroundColor: newModel.color,
+      borderColor: newModel.borderColor,
       duration: 0.8,
       ease: "power2.inOut",
       onUpdate: () => {
         chart.data.datasets[0].data = [proxy.v0, proxy.v1, proxy.v2, proxy.v3, proxy.v4];
+        chart.data.datasets[0].backgroundColor = proxy.backgroundColor;
+        chart.data.datasets[0].borderColor = proxy.borderColor;
         chart.update("none");
       },
     },
