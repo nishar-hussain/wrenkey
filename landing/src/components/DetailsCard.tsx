@@ -18,7 +18,7 @@ export function DetailsCard({ model, index, total, innerRef }: DetailsCardProps)
   return (
     <div className="absolute left-6 md:left-12 lg:left-20 top-1/2 -translate-y-1/2 w-[calc(100vw-48px)] max-w-[450px] z-20 pointer-events-none md:pointer-events-auto">
       {/* Outer wrapper - stays static, inner content is faded and shifted by GSAP */}
-      <div 
+      <div
         ref={innerRef as any}
         className="bg-white/[0.03] backdrop-blur-2xl border border-white/[0.08] rounded-3xl p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex flex-col pointer-events-auto transition-shadow hover:shadow-[0_20px_60px_rgba(0,0,0,0.7)]"
       >
@@ -27,7 +27,7 @@ export function DetailsCard({ model, index, total, innerRef }: DetailsCardProps)
           <span className="card-index text-xs font-mono font-bold tracking-widest text-white/40">
             {formattedIndex} / {formattedTotal}
           </span>
-          <span 
+          <span
             className="card-pill text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full text-white transition-colors duration-300"
             style={{ backgroundColor: model.color }}
           >
@@ -39,7 +39,7 @@ export function DetailsCard({ model, index, total, innerRef }: DetailsCardProps)
         <h2 className="card-title text-2xl md:text-3xl font-black text-white tracking-tight leading-none mb-1 uppercase font-sans">
           {model.name.replace("\n", " ")}
         </h2>
-        <p 
+        <p
           className="card-tagline text-sm font-bold tracking-wide mb-4 transition-colors duration-300"
           style={{ color: model.color }}
         >
