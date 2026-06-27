@@ -11,6 +11,7 @@ interface Refs {
   indicator: HTMLDivElement;
   thumb: HTMLDivElement;
   detailsCard: HTMLDivElement;
+  bgGlow: HTMLDivElement;
 }
 
 export function playEntrance(
@@ -63,7 +64,7 @@ export function playEntrance(
   tl.to(refs.indicator, { opacity: 1, duration: 0.3, ease: "power2.out" }, 0.3);
 
   // 5. Snowboard image
-  gsap.set(refs.snowboard, { opacity: 0, y: 20, xPercent: -50, yPercent: -50 });
+  gsap.set(refs.snowboard, { opacity: 0, y: 20 });
   tl.to(refs.snowboard, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 0.15);
 
   // 6. Indicator thumb
@@ -72,7 +73,17 @@ export function playEntrance(
 
   // 7. Details card floating on the left
   gsap.set(refs.detailsCard, { opacity: 0, x: -30 });
-  tl.to(refs.detailsCard, { opacity: 1, x: 0, duration: 0.5, ease: "power2.out" }, 0.2);
+  tl.to(refs.detailsCard, { opacity: 1, x: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+
+  const cardElements = refs.detailsCard.querySelectorAll(".card-title, .card-tagline, .card-description, .card-features li, .card-cta, .card-docs");
+  if (cardElements.length > 0) {
+    gsap.set(cardElements, { opacity: 0, y: 15 });
+    tl.to(cardElements, { opacity: 1, y: 0, duration: 0.5, stagger: 0.05, ease: "power2.out" }, 0.4);
+  }
+
+  // 8. BG Glow
+  gsap.set(refs.bgGlow, { backgroundColor: firstModel.color, opacity: 0, scale: 0.8 });
+  tl.to(refs.bgGlow, { opacity: 0.2, scale: 1, duration: 1.5, ease: "power2.out" }, 0);
 
   return tl;
 }
@@ -111,7 +122,7 @@ export function transitionToModel(
       opacity: 0,
       y: 30,
       duration: 0.4,
-      ease: "power2.in",
+      ease: "power3.in",
       onComplete: () => {
         refs.modelName.textContent = newModel.name;
         fitText(refs.modelName);
@@ -120,7 +131,10 @@ export function transitionToModel(
     },
     0,
   );
-  tl.to(refs.modelName, { opacity: 0.1, y: 0, duration: 0.5, ease: "power2.out" }, 0.4);
+  tl.to(refs.modelName, { opacity: 0.1, y: 0, duration: 0.6, ease: "power3.out" }, 0.4);
+
+  // Background glow crossfade
+  tl.to(refs.bgGlow, { backgroundColor: newModel.color, duration: 0.8, ease: "power2.inOut" }, 0);
 
   // 2. Radar chart morph
   const proxy = {
@@ -143,7 +157,7 @@ export function transitionToModel(
       backgroundColor: newModel.color,
       borderColor: newModel.borderColor,
       duration: 0.8,
-      ease: "power2.inOut",
+      ease: "power3.inOut",
       onUpdate: () => {
         chart.data.datasets[0].data = [proxy.v0, proxy.v1, proxy.v2, proxy.v3, proxy.v4];
         chart.data.datasets[0].backgroundColor = proxy.backgroundColor;
@@ -161,15 +175,15 @@ export function transitionToModel(
       opacity: 0,
       y: 20,
       duration: 0.3,
-      ease: "power2.in",
+      ease: "power3.in",
       onComplete: () => {
         refs.snowboard.src = newModel.img;
-        gsap.set(refs.snowboard, { y: -20, xPercent: -50, yPercent: -50 });
+        gsap.set(refs.snowboard, { y: -20 });
       },
     },
     0,
   );
-  tl.to(refs.snowboard, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 0.35);
+  tl.to(refs.snowboard, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.35);
 
   // 4. Indicator thumb — elastic stretch effect
   const segmentPct = 100 / models.length;
@@ -204,7 +218,7 @@ export function transitionToModel(
     {
       [goingDown ? "top" : "bottom"]: goingDown ? newTop : newBottom,
       duration: 0.45,
-      ease: "power2.inOut",
+      ease: "power3.inOut",
       onUpdate: updateThumbFromEdges,
     },
     0.08,
@@ -217,7 +231,7 @@ export function transitionToModel(
       opacity: 0,
       x: -20,
       duration: 0.35,
-      ease: "power2.in",
+      ease: "power3.in",
       onComplete: () => {
         const indexEl = refs.detailsCard.querySelector(".card-index");
         const pillEl = refs.detailsCard.querySelector(".card-pill") as HTMLElement;
@@ -226,6 +240,7 @@ export function transitionToModel(
         const descEl = refs.detailsCard.querySelector(".card-description");
         const featuresEl = refs.detailsCard.querySelector(".card-features");
         const ctaEl = refs.detailsCard.querySelector(".card-cta") as HTMLElement;
+        const docsEl = refs.detailsCard.querySelector(".card-docs") as HTMLElement;
 
         const formattedIndex = String(newIndex + 1).padStart(2, "0");
         const formattedTotal = String(models.length).padStart(2, "0");
@@ -247,7 +262,7 @@ export function transitionToModel(
           featuresEl.innerHTML = newModel.features
             .map(
               (feat) => `
-              <li class="flex items-start text-xs text-black/80 font-medium leading-normal">
+              <li class="flex items-start text-xs text-white/80 font-medium leading-normal opacity-0 translate-y-2">
                 <svg
                   class="w-4 h-4 mr-2.5 flex-shrink-0"
                   fill="none"
@@ -270,10 +285,22 @@ export function transitionToModel(
         }
 
         gsap.set(refs.detailsCard, { x: 20 });
+        
+        // Reset element opacities for stagger animation
+        const newElements = refs.detailsCard.querySelectorAll(".card-title, .card-tagline, .card-description, .card-features li, .card-cta, .card-docs");
+        if (newElements.length > 0) {
+          gsap.set(newElements, { opacity: 0, y: 15 });
+        }
       },
     },
     0,
   );
-  tl.to(refs.detailsCard, { opacity: 1, x: 0, duration: 0.45, ease: "power2.out" }, 0.35);
+  
+  tl.to(refs.detailsCard, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" }, 0.35);
+  
+  const cardElements = refs.detailsCard.querySelectorAll(".card-title, .card-tagline, .card-description, .card-features li, .card-cta, .card-docs");
+  if (cardElements.length > 0) {
+    tl.to(cardElements, { opacity: 1, y: 0, duration: 0.4, stagger: 0.04, ease: "power2.out" }, 0.45);
+  }
 }
 

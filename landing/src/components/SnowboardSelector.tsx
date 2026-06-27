@@ -25,6 +25,7 @@ export function SnowboardSelector() {
   const indicatorRef = useRef<HTMLDivElement>(null);
   const thumbRef = useRef<HTMLDivElement>(null);
   const detailsCardRef = useRef<HTMLDivElement>(null);
+  const bgGlowRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<Chart | null>(null);
   const currentIndexRef = useRef(0);
   const isAnimatingRef = useRef(false);
@@ -47,7 +48,8 @@ export function SnowboardSelector() {
       !snowboard ||
       !indicator ||
       !thumb ||
-      !detailsCard
+      !detailsCard ||
+      !bgGlowRef.current
     )
       return;
 
@@ -73,6 +75,7 @@ export function SnowboardSelector() {
       indicator,
       thumb,
       detailsCard,
+      bgGlow: bgGlowRef.current,
     };
 
     // Reset state for StrictMode
@@ -163,8 +166,12 @@ export function SnowboardSelector() {
   return (
     <div
       ref={wrapperRef}
-      className="relative w-screen h-screen overflow-hidden bg-gradient-to-br from-white via-slate-50 to-zinc-100"
+      className="relative w-screen h-screen overflow-hidden bg-zinc-950"
     >
+      <div 
+        ref={bgGlowRef}
+        className="absolute top-1/2 left-1/2 md:left-[60%] lg:left-[62%] -translate-x-1/2 -translate-y-1/2 w-[120vw] h-[120vw] md:w-[60vw] md:h-[60vw] rounded-full blur-[140px] opacity-0 pointer-events-none"
+      />
       <Header />
       <ModelName ref={modelNameRef} />
       <DetailsCard

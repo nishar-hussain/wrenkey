@@ -41,7 +41,7 @@ export function createChart(canvas: HTMLCanvasElement, labels: RadarLabels): Cha
             display: false,
           },
           grid: {
-            color: "rgba(0, 0, 0, 0.12)",
+            color: "rgba(255, 255, 255, 0.12)",
             lineWidth: 1,
           },
           angleLines: {
@@ -49,11 +49,11 @@ export function createChart(canvas: HTMLCanvasElement, labels: RadarLabels): Cha
           },
           pointLabels: {
             font: {
-              family: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+              family: 'var(--font-inter), ui-sans-serif, system-ui, sans-serif',
               size: 10,
               weight: "bold",
             },
-            color: "#000000",
+            color: "#ffffff",
             padding: 15,
           },
         },

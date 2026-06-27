@@ -1,9 +1,13 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
 body {
     width: 100vw;
     height: 100vh;
     overflow: hidden;
-    background: #ffffff;
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    background: #09090b;
+    color: #ffffff;
 }

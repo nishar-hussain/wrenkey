@@ -20,11 +20,11 @@ export function DetailsCard({ model, index, total, innerRef }: DetailsCardProps)
       {/* Outer wrapper - stays static, inner content is faded and shifted by GSAP */}
       <div 
         ref={innerRef as any}
-        className="bg-white/50 backdrop-blur-xl border border-black/[0.08] rounded-3xl p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex flex-col pointer-events-auto transition-shadow hover:shadow-[0_20px_60px_rgba(0,0,0,0.08)]"
+        className="bg-white/[0.03] backdrop-blur-2xl border border-white/[0.08] rounded-3xl p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex flex-col pointer-events-auto transition-shadow hover:shadow-[0_20px_60px_rgba(0,0,0,0.7)]"
       >
         {/* Top Meta info */}
         <div className="flex items-center justify-between mb-6">
-          <span className="card-index text-xs font-mono font-bold tracking-widest text-black/40">
+          <span className="card-index text-xs font-mono font-bold tracking-widest text-white/40">
             {formattedIndex} / {formattedTotal}
           </span>
           <span 
@@ -36,7 +36,7 @@ export function DetailsCard({ model, index, total, innerRef }: DetailsCardProps)
         </div>
 
         {/* Title & Tagline */}
-        <h2 className="card-title text-2xl md:text-3xl font-black text-black tracking-tight leading-none mb-1 uppercase font-sans">
+        <h2 className="card-title text-2xl md:text-3xl font-black text-white tracking-tight leading-none mb-1 uppercase font-sans">
           {model.name.replace("\n", " ")}
         </h2>
         <p 
@@ -47,21 +47,20 @@ export function DetailsCard({ model, index, total, innerRef }: DetailsCardProps)
         </p>
 
         {/* Description */}
-        <p className="card-description text-sm md:text-base text-black/70 leading-relaxed mb-6">
+        <p className="card-description text-sm md:text-base text-white/70 leading-relaxed mb-6">
           {model.description}
         </p>
 
-        {/* Divider */}
-        <div className="border-t border-black/[0.06] my-2" />
+        <div className="border-t border-white/[0.08] my-2" />
 
         {/* Features Checklist */}
         <div className="my-4 space-y-3">
-          <h4 className="text-xs font-bold text-black/40 uppercase tracking-widest mb-1">
+          <h4 className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1">
             Core Specifications
           </h4>
           <ul className="card-features space-y-2">
             {model.features.map((feat, idx) => (
-              <li key={idx} className="flex items-start text-xs text-black/80 font-medium leading-normal">
+              <li key={idx} className="flex items-start text-xs text-white/80 font-medium leading-normal">
                 <svg
                   className="w-4 h-4 mr-2.5 flex-shrink-0"
                   fill="none"
@@ -95,7 +94,7 @@ export function DetailsCard({ model, index, total, innerRef }: DetailsCardProps)
             href="https://github.com/jaan-Nishar-Hussain/wrenkey"
             target="_blank"
             rel="noreferrer"
-            className="flex-1 inline-flex items-center justify-center h-11 text-xs font-bold text-black bg-black/[0.05] hover:bg-black/[0.08] rounded-xl transition-all duration-200"
+            className="card-docs flex-1 inline-flex items-center justify-center h-11 text-xs font-bold text-white bg-white/[0.08] hover:bg-white/[0.12] rounded-xl transition-all duration-200"
           >
             View Docs
           </a>
