@@ -38,9 +38,6 @@ export default function PrivateKeyDetailPage() {
   const [error, setError] = useState("");
 
   const [addressSearch, setAddressSearch] = useState("");
-  const [showAddAddress, setShowAddAddress] = useState(false);
-  const [newChain, setNewChain] = useState("sepolia");
-  const [addLoading, setAddLoading] = useState(false);
 
   const [showExport, setShowExport] = useState(false);
   const [exportData, setExportData] = useState<{ privateKey: string; publicKey: string } | null>(null);
@@ -85,25 +82,6 @@ export default function PrivateKeyDetailPage() {
       addToast(err.message || "Export failed", "error");
     } finally {
       setExportLoading(false);
-    }
-  };
-
-  const handleAddAddress = async () => {
-    setAddLoading(true);
-    try {
-      await apiFetch(`/private-keys/${params.id}/addresses`, {
-        method: "POST",
-        body: JSON.stringify({ chain: newChain }),
-        token: token!,
-      });
-      setShowAddAddress(false);
-      setNewChain("sepolia");
-      addToast("Address added", "success");
-      fetchPk();
-    } catch (err: any) {
-      addToast(err.message || "Failed", "error");
-    } finally {
-      setAddLoading(false);
     }
   };
 
@@ -187,10 +165,8 @@ export default function PrivateKeyDetailPage() {
           <button onClick={() => router.push("/private-keys")} className="text-slate-400 hover:text-slate-600">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
-          <div>
-            <h1 className="text-xl font-bold">{pk.name}</h1>
-            <p className="text-xs text-slate-400">{pk.wallet?.name} &middot; Root user</p>
-          </div>
+          <h1 className="text-xl font-bold">Private Key</h1>
+          <h2 className="text-xl font-bold text-slate-700">{pk.name}</h2>
         </div>
         <Button onClick={() => { setShowExport(true); setExportData(null); }}>Export</Button>
       </div>
@@ -260,17 +236,6 @@ export default function PrivateKeyDetailPage() {
         <h3 className="font-semibold">Addresses ({pk.addresses.length})</h3>
         <div className="flex items-center gap-3">
           <Input value={addressSearch} onChange={(e) => setAddressSearch(e.target.value)} placeholder="Search addresses..." className="w-48 text-sm" />
-          {!showAddAddress ? (
-            <Button variant="secondary" size="sm" onClick={() => setShowAddAddress(true)}>Add Address</Button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <select value={newChain} onChange={(e) => setNewChain(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm">
-                {CHAIN_OPTIONS.map((c) => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
-              </select>
-              <Button size="sm" onClick={handleAddAddress} disabled={addLoading}>{addLoading ? "Adding..." : "Add"}</Button>
-              <Button size="sm" variant="secondary" onClick={() => setShowAddAddress(false)}>Cancel</Button>
-            </div>
-          )}
         </div>
       </div>
 

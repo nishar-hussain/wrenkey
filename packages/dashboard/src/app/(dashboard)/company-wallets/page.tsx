@@ -228,7 +228,16 @@ export default function CompanyWalletsPage() {
             <Plus className="w-4 h-4 mr-1.5" /> New Wallet
           </Button>
         ) : (
-          <Button onClick={() => { setShowCreatePk(true); setCreatePkName(""); setCreatePkWalletId(""); setCreatePkChain("sepolia"); apiFetch("/wallets?limit=100", { token: token! }).then((res: any) => setWallets(res.data)).catch(() => {}); }}>
+          <Button onClick={async () => {
+            setShowCreatePk(true);
+            setCreatePkName("");
+            setCreatePkChain("sepolia");
+            try {
+              const res: any = await apiFetch("/wallets?limit=100", { token: token! });
+              const wList = res.data || [];
+              if (wList.length > 0) setCreatePkWalletId(wList[0].id);
+            } catch {}
+          }}>
             New Private Key
           </Button>
         )}
@@ -292,7 +301,12 @@ export default function CompanyWalletsPage() {
                       {
                         key: "name",
                         header: "Key",
-                        render: (k: any) => <div><p className="text-sm font-medium">{k.name}</p><p className="text-[10px] text-slate-400">{k.wallet?.name}</p></div>,
+                        render: (k: any) => (
+                          <button onClick={() => router.push(`/private-keys/${k.id}`)} className="text-left hover:underline">
+                            <p className="text-sm font-medium">{k.name}</p>
+                            <p className="text-[10px] text-slate-400">{k.wallet?.name}</p>
+                          </button>
+                        ),
                       },
                       { key: "publicKey", header: "Private ID", render: (k: any) => <span className="font-mono text-xs text-slate-500">{k.id.slice(0, 4)}&middot;&middot;&middot;&middot;{k.id.slice(-4)}</span> },
                       { key: "tags", header: "Tags", render: (k: any) => k.tags?.length > 0 ? <div className="flex gap-1 flex-wrap">{k.tags.map((t: string, i: number) => <span key={i} className="text-xs bg-slate-200 px-1.5 py-0.5 rounded">{t}</span>)}</div> : <span className="text-xs text-blue-500">Add Tag</span> },
@@ -373,13 +387,6 @@ export default function CompanyWalletsPage() {
       <Modal open={showCreatePk} onClose={() => setShowCreatePk(false)} title="Create Private Key">
         <div className="space-y-4">
           <div className="space-y-1"><label className="text-sm font-medium">Private Key Name</label><Input value={createPkName} onChange={(e) => setCreatePkName(e.target.value)} placeholder="My Key" /></div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Wallet</label>
-            <select value={createPkWalletId} onChange={(e) => setCreatePkWalletId(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm">
-              <option value="">Select wallet</option>
-              {wallets.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-          </div>
           <div className="space-y-1"><label className="text-sm font-medium">SECP256K1</label><Input value="SECP256K1" readOnly className="bg-slate-50 text-sm" /></div>
           <div className="space-y-1">
             <label className="text-sm font-medium">Asset Addresses</label>

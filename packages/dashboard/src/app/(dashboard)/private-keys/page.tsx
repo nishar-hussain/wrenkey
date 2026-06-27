@@ -168,7 +168,16 @@ export default function PrivateKeysPage() {
           <h1 className="text-2xl font-bold">Private Keys</h1>
           <p className="text-sm text-slate-500 mt-1">All derived private keys across your wallets</p>
         </div>
-        <Button onClick={() => { setShowCreate(true); setCreateName(""); setCreateWalletId(""); setCreateChain("sepolia"); }}>
+        <Button onClick={async () => {
+          setShowCreate(true);
+          setCreateName("");
+          setCreateChain("sepolia");
+          try {
+            const res: any = await apiFetch("/wallets?limit=100", { token: token! });
+            const wList = res.data || [];
+            if (wList.length > 0) setCreateWalletId(wList[0].id);
+          } catch {}
+        }}>
           New Private Key
         </Button>
       </div>
@@ -203,19 +212,6 @@ export default function PrivateKeysPage() {
           <div className="space-y-1">
             <label className="text-sm font-medium">Private Key Name</label>
             <Input value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="My Key" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Wallet</label>
-            <select
-              value={createWalletId}
-              onChange={(e) => setCreateWalletId(e.target.value)}
-              className="w-full border rounded-md px-3 py-2 text-sm"
-            >
-              <option value="">Select wallet</option>
-              {wallets.map((w) => (
-                <option key={w.id} value={w.id}>{w.name}</option>
-              ))}
-            </select>
           </div>
           <div className="space-y-1">
             <label className="text-sm font-medium">SECP256K1</label>
