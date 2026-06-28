@@ -11,7 +11,8 @@ import { notifyOrg } from "../../services/websocket.js";
 
 const WEBHOOK_EVENTS = [
   "user.signup", "user.login",
-  "wallet.created", "wallet.imported", "wallet.deleted", "wallet.exported", "wallet.frozen", "wallet.unfrozen", "wallet.rotated", "account.created",
+  "wallet.created", "wallet.imported", "wallet.deleted", "wallet.exported", "wallet.frozen", "wallet.unfrozen", "wallet.rotated",
+  "account.created", "account.deleted",
   "transaction.submitted", "transaction.confirmed", "transaction.failed",
   "policy.created", "policy.deleted", "policy.triggered",
   "agent.created", "agent.revoked", "agent.login",

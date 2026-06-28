@@ -8,7 +8,7 @@ import { useAuth } from "@/components/providers/Providers";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Building2, Settings, UsersRound, Tag, Shield, Activity, CreditCard, Webhook, Wallet, Wrench, Layers, Cloud, Plus, Minus,
-  Menu, X,
+  Menu, X, FileCode,
 } from "lucide-react";
 
 const mainNav = [
@@ -20,6 +20,7 @@ const orgSettingsChildren = [
   { href: "/team", label: "Team", icon: UsersRound },
   { href: "/tags", label: "Tags", icon: Tag },
   { href: "/policies", label: "Policies", icon: Shield },
+  { href: "/contract-interfaces", label: "Contract Interfaces", icon: FileCode },
   { href: "/activity-logs", label: "Activity Log", icon: Activity },
   { href: "/billing", label: "Billing & Usage", icon: CreditCard },
   { href: "/webhooks", label: "Webhooks", icon: Webhook },

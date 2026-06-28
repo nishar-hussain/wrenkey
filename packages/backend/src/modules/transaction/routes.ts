@@ -70,6 +70,35 @@ export async function transactionRoutes(app: FastifyInstance) {
       const chainInfo = await getChainById(targetAccount.chainId);
       const numericValue = parseFloat(value);
 
+      // Contract Interface ABI decoding
+      let decodedFunction: { functionName: string; signature: string; args: Record<string, string> } | null = null;
+      if (data && to) {
+        try {
+          const contractIface = await prisma.contractInterface.findFirst({
+            where: { orgId: request.orgId, address: to },
+            select: { id: true, abi: true },
+          });
+          if (contractIface?.abi) {
+            const abi = contractIface.abi as any;
+            const ethIface = new ethers.Interface(abi);
+            const decoded = ethIface.parseTransaction({ data });
+            if (decoded) {
+              const args: Record<string, string> = {};
+              if (decoded.fragment && "inputs" in decoded.fragment) {
+                for (let i = 0; i < decoded.fragment.inputs.length; i++) {
+                  args[decoded.fragment.inputs[i].name || `arg${i}`] = String(decoded.args[i]);
+                }
+              }
+              decodedFunction = {
+                functionName: decoded.name,
+                signature: decoded.signature,
+                args,
+              };
+            }
+          }
+        } catch { /* ABI decode is best-effort, don't block the transaction */ }
+      }
+
       const spendingCheck = await validateSpendingLimits(request.orgId, walletId, chainInfo.id, numericValue, to);
       if (!spendingCheck.allowed) {
         throw new ForbiddenError(spendingCheck.reason || "Transaction blocked by spending limits");
@@ -87,7 +116,11 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       const policies = await prisma.policy.findMany({ where: { orgId: request.orgId, active: true }, orderBy: { priority: "desc" } });
       const context: EvaluationContext = {
-        params: { walletId, accountId: targetAccount.id, to, value: numericValue, chain: chainInfo.name, gasLimit: gasLimit || "21000" },
+        params: {
+          walletId, accountId: targetAccount.id, to, value: numericValue,
+          chain: chainInfo.name, gasLimit: gasLimit || "21000",
+          ...(decodedFunction ? { contractFunction: decodedFunction.functionName, contractSignature: decodedFunction.signature } : {}),
+        },
         user: request.userId ? { id: request.userId, role: request.auth.role, tags: [] } : undefined,
         wallet: { id: walletId, ownerId: wallet.ownerId, ownerType: wallet.ownerType },
         timestamp: Date.now(),
