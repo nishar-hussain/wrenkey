@@ -238,7 +238,7 @@ export async function transactionRoutes(app: FastifyInstance) {
     } catch (err) {
       return sendError(reply, err);
     } finally {
-      if (lockId) {
+      if (lockId && lockedAddress) {
         await releaseNonceLock(lockedAddress, lockId).catch(() => {});
       }
     }
@@ -349,13 +349,14 @@ export async function transactionRoutes(app: FastifyInstance) {
 
   app.post("/transactions/:id/retry", { preHandler: [authMiddleware] }, async (request, reply) => {
     let lockId: string | null = null;
+    let account: any = null;
     try {
       const { id } = request.params as { id: string };
       const tx = await prisma.transaction.findFirst({ where: { id, orgId: request.orgId } });
       if (!tx) throw new NotFoundError("Transaction");
       if (!["FAILED", "PENDING"].includes(tx.status)) throw new ValidationError("Can only retry failed or pending transactions");
 
-      const account = await prisma.walletAccount.findUnique({ where: { id: tx.accountId }, include: { chain: true } });
+      account = await prisma.walletAccount.findUnique({ where: { id: tx.accountId }, include: { chain: true } });
       if (!account) throw new NotFoundError("Account");
 
       const retryCount = await prisma.transaction.count({ where: { replacementFor: id } });
@@ -406,12 +407,13 @@ export async function transactionRoutes(app: FastifyInstance) {
     } catch (err) {
       return sendError(reply, err);
     } finally {
-      if (lockId) await releaseNonceLock(account.address, lockId).catch(() => {});
+      if (lockId && account) await releaseNonceLock(account.address, lockId).catch(() => {});
     }
   });
 
   app.post("/transactions/:id/cancel", { preHandler: [authMiddleware] }, async (request, reply) => {
     let lockId: string | null = null;
+    let lockedAccount: { address: string } | null = null;
     try {
       const { id } = request.params as { id: string };
       const tx = await prisma.transaction.findFirst({ where: { id, orgId: request.orgId } });
@@ -420,6 +422,7 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       const account = await prisma.walletAccount.findUnique({ where: { id: tx.accountId }, include: { chain: true } });
       if (!account) throw new NotFoundError("Account");
+      lockedAccount = account;
 
       const wallet = await prisma.wallet.findFirst({ where: { id: account.walletId, orgId: request.orgId } });
       if (!wallet) throw new NotFoundError("Wallet");
@@ -460,7 +463,7 @@ export async function transactionRoutes(app: FastifyInstance) {
     } catch (err) {
       return sendError(reply, err);
     } finally {
-      if (lockId) await releaseNonceLock(account.address, lockId).catch(() => {});
+      if (lockId && lockedAccount) await releaseNonceLock(lockedAccount.address, lockId).catch(() => {});
     }
   });
 

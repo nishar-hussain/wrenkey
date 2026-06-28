@@ -1,5 +1,6 @@
 import type {
   WranKeyConfig,
+  AuthConfig,
   Organization,
   User,
   Wallet,
@@ -65,6 +66,10 @@ export class WranKeyClient {
   }
 
   // ─── Auth ──────────────────────────────────────────
+
+  async getAuthConfig(): Promise<AuthConfig> {
+    return this.request<AuthConfig>("GET", "/auth/config");
+  }
 
   async sendEmailOtp(email: string): Promise<{ message: string; expiresIn: number }> {
     return this.request("POST", "/auth/email/send", { email });

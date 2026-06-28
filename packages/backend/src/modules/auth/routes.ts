@@ -91,12 +91,105 @@ function humanOrgName(email: string): string {
   return `${name}'s Org`;
 }
 
+async function getOrgConfig(orgId: string): Promise<Record<string, any>> {
+  try {
+    const row = await prisma.orgConfig.findUnique({ where: { orgId } });
+    return (row?.config as any) || {};
+  } catch { return {}; }
+}
+
+async function getEffectiveSessionExpiry(orgId: string): Promise<number> {
+  const orgConfig = await getOrgConfig(orgId);
+  const orgExpiry = typeof orgConfig.sessionExpiry === "number" ? orgConfig.sessionExpiry : config.sessionExpirySeconds;
+  return Math.min(orgExpiry, config.sessionExpirySeconds);
+}
+
+async function getOrgBranding(orgId: string): Promise<{ appName: string; appLogo: string }> {
+  const orgConfig = await getOrgConfig(orgId);
+  return {
+    appName: (orgConfig.appName as string) || "WranKey",
+    appLogo: (orgConfig.appLogo as string) || "",
+  };
+}
+
+async function getOtpConfig(orgId?: string): Promise<{ otpLength: number; otpType: string; otpEnabled: boolean; otpEmail: boolean; otpSms: boolean }> {
+  if (!orgId) return { otpLength: 6, otpType: "numeric", otpEnabled: true, otpEmail: true, otpSms: false };
+  const orgConfig = await getOrgConfig(orgId);
+  return {
+    otpLength: (typeof orgConfig.otpLength === "number" ? orgConfig.otpLength : 6),
+    otpType: (orgConfig.otpType === "alphanumeric" ? "alphanumeric" : "numeric"),
+    otpEnabled: orgConfig.otpEnabled !== false,
+    otpEmail: orgConfig.otpEmail !== false,
+    otpSms: orgConfig.otpSms === true,
+  };
+}
+
+function generateOtpConfigurable(length: number, type: string): string {
+  if (type === "alphanumeric") {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let result = "";
+    for (let i = 0; i < length; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+    return result;
+  }
+  const min = Math.pow(10, length - 1);
+  const max = Math.pow(10, length) - 1;
+  return Math.floor(min + Math.random() * (max - min + 1)).toString();
+}
+
 export async function authRoutes(app: FastifyInstance) {
-  // Public configuration endpoint
+  // Public configuration endpoint — returns server-level + org-level auth config
   app.get("/auth/config", async (request, reply) => {
-    return sendSuccess(reply, {
-      googleClientId: config.oauth.googleClientId || "",
-    });
+    try {
+      const baseConfig: Record<string, any> = {
+        googleClientId: config.oauth.googleClientId || "",
+        sessionExpiry: config.sessionExpirySeconds,
+        otpEnabled: true,
+        otpLength: 6,
+        otpType: "numeric",
+        otpEmail: true,
+        otpSms: false,
+        passkeyAuth: true,
+        walletAuth: true,
+        socialOAuth: true,
+        googleLogin: true,
+        appleLogin: false,
+        xLogin: false,
+        discordLogin: false,
+        redirectUrl: "https://example.com/auth/callback",
+        appName: "WranKey",
+        appLogo: "",
+        requireTokenLookup: false,
+      };
+
+      // If authenticated, overlay org-level config
+      if (request.userId && request.orgId) {
+        try {
+          const orgConfigRow = await prisma.orgConfig.findUnique({ where: { orgId: request.orgId } });
+          const oc = (orgConfigRow?.config as any) || {};
+          if (oc.sessionExpiry !== undefined) baseConfig.sessionExpiry = oc.sessionExpiry;
+          if (oc.otpEnabled !== undefined) baseConfig.otpEnabled = oc.otpEnabled;
+          if (oc.otpLength !== undefined) baseConfig.otpLength = oc.otpLength;
+          if (oc.otpType !== undefined) baseConfig.otpType = oc.otpType;
+          if (oc.otpEmail !== undefined) baseConfig.otpEmail = oc.otpEmail;
+          if (oc.otpSms !== undefined) baseConfig.otpSms = oc.otpSms;
+          if (oc.passkeyAuth !== undefined) baseConfig.passkeyAuth = oc.passkeyAuth;
+          if (oc.walletAuth !== undefined) baseConfig.walletAuth = oc.walletAuth;
+          if (oc.socialOAuth !== undefined) baseConfig.socialOAuth = oc.socialOAuth;
+          if (oc.googleLogin !== undefined) baseConfig.googleLogin = oc.googleLogin;
+          if (oc.appleLogin !== undefined) baseConfig.appleLogin = oc.appleLogin;
+          if (oc.xLogin !== undefined) baseConfig.xLogin = oc.xLogin;
+          if (oc.discordLogin !== undefined) baseConfig.discordLogin = oc.discordLogin;
+          if (oc.redirectUrl !== undefined) baseConfig.redirectUrl = oc.redirectUrl;
+          if (oc.appName !== undefined) baseConfig.appName = oc.appName;
+          if (oc.appLogo !== undefined) baseConfig.appLogo = oc.appLogo;
+          if (oc.requireTokenLookup !== undefined) baseConfig.requireTokenLookup = oc.requireTokenLookup;
+        } catch { /* use server defaults */ }
+      }
+
+      return sendSuccess(reply, baseConfig);
+    } catch (err) {
+      return sendError(reply, err);
+    }
   });
 
   // Protected: get current session user + org (used by frontend to validate token on load)
@@ -128,6 +221,20 @@ export async function authRoutes(app: FastifyInstance) {
       });
 
       if (user) {
+        // Check if org requires token for account lookups
+        const orgConfig = await getOrgConfig(user.orgId);
+        if (orgConfig.requireTokenLookup === true) {
+          const authHeader = request.headers.authorization;
+          if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            throw new AppError(401, "Authentication required for account lookups", "UNAUTHORIZED");
+          }
+          const token = authHeader.slice(7);
+          const session = await prisma.session.findFirst({
+            where: { token, userId: user.id, expiresAt: { gt: new Date() } },
+          });
+          if (!session) throw new AppError(401, "Invalid or expired session", "UNAUTHORIZED");
+        }
+
         return sendSuccess(reply, {
           exists: true,
           email: user.email,
@@ -150,7 +257,21 @@ export async function authRoutes(app: FastifyInstance) {
       const redis = getRedis();
       await checkOtpRateLimit(redis, "email", email);
 
-      const otp = generateOtp();
+      // Look up org config for branding + OTP settings
+      let branding = { appName: "WranKey", appLogo: "" };
+      let otpCfg = { otpLength: 6, otpType: "numeric", otpEnabled: true, otpEmail: true, otpSms: false };
+      try {
+        const user = await prisma.user.findFirst({ where: { email }, select: { orgId: true } });
+        if (user) {
+          branding = await getOrgBranding(user.orgId);
+          otpCfg = await getOtpConfig(user.orgId);
+        }
+      } catch { /* use defaults */ }
+
+      if (!otpCfg.otpEnabled) throw new ValidationError("OTP authentication is disabled for this organization");
+      if (!otpCfg.otpEmail) throw new ValidationError("Email OTP is disabled for this organization");
+
+      const otp = generateOtpConfigurable(otpCfg.otpLength, otpCfg.otpType);
       await redis.setex(`${OTP_PREFIX}${email}`, config.otpExpirySeconds, otp);
 
       // Attempt to send email if SMTP is configured
@@ -175,22 +296,23 @@ export async function authRoutes(app: FastifyInstance) {
             socketTimeout: 15000,
           });
 
-          // Verify SMTP connection before sending
           await transporter.verify();
           console.log(`[EMAIL] SMTP connection verified for ${config.smtp.host}:${config.smtp.port}`);
 
-          // Use SMTP_USER as from address (Gmail requires this)
           const fromAddress = config.smtp.from.includes("@")
-            ? `"WranKey" <${config.smtp.from}>`
-            : `"WranKey" <${config.smtp.user}>`;
+            ? `"${branding.appName}" <${config.smtp.from}>`
+            : `"${branding.appName}" <${config.smtp.user}>`;
+
+          const logoHtml = branding.appLogo ? `<img src="${branding.appLogo}" alt="${branding.appName}" style="max-height:40px;margin-bottom:16px;" />` : "";
 
           const info = await transporter.sendMail({
             from: fromAddress,
             to: email,
-            subject: "WranKey - Login Code",
+            subject: `${branding.appName} - Login Code`,
             text: `Your code: ${otp}\n\nExpires in ${Math.floor(config.otpExpirySeconds / 60)} minutes.`,
             html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-              <h2 style="color:#1e3a8a;">WranKey</h2>
+              ${logoHtml}
+              <h2 style="color:#1e3a8a;">${branding.appName}</h2>
               <p>Your verification code is:</p>
               <h1 style="font-size:32px;letter-spacing:4px;color:#2563eb;margin:16px 0;">${otp}</h1>
               <p style="color:#64748b;font-size:14px;">This code expires in ${Math.floor(config.otpExpirySeconds / 60)} minutes.</p>
@@ -266,10 +388,11 @@ export async function authRoutes(app: FastifyInstance) {
       });
 
       const token = signToken({ sub: user.id, orgId: org.id, role: user.role });
+      const expiry = await getEffectiveSessionExpiry(org.id);
       const session = await prisma.session.create({
         data: {
           userId: user.id, token, type: "READ_WRITE",
-          expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000),
+          expiresAt: new Date(Date.now() + expiry * 1000),
         },
       });
 
@@ -359,8 +482,9 @@ export async function authRoutes(app: FastifyInstance) {
       });
 
       const token = signToken({ sub: user.id, orgId: org.id, role: user.role });
+      const expiry = await getEffectiveSessionExpiry(org.id);
       const session = await prisma.session.create({
-        data: { userId: user.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
+        data: { userId: user.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + expiry * 1000) },
       });
 
       if (isNewUser) {
@@ -378,34 +502,105 @@ export async function authRoutes(app: FastifyInstance) {
   // OAuth
   app.post("/auth/oauth", async (request, reply) => {
     try {
-      const { provider, code, redirectUri, orgName } = request.body as { provider: string; code: string; redirectUri: string; orgName?: string };
+      const { provider, code, redirectUri, orgName, orgId, codeVerifier, name: reqName } = request.body as { provider: string; code: string; redirectUri: string; orgName?: string; orgId?: string; codeVerifier?: string; name?: string };
       if (!provider || !code) throw new ValidationError("Provider and code required");
+
+      let clientId = "";
+      let clientSecret = "";
+
+      // Try org-level credentials first
+      if (orgId) {
+        try {
+          const orgConfigRow = await prisma.orgConfig.findUnique({ where: { orgId }, select: { config: true } });
+          const oc = (orgConfigRow?.config as any) || {};
+          const creds = (oc.oauthCredentials || []) as Array<{ provider: string; clientId: string; clientSecret: string }>;
+          const match = creds.find((c: any) => c.provider?.toLowerCase() === provider.toLowerCase());
+          if (match) { clientId = match.clientId; clientSecret = match.clientSecret; }
+        } catch { /* fall through to server-level */ }
+      }
+
+      // Fallback to server-level Google credentials
+      if (!clientId && provider === "google") {
+        clientId = config.oauth.googleClientId;
+        clientSecret = config.oauth.googleClientSecret;
+      }
+
+      if (!clientId || !clientSecret) throw new ValidationError(`OAuth provider "${provider}" not configured for this organization`);
 
       let email: string;
       let name: string;
 
-      if (provider === "google" && config.oauth.googleClientId && config.oauth.googleClientSecret) {
+      if (provider === "google") {
         const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            client_id: config.oauth.googleClientId,
-            client_secret: config.oauth.googleClientSecret,
-            code, redirect_uri: redirectUri || config.corsOrigin[0],
-            grant_type: "authorization_code",
-          }),
+          body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, redirect_uri: redirectUri || config.corsOrigin[0], grant_type: "authorization_code" }),
         });
         const tokenData = await tokenRes.json() as any;
-        if (tokenData.error) throw new ValidationError("OAuth error: " + tokenData.error);
-
-        const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-          headers: { Authorization: `Bearer ${tokenData.access_token}` },
-        });
+        if (tokenData.error) throw new ValidationError("OAuth error: " + tokenData.error_description || tokenData.error);
+        const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
         const userData = await userRes.json() as any;
         email = userData.email;
         name = userData.name;
+      } else if (provider === "discord") {
+        const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code, grant_type: "authorization_code", redirect_uri: redirectUri || config.corsOrigin[0] }),
+        });
+        const tokenData = await tokenRes.json() as any;
+        if (tokenData.error) throw new ValidationError("Discord OAuth error: " + tokenData.error);
+        const userRes = await fetch("https://discord.com/api/users/@me", { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
+        const userData = await userRes.json() as any;
+        email = userData.email || `${userData.username}@discord.user`;
+        name = userData.global_name || userData.username;
+      } else if (provider === "github") {
+        const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, redirect_uri: redirectUri || config.corsOrigin[0] }),
+        });
+        const tokenData = await tokenRes.json() as any;
+        if (tokenData.error) throw new ValidationError("GitHub OAuth error: " + tokenData.error);
+        const userRes = await fetch("https://api.github.com/user", { headers: { Authorization: `Bearer ${tokenData.access_token}`, "User-Agent": "WranKey" } });
+        const userData = await userRes.json() as any;
+        const emailsRes = await fetch("https://api.github.com/user/emails", { headers: { Authorization: `Bearer ${tokenData.access_token}`, "User-Agent": "WranKey" } });
+        const emails = await emailsRes.json() as any[];
+        const primaryEmail = Array.isArray(emails) ? emails.find((e: any) => e.primary)?.email : userData.email;
+        email = primaryEmail || `${userData.login}@github.user`;
+        name = userData.name || userData.login;
+      } else if (provider === "apple") {
+        // Apple returns user info in the first request; use id_token to extract
+        const tokenRes = await fetch("https://appleid.apple.com/auth/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code, grant_type: "authorization_code", redirect_uri: redirectUri || config.corsOrigin[0] }),
+        });
+        const tokenData = await tokenRes.json() as any;
+        if (tokenData.error) throw new ValidationError("Apple OAuth error: " + tokenData.error);
+        // Decode id_token payload (JWT middle part)
+        const idTokenParts = (tokenData.id_token || "").split(".");
+        if (idTokenParts.length < 2) throw new ValidationError("Invalid Apple id_token");
+        const payload = JSON.parse(Buffer.from(idTokenParts[1], "base64url").toString("utf8")) as any;
+        email = payload.email || `${payload.sub}@appleid.user`;
+        name = payload.name || email?.split("@")[0] || "Apple User";
+      } else if (provider === "x" || provider === "twitter") {
+        // Twitter OAuth 2.0 with PKCE
+        const codeChallengeVerifier = codeVerifier || "";
+        const tokenRes = await fetch("https://api.twitter.com/2/oauth2/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", "Authorization": `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}` },
+          body: new URLSearchParams({ code, grant_type: "authorization_code", redirect_uri: redirectUri || config.corsOrigin[0], code_verifier: codeChallengeVerifier }),
+        });
+        const tokenData = await tokenRes.json() as any;
+        if (tokenData.error) throw new ValidationError("Twitter OAuth error: " + tokenData.error_description || tokenData.error);
+        const userRes = await fetch("https://api.twitter.com/2/users/me", { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
+        const userData = await userRes.json() as any;
+        const twitterUser = userData.data || {};
+        email = `${twitterUser.username || twitterUser.id}@twitter.user`;
+        name = twitterUser.name || twitterUser.username || "Twitter User";
       } else {
-        throw new ValidationError("OAuth provider not configured");
+        throw new ValidationError(`Unsupported OAuth provider: ${provider}`);
       }
 
       const existingUser = await prisma.user.findFirst({ where: { email } });
@@ -424,8 +619,9 @@ export async function authRoutes(app: FastifyInstance) {
       });
 
       const token = signToken({ sub: user.id, orgId: org.id, role: user.role });
+      const expiry = await getEffectiveSessionExpiry(org.id);
       const session = await prisma.session.create({
-        data: { userId: user.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
+        data: { userId: user.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + expiry * 1000) },
       });
 
       if (isNewUser) {
@@ -506,9 +702,11 @@ export async function authRoutes(app: FastifyInstance) {
       await redis.del(`webauthn:challenge:${userId}`);
 
       const user = await prisma.user.findUnique({ where: { id: userId } });
-      const token = signToken({ sub: user!.id, orgId: user!.orgId, role: user!.role });
+      if (!user) throw new ValidationError("User not found");
+      const token = signToken({ sub: user.id, orgId: user.orgId, role: user.role });
+      const expiry = await getEffectiveSessionExpiry(user!.orgId);
       const session = await prisma.session.create({
-        data: { userId, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
+        data: { userId, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + expiry * 1000) },
       });
 
       await createAuditLog(user.orgId, "LOGIN", { method: "PASSKEY" }, userId, request);
@@ -565,8 +763,9 @@ export async function authRoutes(app: FastifyInstance) {
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) throw new ValidationError("User not found");
       const token = signToken({ sub: user.id, orgId: user.orgId, role: user.role });
+      const expiry = await getEffectiveSessionExpiry(user.orgId);
       const session = await prisma.session.create({
-        data: { userId, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
+        data: { userId, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + expiry * 1000) },
       });
 
       await createAuditLog(user.orgId, "LOGIN", { method: "PASSKEY" }, userId, request);
@@ -604,8 +803,9 @@ export async function authRoutes(app: FastifyInstance) {
       });
 
       const token = signToken({ sub: user.id, orgId: org.id, role: user.role });
+      const expiry = await getEffectiveSessionExpiry(org.id);
       const session = await prisma.session.create({
-        data: { userId: user.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
+        data: { userId: user.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + expiry * 1000) },
       });
 
       if (isNewUser) {
@@ -637,8 +837,9 @@ export async function authRoutes(app: FastifyInstance) {
       await prisma.authenticator.create({ data: { userId: user.id, type: "PASSWORD", credentialData: { hash: passwordHash }, verified: true } });
 
       const token = signToken({ sub: user.id, orgId: org.id, role: user.role });
+      const expiry = await getEffectiveSessionExpiry(org.id);
       const session = await prisma.session.create({
-        data: { userId: user.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
+        data: { userId: user.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + expiry * 1000) },
       });
 
       await createAuditLog(org.id, "SIGNUP", { method: "PASSWORD" }, user.id, request);
@@ -664,8 +865,9 @@ export async function authRoutes(app: FastifyInstance) {
       if (!valid) throw new AppError(401, "Invalid credentials", "UNAUTHORIZED");
 
       const token = signToken({ sub: user.id, orgId: user.orgId, role: user.role });
+      const expiry = await getEffectiveSessionExpiry(user.orgId);
       const session = await prisma.session.create({
-        data: { userId: user.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
+        data: { userId: user.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + expiry * 1000) },
       });
 
       await createAuditLog(user.orgId, "LOGIN", { method: "PASSWORD" }, user.id, request);
@@ -692,12 +894,13 @@ export async function authRoutes(app: FastifyInstance) {
       if (!session) throw new AppError(401, "Session expired or revoked", "SESSION_EXPIRED");
 
       const token = signToken({ sub: payload.sub, orgId: payload.orgId, role: payload.role });
+      const expiry = await getEffectiveSessionExpiry(payload.orgId);
       await prisma.session.update({
         where: { id: session.id },
-        data: { token, expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
+        data: { token, expiresAt: new Date(Date.now() + expiry * 1000) },
       });
 
-      return sendSuccess(reply, { sessionToken: token, expiresIn: config.sessionExpirySeconds });
+      return sendSuccess(reply, { sessionToken: token, expiresIn: expiry });
     } catch (err) {
       return sendError(reply, err);
     }
@@ -866,6 +1069,7 @@ export async function authRoutes(app: FastifyInstance) {
       if (config.smtp.host && config.smtp.user && config.smtp.pass) {
         try {
           const { createTransport } = await import("nodemailer");
+          const branding = await getOrgBranding(user.orgId);
           const isSecure = config.smtp.port === 465;
           const transporter = createTransport({
             host: config.smtp.host,
@@ -875,16 +1079,18 @@ export async function authRoutes(app: FastifyInstance) {
             tls: { rejectUnauthorized: !config.isDev },
           });
           const fromAddress = config.smtp.from.includes("@")
-            ? `"WranKey" <${config.smtp.from}>`
-            : `"WranKey" <${config.smtp.user}>`;
+            ? `"${branding.appName}" <${config.smtp.from}>`
+            : `"${branding.appName}" <${config.smtp.user}>`;
           const resetUrl = `${Array.isArray(config.corsOrigin) ? config.corsOrigin[0] : config.corsOrigin}/reset-password?token=${resetToken}`;
+          const logoHtml = branding.appLogo ? `<img src="${branding.appLogo}" alt="${branding.appName}" style="max-height:40px;margin-bottom:16px;" />` : "";
           await transporter.sendMail({
             from: fromAddress,
             to: email,
-            subject: "WranKey - Reset Your Password",
+            subject: `${branding.appName} - Reset Your Password`,
             text: `Reset your password: ${resetUrl}\n\nExpires in 15 minutes.`,
             html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-              <h2 style="color:#1e3a8a;">WranKey</h2>
+              ${logoHtml}
+              <h2 style="color:#1e3a8a;">${branding.appName}</h2>
               <p>Click the link below to reset your password:</p>
               <a href="${resetUrl}" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;margin:16px 0;">Reset Password</a>
               <p style="color:#64748b;font-size:14px;">This link expires in 15 minutes.</p>
@@ -1137,7 +1343,7 @@ export async function authRoutes(app: FastifyInstance) {
           userId: result.user.id,
           token: tokenVal,
           type: "READ_WRITE",
-          expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000),
+          expiresAt: new Date(Date.now() + (await getEffectiveSessionExpiry(result.org.id)) * 1000),
         },
       });
 
@@ -1225,10 +1431,11 @@ export async function authRoutes(app: FastifyInstance) {
       });
 
       const sessionToken = signToken({ sub: user.id, orgId: user.orgId, role: user.role });
+      const expiry = await getEffectiveSessionExpiry(user.orgId);
       const session = await prisma.session.create({
         data: {
           userId: user.id, token: sessionToken, type: "READ_WRITE",
-          expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000),
+          expiresAt: new Date(Date.now() + expiry * 1000),
         },
       });
 

@@ -5,6 +5,27 @@ export interface WranKeyConfig {
   apiKey?: string;
 }
 
+export interface AuthConfig {
+  googleClientId: string;
+  sessionExpiry: number;
+  otpEnabled: boolean;
+  otpLength: number;
+  otpType: "numeric" | "alphanumeric";
+  otpEmail: boolean;
+  otpSms: boolean;
+  passkeyAuth: boolean;
+  walletAuth: boolean;
+  socialOAuth: boolean;
+  googleLogin: boolean;
+  appleLogin: boolean;
+  xLogin: boolean;
+  discordLogin: boolean;
+  redirectUrl: string;
+  appName: string;
+  appLogo: string;
+  requireTokenLookup: boolean;
+}
+
 export interface Organization {
   id: string;
   name: string;

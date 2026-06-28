@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
@@ -77,9 +77,8 @@ export default function ConfigurationPage() {
     async function load() {
       setLoading(true);
       try {
-        const [cfgRes, apikeysRes]: any[] = await Promise.all([
+        const [cfgRes]: any[] = await Promise.all([
           apiFetch<any>("/configuration", { token: token! }),
-          apiFetch<any>("/api-keys?limit=50", { token: token! }),
         ]);
         const c = cfgRes || {};
         setSessionExpiry(String(c.sessionExpiry || 900));
@@ -103,8 +102,8 @@ export default function ConfigurationPage() {
         setAuthProxyEnabled(c.authProxyEnabled ?? false);
         setOauthCredentials(c.oauthCredentials || []);
         setOnRampProviders(c.onRampProviders || []);
-        if (apikeysRes?.data?.length > 0) {
-          setConfigId(apikeysRes.data[0].id?.slice(0, 4) + "····" + apikeysRes.data[0].id?.slice(-4));
+        if (c.configId) {
+          setConfigId(c.configId.slice(0, 4) + "····" + c.configId.slice(-4));
         }
       } catch { addToast("Failed to load data", "error"); } finally { setLoading(false); }
     }
@@ -133,6 +132,22 @@ export default function ConfigurationPage() {
       addToast(err.message || "Failed to save", "error");
     }
   };
+
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSave = useCallback((field: string, value: any) => {
+    if (!token) return;
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(async () => {
+      try {
+        await apiFetch("/configuration", { method: "PATCH", body: JSON.stringify({ [field]: value }), token: token! });
+      } catch { /* silent */ }
+    }, 600);
+  }, [token]);
+
+  const toggleSave = useCallback((field: string, value: boolean) => {
+    if (!token) return;
+    apiFetch("/configuration", { method: "PATCH", body: JSON.stringify({ [field]: value }), token: token! }).catch(() => {});
+  }, [token]);
 
   const addOAuthCredential = async () => {
     if (!newOAuthProvider || !newOAuthClientId) return;
@@ -208,37 +223,37 @@ export default function ConfigurationPage() {
                 <p className="font-medium text-amber-700">Auth Proxy</p>
                 <p className="text-amber-600 mt-1">Enable the auth proxy to bypass requiring a backend.</p>
               </div>
-              <div className="flex items-center justify-between"><span className="text-sm text-slate-600">Auth Proxy</span><Toggle enabled={authProxyEnabled} onChange={setAuthProxyEnabled} /></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-slate-600">Auth Proxy</span><Toggle enabled={authProxyEnabled} onChange={(v) => { setAuthProxyEnabled(v); toggleSave("authProxyEnabled", v); }} /></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                 <div><label className="text-xs font-medium text-slate-500 mb-1 block">Config ID</label><Input value={configId} readOnly className="font-mono text-xs bg-slate-50" /></div>
-                <div><label className="text-xs font-medium text-slate-500 mb-1 block">Session expiration length, sec.</label><Input value={sessionExpiry} onChange={e => setSessionExpiry(e.target.value)} className="text-xs" /></div>
+                <div><label className="text-xs font-medium text-slate-500 mb-1 block">Session expiration length, sec.</label><Input value={sessionExpiry} onChange={e => { setSessionExpiry(e.target.value); autoSave('sessionExpiry', parseInt(e.target.value)); }} className="text-xs" /></div>
               </div>
-              <div><label className="text-xs font-medium text-slate-500 mb-1 block">Allowed origins</label><Input value={allowedOrigins} onChange={e => setAllowedOrigins(e.target.value)} placeholder="https://" className="text-xs" /><p className="text-[10px] text-slate-400 mt-1">All origins allowed. Add specific origins to restrict access.</p></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1 block">Allowed origins</label><Input value={allowedOrigins} onChange={e => { setAllowedOrigins(e.target.value); autoSave('allowedOrigins', e.target.value); }} placeholder="https://" className="text-xs" /><p className="text-[10px] text-slate-400 mt-1">All origins allowed. Add specific origins to restrict access.</p></div>
             </CardContent>
           </Card>
 
           <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
             <CardHeader><h3 className="font-semibold">One-Time Password</h3></CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between"><span className="text-sm text-slate-700 font-medium">Enable Email &amp; SMS OTP</span><Toggle enabled={otpEnabled} onChange={setOtpEnabled} /></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-slate-700 font-medium">Enable Email &amp; SMS OTP</span><Toggle enabled={otpEnabled} onChange={(v) => { setOtpEnabled(v); toggleSave("otpEnabled", v); }} /></div>
               {otpEnabled && (
                 <div className="space-y-4 pl-1">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label className="text-xs font-medium text-slate-500 mb-1 block">OTP Length</label><select value={otpLength} onChange={e => setOtpLength(e.target.value)} className="w-full border rounded-md px-3 py-2 text-xs"><option value="4">4</option><option value="6">6</option><option value="8">8</option></select></div>
-                    <div><label className="text-xs font-medium text-slate-500 mb-1 block">Type</label><select value={otpType} onChange={e => setOtpType(e.target.value)} className="w-full border rounded-md px-3 py-2 text-xs"><option value="numeric">Numeric</option><option value="alphanumeric">Alphanumeric</option></select></div>
+                    <div><label className="text-xs font-medium text-slate-500 mb-1 block">OTP Length</label><select value={otpLength} onChange={e => { setOtpLength(e.target.value); autoSave('otpLength', parseInt(e.target.value)); }} className="w-full border rounded-md px-3 py-2 text-xs"><option value="4">4</option><option value="6">6</option><option value="8">8</option></select></div>
+                    <div><label className="text-xs font-medium text-slate-500 mb-1 block">Type</label><select value={otpType} onChange={e => { setOtpType(e.target.value); autoSave('otpType', e.target.value); }} className="w-full border rounded-md px-3 py-2 text-xs"><option value="numeric">Numeric</option><option value="alphanumeric">Alphanumeric</option></select></div>
                   </div>
-                  <div className="flex items-center justify-between py-2 border-t border-slate-100"><span className="text-sm text-slate-600">Send OTP via Email</span><Toggle enabled={otpEmail} onChange={setOtpEmail} /></div>
+                  <div className="flex items-center justify-between py-2 border-t border-slate-100"><span className="text-sm text-slate-600">Send OTP via Email</span><Toggle enabled={otpEmail} onChange={(v) => { setOtpEmail(v); toggleSave("otpEmail", v); }} /></div>
                   {otpEmail && (
                     <div className="space-y-3 pl-1">
-                      <div><label className="text-xs font-medium text-slate-500 mb-1 block">Application name (brand)</label><Input value={appName} onChange={e => setAppName(e.target.value)} placeholder="Name" className="text-xs" /><p className="text-[10px] text-slate-400 mt-1">App name is required when email OTP is enabled.</p></div>
-                      <div><label className="text-xs font-medium text-slate-500 mb-1 block">Logo URL</label><Input value={appLogo} onChange={e => setAppLogo(e.target.value)} placeholder="https://" className="text-xs" /></div>
+                      <div><label className="text-xs font-medium text-slate-500 mb-1 block">Application name (brand)</label><Input value={appName} onChange={e => { setAppName(e.target.value); autoSave('appName', e.target.value); }} placeholder="Name" className="text-xs" /><p className="text-[10px] text-slate-400 mt-1">App name is required when email OTP is enabled.</p></div>
+                      <div><label className="text-xs font-medium text-slate-500 mb-1 block">Logo URL</label><Input value={appLogo} onChange={e => { setAppLogo(e.target.value); autoSave('appLogo', e.target.value); }} placeholder="https://" className="text-xs" /></div>
                     </div>
                   )}
                   <div className="flex items-center justify-between py-2 border-t border-slate-100">
                     <div><span className="text-sm text-slate-600">Send OTP via SMS</span><p className="text-[10px] text-slate-400">SMS OTP is only available on the Enterprise plan.</p></div>
                     <Toggle enabled={otpSms} onChange={setOtpSms} />
                   </div>
-                  <div className="flex items-center justify-between py-2 border-t border-slate-100"><span className="text-sm text-slate-600">Require token for account lookups</span><Toggle enabled={requireTokenLookup} onChange={setRequireTokenLookup} /></div>
+                  <div className="flex items-center justify-between py-2 border-t border-slate-100"><span className="text-sm text-slate-600">Require token for account lookups</span><Toggle enabled={requireTokenLookup} onChange={(v) => { setRequireTokenLookup(v); toggleSave("requireTokenLookup", v); }} /></div>
                 </div>
               )}
             </CardContent>
@@ -247,7 +262,7 @@ export default function ConfigurationPage() {
           <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
             <CardHeader><h3 className="font-semibold">Social Logins</h3><p className="text-xs text-slate-400 mt-1">Social sign-in providers surfaced in the Wallet Kit.</p></CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between py-2"><div><span className="text-sm text-slate-700 font-medium">OAuth</span><p className="text-xs text-slate-400">Allow users to sign in using third-party providers.</p></div><Toggle enabled={socialOAuth} onChange={setSocialOAuth} /></div>
+              <div className="flex items-center justify-between py-2"><div><span className="text-sm text-slate-700 font-medium">OAuth</span><p className="text-xs text-slate-400">Allow users to sign in using third-party providers.</p></div><Toggle enabled={socialOAuth} onChange={(v) => { setSocialOAuth(v); toggleSave("socialOAuth", v); }} /></div>
               {socialOAuth && (
                 <div className="pl-2 border-l-2 border-brand-200 dark:border-brand-800 space-y-3 mt-2">
                   <p className="text-xs font-medium text-slate-500">Social login buttons to surface on the wallet kit.</p>
@@ -264,7 +279,7 @@ export default function ConfigurationPage() {
                   ))}
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-800/50">
                     <label className="text-xs font-medium text-slate-500 mb-1 block">Redirect URL</label>
-                    <Input value={redirectUrl} onChange={e => setRedirectUrl(e.target.value)} className="text-xs font-mono" />
+                    <Input value={redirectUrl} onChange={e => { setRedirectUrl(e.target.value); autoSave('redirectUrl', e.target.value); }} className="text-xs font-mono" />
                   </div>
                 </div>
               )}
@@ -274,8 +289,8 @@ export default function ConfigurationPage() {
           <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
             <CardHeader><h3 className="font-semibold">SDK Configuration</h3><p className="text-xs text-slate-400 mt-1">Configuration for Wallet Kits and SDKs.</p></CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between py-2"><div><span className="text-sm text-slate-700 font-medium">Passkey</span><p className="text-xs text-slate-400">Display passkey authentication</p></div><Toggle enabled={passkeyAuth} onChange={setPasskeyAuth} /></div>
-              <div className="flex items-center justify-between py-2 border-t border-slate-100"><div><span className="text-sm text-slate-700 font-medium">Wallet</span><p className="text-xs text-slate-400">Display external wallet authentication</p></div><Toggle enabled={walletAuth} onChange={setWalletAuth} /></div>
+              <div className="flex items-center justify-between py-2"><div><span className="text-sm text-slate-700 font-medium">Passkey</span><p className="text-xs text-slate-400">Display passkey authentication</p></div><Toggle enabled={passkeyAuth} onChange={(v) => { setPasskeyAuth(v); toggleSave("passkeyAuth", v); }} /></div>
+              <div className="flex items-center justify-between py-2 border-t border-slate-100"><div><span className="text-sm text-slate-700 font-medium">Wallet</span><p className="text-xs text-slate-400">Display external wallet authentication</p></div><Toggle enabled={walletAuth} onChange={(v) => { setWalletAuth(v); toggleSave("walletAuth", v); }} /></div>
             </CardContent>
           </Card>
 

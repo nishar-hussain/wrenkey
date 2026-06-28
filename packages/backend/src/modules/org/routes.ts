@@ -100,6 +100,14 @@ export async function orgRoutes(app: FastifyInstance) {
 
       if (email && config.smtp.host && config.smtp.user && config.smtp.pass) {
         try {
+          // Read org branding config
+          let branding = { appName: "WranKey", appLogo: "" };
+          try {
+            const orgConfigRow = await prisma.orgConfig.findUnique({ where: { orgId: request.orgId } });
+            const oc = (orgConfigRow?.config as any) || {};
+            branding = { appName: oc.appName || "WranKey", appLogo: oc.appLogo || "" };
+          } catch { /* use defaults */ }
+
           const isSecure = config.smtp.port === 465;
           const transporter = createTransport({
             host: config.smtp.host,
@@ -112,17 +120,19 @@ export async function orgRoutes(app: FastifyInstance) {
             socketTimeout: 15000,
           });
           const fromAddress = config.smtp.from.includes("@")
-            ? `"WranKey" <${config.smtp.from}>`
-            : `"WranKey" <${config.smtp.user}>`;
+            ? `"${branding.appName}" <${config.smtp.from}>`
+            : `"${branding.appName}" <${config.smtp.user}>`;
+          const logoHtml = branding.appLogo ? `<img src="${branding.appLogo}" alt="${branding.appName}" style="max-height:40px;margin-bottom:16px;" />` : "";
           await transporter.sendMail({
             from: fromAddress,
             to: email,
-            subject: `You've been invited to ${org?.name || "WranKey"}`,
-            text: `Hi ${name || email},\n\nYou've been invited to join "${org?.name || "an organization"}" on WranKey.\n\nAccept your invitation here: ${inviteLink}`,
+            subject: `You've been invited to ${org?.name || branding.appName}`,
+            text: `Hi ${name || email},\n\nYou've been invited to join "${org?.name || "an organization"}" on ${branding.appName}.\n\nAccept your invitation here: ${inviteLink}`,
             html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-              <h2 style="color:#1e3a8a;">WranKey</h2>
+              ${logoHtml}
+              <h2 style="color:#1e3a8a;">${branding.appName}</h2>
               <p>Hi ${name || email},</p>
-              <p>You've been invited to join <strong>${org?.name || "an organization"}</strong> on WranKey.</p>
+              <p>You've been invited to join <strong>${org?.name || "an organization"}</strong> on ${branding.appName}.</p>
               <p style="margin:24px 0;">
                 <a href="${inviteLink}" style="background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Accept Invitation</a>
               </p>

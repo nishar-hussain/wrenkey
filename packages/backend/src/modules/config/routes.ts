@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import { randomUUID } from "crypto";
 import prisma from "../../db.js";
 import { authMiddleware } from "../../middleware/auth.js";
 import { sendSuccess, sendError } from "../../utils/errors.js";
@@ -33,11 +34,21 @@ export async function configRoutes(app: FastifyInstance) {
     try {
       let cfg = await prisma.orgConfig.findUnique({ where: { orgId: request.orgId } });
       if (!cfg) {
+        const configId = randomUUID();
         cfg = await prisma.orgConfig.create({
-          data: { orgId: request.orgId, config: DEFAULT_CONFIG },
+          data: { orgId: request.orgId, config: { ...DEFAULT_CONFIG, configId } },
         });
       }
-      return sendSuccess(reply, { ...DEFAULT_CONFIG, ...(cfg.config as any) });
+      const merged = { ...DEFAULT_CONFIG, ...(cfg.config as any) };
+      // Ensure configId exists
+      if (!merged.configId) {
+        merged.configId = randomUUID();
+        await prisma.orgConfig.update({
+          where: { orgId: request.orgId },
+          data: { config: merged },
+        });
+      }
+      return sendSuccess(reply, merged);
     } catch (err) {
       return sendError(reply, err);
     }

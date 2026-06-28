@@ -40,7 +40,7 @@ export async function subOrgRoutes(app: FastifyInstance) {
           const root = rootMap.get(org.id);
           if (root) {
             org.rootUserId = root.id;
-            org.rootUserEmail = root.email;
+            org.rootUserEmail = root.email || "";
           }
         }
       }
