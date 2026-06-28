@@ -129,6 +129,8 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
     // Skip OPTIONS (CORS preflight) and non-API routes
     if (request.method === "OPTIONS") return;
     if (!request.url.startsWith("/api/v1/") || publicPaths.includes(request.url)) return;
+    // Allow invitation endpoints without auth
+    if (request.url.startsWith("/api/v1/auth/invitation/")) return;
     try {
       await authMiddleware(request, reply);
     } catch (err) {

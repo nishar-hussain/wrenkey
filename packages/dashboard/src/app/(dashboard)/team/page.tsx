@@ -22,6 +22,7 @@ interface TeamMember {
   tags: string[];
   createdAt: string;
   apiKeyCount?: number;
+  _count?: { sessions: number };
 }
 
 export default function TeamPage() {
@@ -41,7 +42,6 @@ export default function TeamPage() {
   const [showServiceModal, setShowServiceModal] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
-  const [newRole, setNewRole] = useState("DEVELOPER");
   const [agentName, setAgentName] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
   const [credentials, setCredentials] = useState<any>(null);
@@ -88,7 +88,7 @@ export default function TeamPage() {
     if (!newEmail.trim()) { addToast("Email required", "error"); return; }
     setCreateLoading(true);
     try {
-      await apiFetch("/users", { method: "POST", body: JSON.stringify({ email: newEmail, name: newName, role: newRole }), token: token! });
+      await apiFetch("/users", { method: "POST", body: JSON.stringify({ email: newEmail, name: newName, role: "DEVELOPER" }), token: token! });
       setShowTeamMemberModal(false); setNewEmail(""); setNewName("");
       addToast("Team member added", "success"); fetchMembers();
     } catch (err: any) { addToast(err.message || "Failed", "error"); } finally { setCreateLoading(false); }
@@ -105,21 +105,6 @@ export default function TeamPage() {
   };
 
   if (!isAuthenticated) return null;
-
-  const roleBadge = (role: string) => {
-    const map: Record<string, string> = {
-      ORG_ADMIN: "bg-violet-50 text-violet-700 border-violet-100 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-900/30",
-      DEVELOPER: "bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-900/30",
-      AGENT: "bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-900/30",
-      AUDITOR: "bg-slate-50 text-slate-600 border-slate-100",
-    };
-    const label: Record<string, string> = { ORG_ADMIN: "Root", DEVELOPER: "Basic", AGENT: "Service", AUDITOR: "Auditor" };
-    return (
-      <span className={`inline-flex text-[11px] font-medium px-2 py-0.5 rounded-full border ${map[role] || map.AUDITOR}`}>
-        {label[role] || role}
-      </span>
-    );
-  };
 
   return (
     <div className="space-y-6">
@@ -207,10 +192,16 @@ export default function TeamPage() {
                       <button className="text-[10px] text-slate-400 hover:text-slate-600 border border-dashed border-slate-300 rounded px-1.5 py-0.5">Add Tag</button>
                     </div>
                   )},
-                  { key: "role", header: "Access Level", render: (m: TeamMember) => roleBadge(m.role) },
                   { key: "apiKeys", header: "API Keys", render: (m: TeamMember) => <span className="text-sm">{m.apiKeyCount || "—"}</span> },
                   { key: "createdAt", header: "Created", render: (m: TeamMember) => <span className="text-xs text-slate-500">{new Date(m.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</span> },
-                  { key: "status", header: "Status", render: () => <span className="inline-flex items-center text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">Active</span> },
+                  { key: "status", header: "Status", render: (m: TeamMember) => {
+                    const hasSession = (m._count?.sessions ?? 0) > 0;
+                    return (
+                      <span className={`inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full border ${hasSession ? "text-emerald-700 bg-emerald-50 border-emerald-100" : "text-amber-700 bg-amber-50 border-amber-100"}`}>
+                        {hasSession ? "Active" : "Invited"}
+                      </span>
+                    );
+                  } },
                 ]}
                 data={members}
                 loading={false}
@@ -227,7 +218,6 @@ export default function TeamPage() {
           <p className="text-sm text-slate-500">Invite a person to join your organization.</p>
           <div className="space-y-1"><label className="text-sm font-medium">Email</label><Input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="person@example.com" /></div>
           <div className="space-y-1"><label className="text-sm font-medium">Name (optional)</label><Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name" /></div>
-          <div className="space-y-1"><label className="text-sm font-medium">Role</label><select value={newRole} onChange={e => setNewRole(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm"><option value="DEVELOPER">Developer</option><option value="ORG_ADMIN">Admin</option><option value="AUDITOR">Auditor</option></select></div>
           <div className="flex gap-2"><Button variant="secondary" onClick={() => setShowTeamMemberModal(false)} className="flex-1">Cancel</Button><Button onClick={createTeamMember} disabled={createLoading} className="flex-1">{createLoading ? "Adding..." : "Add Member"}</Button></div>
         </div>
       </Modal>

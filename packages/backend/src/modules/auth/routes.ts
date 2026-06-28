@@ -1173,4 +1173,76 @@ export async function authRoutes(app: FastifyInstance) {
       return sendError(reply, err);
     }
   });
+
+  // Invitation: verify token
+  app.get("/auth/invitation/:token", async (request, reply) => {
+    try {
+      const { token } = request.params as { token: string };
+      if (!token) throw new ValidationError("Token required");
+
+      const redis = getRedis();
+      const data = await redis.get(`invite:${token}`);
+      if (!data) throw new ValidationError("Invalid or expired invitation");
+
+      const invite = JSON.parse(data);
+      return sendSuccess(reply, {
+        valid: true,
+        email: invite.email,
+        orgName: invite.orgName,
+      });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Invitation: accept (verify OTP + activate user)
+  app.post("/auth/invitation/accept", async (request, reply) => {
+    try {
+      const { token, otp } = request.body as { token: string; otp: string };
+      if (!token || !otp) throw new ValidationError("Token and OTP required");
+
+      const redis = getRedis();
+      const inviteData = await redis.get(`invite:${token}`);
+      if (!inviteData) throw new ValidationError("Invalid or expired invitation");
+
+      const invite = JSON.parse(inviteData);
+      const email = invite.email;
+
+      // Verify OTP
+      const storedOtp = await redis.get(`otp:${email}`);
+      if (!storedOtp || storedOtp !== otp) throw new ValidationError("Invalid or expired OTP");
+      await redis.del(`otp:${email}`);
+      await redis.del(`invite:${token}`);
+
+      // Find or create authenticator and session
+      const user = await prisma.user.findUnique({ where: { id: invite.userId }, include: { org: true } });
+      if (!user) throw new ValidationError("User not found");
+
+      await prisma.authenticator.upsert({
+        where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: "EMAIL" } }))?.id || "" },
+        update: { verified: true },
+        create: { userId: user.id, type: "EMAIL", verified: true },
+      });
+
+      const sessionToken = signToken({ sub: user.id, orgId: user.orgId, role: user.role });
+      const session = await prisma.session.create({
+        data: {
+          userId: user.id, token: sessionToken, type: "READ_WRITE",
+          expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000),
+        },
+      });
+
+      await createAuditLog(user.orgId, "INVITATION_ACCEPT", { email }, user.id, request);
+      triggerWebhookEvents(user.orgId, "user.login", { userId: user.id, email, method: "INVITATION" });
+
+      return sendSuccess(reply, {
+        sessionToken,
+        user: { id: user.id, email: user.email, role: user.role },
+        org: { id: user.org.id, name: user.org.name },
+        expiresAt: session.expiresAt,
+      }, 201);
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
 }

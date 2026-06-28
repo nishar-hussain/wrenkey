@@ -1,9 +1,13 @@
 import { FastifyInstance } from "fastify";
+import { createTransport } from "nodemailer";
+import { randomBytes } from "crypto";
 import prisma from "../../db.js";
 import { authMiddleware } from "../../middleware/auth.js";
 import { sendSuccess, sendError, ValidationError, NotFoundError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
 import { parsePagination } from "../../utils/pagination.js";
+import { config } from "../../config.js";
+import { getRedis } from "../../redis.js";
 
 export async function orgRoutes(app: FastifyInstance) {
   app.post("/orgs", { preHandler: [authMiddleware] }, async (request, reply) => {
@@ -66,13 +70,74 @@ export async function orgRoutes(app: FastifyInstance) {
       };
       if (!email && !phone) throw new ValidationError("Email or phone required");
 
+      // Check if user already exists in this org
+      if (email) {
+        const existing = await prisma.user.findFirst({ where: { orgId: request.orgId, email } });
+        if (existing) throw new ValidationError("A user with this email already exists in your organization");
+      }
+
+      const org = await prisma.organization.findUnique({ where: { id: request.orgId }, select: { name: true } });
+
       const user = await prisma.user.create({
         data: { orgId: request.orgId, name, email, phone, role: role || "DEVELOPER", tags: tags || [] },
         select: { id: true, name: true, email: true, phone: true, role: true, tags: true, createdAt: true },
       });
 
       await createAuditLog(request.orgId, "USER_CREATE", { userId: user.id, email }, request.userId, request);
-      return sendSuccess(reply, user, 201);
+
+      // Generate invitation token and store in Redis
+      const inviteToken = randomBytes(32).toString("hex");
+      const redis = getRedis();
+      const INIVITE_TTL = 7 * 24 * 3600;
+      await redis.setex(
+        `invite:${inviteToken}`,
+        INIVITE_TTL,
+        JSON.stringify({ userId: user.id, email: user.email || email, orgId: request.orgId, orgName: org?.name || "" }),
+      );
+
+      const baseUrl = config.corsOrigin[0] || "http://localhost:5173";
+      const inviteLink = `${baseUrl}/accept-invitation?token=${inviteToken}`;
+
+      if (email && config.smtp.host && config.smtp.user && config.smtp.pass) {
+        try {
+          const isSecure = config.smtp.port === 465;
+          const transporter = createTransport({
+            host: config.smtp.host,
+            port: config.smtp.port,
+            secure: isSecure,
+            auth: { user: config.smtp.user, pass: config.smtp.pass },
+            tls: { rejectUnauthorized: !config.isDev },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000,
+          });
+          const fromAddress = config.smtp.from.includes("@")
+            ? `"WranKey" <${config.smtp.from}>`
+            : `"WranKey" <${config.smtp.user}>`;
+          await transporter.sendMail({
+            from: fromAddress,
+            to: email,
+            subject: `You've been invited to ${org?.name || "WranKey"}`,
+            text: `Hi ${name || email},\n\nYou've been invited to join "${org?.name || "an organization"}" on WranKey.\n\nAccept your invitation here: ${inviteLink}`,
+            html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+              <h2 style="color:#1e3a8a;">WranKey</h2>
+              <p>Hi ${name || email},</p>
+              <p>You've been invited to join <strong>${org?.name || "an organization"}</strong> on WranKey.</p>
+              <p style="margin:24px 0;">
+                <a href="${inviteLink}" style="background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Accept Invitation</a>
+              </p>
+              <p style="color:#64748b;font-size:14px;">This invitation expires in 7 days.</p>
+            </div>`,
+          });
+          console.log(`[EMAIL] Sent invitation to ${email}`);
+        } catch (err: any) {
+          console.error(`[EMAIL] Failed to send invitation to ${email}:`, err.message);
+        }
+      } else {
+        console.log(`[DEV] Invitation for ${email}: ${inviteLink}`);
+      }
+
+      return sendSuccess(reply, { ...user, inviteToken: config.isDev ? inviteToken : undefined }, 201);
     } catch (err) {
       return sendError(reply, err);
     }
@@ -84,7 +149,7 @@ export async function orgRoutes(app: FastifyInstance) {
       const [data, total] = await Promise.all([
         prisma.user.findMany({
           where: { orgId: request.orgId },
-          select: { id: true, name: true, email: true, phone: true, role: true, tags: true, createdAt: true },
+          select: { id: true, name: true, email: true, phone: true, role: true, tags: true, createdAt: true, _count: { select: { sessions: true } } },
           orderBy: { createdAt: "desc" }, take: limit, skip: offset,
         }),
         prisma.user.count({ where: { orgId: request.orgId } }),
