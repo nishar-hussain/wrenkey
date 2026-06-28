@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Search, Check, ChevronDown, CreditCard, Mail } from "lucide-react";
+import { Search, Check, ChevronDown, CreditCard, Mail, Copy, Building2, Save } from "lucide-react";
 
 interface Invoice {
   id: string;
@@ -35,9 +35,9 @@ const USAGE_METRICS = ["Signatures", "Activities", "Wallets", "Sub-orgs", "Priva
 
 export default function BillingPage() {
   const router = useRouter();
-  const { isAuthenticated, token } = useAuth();
+  const { isAuthenticated, token, org, user, updateOrg } = useAuth();
   const { addToast } = useToast();
-  const [activeTab, setActiveTab] = useState<"invoices" | "usage" | "plans" | "payment">("invoices");
+  const [activeTab, setActiveTab] = useState<"invoices" | "usage" | "plans" | "payment" | "organization">("organization");
   const [loading, setLoading] = useState(true);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [usage, setUsage] = useState<Record<string, number>>({});
@@ -48,6 +48,9 @@ export default function BillingPage() {
   const [search, setSearch] = useState("");
   const [cardName, setCardName] = useState("");
   const [cardEmail, setCardEmail] = useState("");
+  const [orgName, setOrgName] = useState(org?.name || "");
+  const [editingOrg, setEditingOrg] = useState(false);
+  const [savingOrg, setSavingOrg] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) { router.push("/login"); return; }
@@ -80,11 +83,25 @@ export default function BillingPage() {
   if (!isAuthenticated) return null;
 
   const tabs = [
+    { key: "organization", label: "Organization" },
     { key: "invoices", label: "Invoices" },
     { key: "usage", label: "Usage" },
     { key: "plans", label: "Plans" },
     { key: "payment", label: "Payment Details" },
   ];
+
+  useEffect(() => { if (org?.name) setOrgName(org.name); }, [org?.name]);
+
+  const saveOrgName = async () => {
+    if (!orgName.trim() || orgName.trim() === org?.name) return;
+    setSavingOrg(true);
+    try {
+      const res: any = await apiFetch("/org", { method: "PATCH", token: token!, body: JSON.stringify({ name: orgName.trim() }) });
+      updateOrg({ id: res.id, name: res.name });
+      setEditingOrg(false);
+      addToast("Organization name updated", "success");
+    } catch (err: any) { addToast(err.message || "Failed to update", "error"); } finally { setSavingOrg(false); }
+  };
 
   const maxVal = Math.max(...Object.values(usage), 1);
   const barScale = 25;
@@ -103,6 +120,78 @@ export default function BillingPage() {
           </button>
         ))}
       </div>
+
+      {activeTab === "organization" && (
+        <div className="space-y-6">
+          <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-violet-50 border border-violet-100 dark:bg-violet-950/30 dark:border-violet-900/30 flex items-center justify-center shrink-0">
+                  <Building2 className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Organization</h3>
+
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Organization Name</label>
+                      {editingOrg ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={orgName}
+                            onChange={(e) => setOrgName(e.target.value)}
+                            className="h-10 max-w-md font-medium text-slate-900 dark:text-white"
+                            autoFocus
+                            onKeyDown={(e) => { if (e.key === "Enter") saveOrgName(); if (e.key === "Escape") { setEditingOrg(false); setOrgName(org?.name || ""); } }}
+                          />
+                          <Button size="sm" onClick={saveOrgName} disabled={savingOrg || !orgName.trim() || orgName.trim() === org?.name}>
+                            <Save className="w-3.5 h-3.5 mr-1" /> {savingOrg ? "Saving..." : "Save"}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => { setEditingOrg(false); setOrgName(org?.name || ""); }}>
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <p className="text-base font-semibold text-slate-900 dark:text-white">{org?.name || "My Organization"}</p>
+                          <button onClick={() => setEditingOrg(true)} className="text-xs text-brand-600 hover:text-brand-700 font-medium underline underline-offset-2">
+                            Update
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Organization ID</label>
+                      <div className="flex items-center gap-2">
+                        <code className="text-sm font-mono text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-lg select-all">
+                          {org?.id ? `${org.id.slice(0, 4)}····${org.id.slice(-4)}` : "············"}
+                        </code>
+                        <button
+                          onClick={() => { if (org?.id) { navigator.clipboard.writeText(org.id); addToast("Organization ID copied", "success"); } }}
+                          className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Current Plan</label>
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-300 capitalize">{currentPlan === "free" ? "Free" : currentPlan === "payg" ? "Pay as you go" : currentPlan === "pro" ? "Pro" : "Enterprise"}</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Billing Email</label>
+                      <p className="text-sm text-slate-700 dark:text-slate-300">{user?.email || "—"}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {activeTab === "invoices" && (
         <div className="space-y-4">
