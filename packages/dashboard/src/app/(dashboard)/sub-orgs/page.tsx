@@ -8,10 +8,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
+import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Layers, Plus, Copy, Trash2, Pencil, ExternalLink } from "lucide-react";
+import { Layers, Plus, Copy, Trash2, Pencil, ExternalLink, ChevronRight } from "lucide-react";
 
 interface SubOrg {
   id: string;
@@ -25,11 +26,13 @@ interface SubOrg {
 
 export default function SubOrgsPage() {
   const router = useRouter();
-  const { isAuthenticated, token } = useAuth();
+  const { isAuthenticated, token, login, org } = useAuth();
   const { addToast } = useToast();
   const [subOrgs, setSubOrgs] = useState<SubOrg[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [subOrgId, setSubOrgId] = useState("");
+  const [limit, setLimit] = useState(20);
+  const [offset, setOffset] = useState(0);
 
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -37,15 +40,17 @@ export default function SubOrgsPage() {
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [saveLoading, setSaveLoading] = useState(false);
+  const [impersonateId, setImpersonateId] = useState<string | null>(null);
 
   const fetchSubOrgs = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const res: any = await apiFetch("/sub-orgs?limit=50", { token });
+      const res: any = await apiFetch(`/sub-orgs?limit=${limit}&offset=${offset}`, { token });
       setSubOrgs(res.data || []);
+      setTotal(res.total || 0);
     } catch { addToast("Failed to load data", "error"); } finally { setLoading(false); }
-  }, [token]);
+  }, [token, limit, offset]);
 
   useEffect(() => { if (!isAuthenticated) { router.push("/login"); return; } fetchSubOrgs(); }, [isAuthenticated, fetchSubOrgs, router]);
 
@@ -77,6 +82,21 @@ export default function SubOrgsPage() {
     } catch (err: any) { addToast(err.message || "Failed", "error"); }
   };
 
+  const impressSubOrg = async (subOrg: SubOrg) => {
+    setImpersonateId(subOrg.id);
+    try {
+      const res: any = await apiFetch(`/sub-orgs/${subOrg.id}/impersonate`, { method: "POST", token: token! });
+      localStorage.setItem("wrankey_parent_token", token!);
+      localStorage.setItem("wrankey_parent_user", JSON.stringify(org));
+      localStorage.setItem("wrankey_parent_org", JSON.stringify(org));
+      localStorage.setItem("wrankey_parent_org_name", org?.name || "");
+      login(res.sessionToken, { id: res.user.id, email: res.user.email, role: res.user.role }, { id: res.org.id, name: res.org.name });
+      addToast(`Switched to "${subOrg.name}"`, "success");
+      router.push("/");
+    } catch (err: any) { addToast(err.message || "Failed to switch", "error"); }
+    finally { setImpersonateId(null); }
+  };
+
   if (!isAuthenticated) return null;
 
   return (
@@ -84,16 +104,11 @@ export default function SubOrgsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Sub-Orgs</h1>
-          <p className="text-sm text-slate-500">Manage sub-organizations under your account</p>
+          <p className="text-sm text-slate-500 mt-0.5">Manage sub-organizations — each with isolated wallets, users, and policies under your parent organization.</p>
         </div>
         <Button onClick={() => { setShowCreate(true); setNewName(""); setNewEmail(""); }}>
           <Plus className="w-4 h-4 mr-1.5" /> New Sub-Org
         </Button>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <div className="flex-1 max-w-sm"><label className="text-xs font-medium text-slate-500 mb-1 block">Sub-org ID</label><Input value={subOrgId} onChange={e => setSubOrgId(e.target.value)} placeholder="Enter sub-org ID..." className="font-mono text-xs" /></div>
-        <Button className="mt-5" size="sm" onClick={() => { if (subOrgId.trim()) router.push(`/settings`); else addToast("Enter a sub-org ID", "info"); }}><ExternalLink className="w-3.5 h-3.5 mr-1" /> Go to sub-org</Button>
       </div>
 
       <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
@@ -101,31 +116,44 @@ export default function SubOrgsPage() {
           {loading ? (
             <div className="p-6 space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div>
           ) : (
-            <Table
-              columns={[
-                { key: "name", header: "Name", render: (s: SubOrg) => <span className="font-medium text-sm">{s.name}</span> },
-                { key: "id", header: "ID", render: (s: SubOrg) => <div className="flex items-center gap-1"><span className="font-mono text-[11px]">{s.id.slice(0, 8)}...</span><button onClick={() => { navigator.clipboard.writeText(s.id); addToast("Copied", "success"); }} className="text-slate-400 hover:text-slate-600"><Copy className="w-3 h-3" /></button></div> },
-                { key: "rootUser", header: "Root User", render: (s: SubOrg) => <span className="text-xs">{s.rootUserEmail || "—"}</span> },
-                { key: "users", header: "Users", render: (s: SubOrg) => <span className="text-sm font-medium">{s.userCount}</span> },
-                { key: "wallets", header: "Wallets", render: (s: SubOrg) => <span className="text-sm font-medium">{s.walletCount}</span> },
-                { key: "createdAt", header: "Created", render: (s: SubOrg) => <span className="text-xs text-slate-500">{new Date(s.createdAt).toLocaleDateString()}</span> },
-                { key: "actions", header: "", render: (s: SubOrg) => (
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="ghost" className="h-7" onClick={() => { setEditSubOrg(s); setNewName(s.name); setShowEdit(true); }}><Pencil className="w-3 h-3" /></Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-red-500" onClick={() => deleteSubOrg(s.id)}><Trash2 className="w-3 h-3" /></Button>
-                  </div>
-                )},
-              ]}
-              data={subOrgs} loading={false} emptyMessage="No sub-orgs found."
-            />
+            <>
+              <Table
+                columns={[
+                  { key: "name", header: "Name", render: (s: SubOrg) => (
+                    <button onClick={() => router.push(`/sub-orgs/${s.id}`)} className="font-medium text-sm text-brand-600 hover:text-brand-700 text-left">
+                      {s.name} <ChevronRight className="w-3 h-3 inline" />
+                    </button>
+                  )},
+                  { key: "id", header: "Sub-Org ID", render: (s: SubOrg) => (
+                    <div className="flex items-center gap-1"><span className="font-mono text-[11px]">{s.id.slice(0, 8)}...</span><button onClick={() => { navigator.clipboard.writeText(s.id); addToast("Copied", "success"); }} className="text-slate-400 hover:text-slate-600"><Copy className="w-3 h-3" /></button></div>
+                  )},
+                  { key: "rootUser", header: "Root User", render: (s: SubOrg) => <span className="text-xs">{s.rootUserEmail || "—"}</span> },
+                  { key: "users", header: "Users", render: (s: SubOrg) => <span className="text-sm font-medium">{s.userCount}</span> },
+                  { key: "wallets", header: "Wallets", render: (s: SubOrg) => <span className="text-sm font-medium">{s.walletCount}</span> },
+                  { key: "createdAt", header: "Created", render: (s: SubOrg) => <span className="text-xs text-slate-500">{new Date(s.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span> },
+                  { key: "actions", header: "", render: (s: SubOrg) => (
+                    <div className="flex items-center gap-1">
+                      <Button size="sm" variant="secondary" className="h-7 text-[11px] px-2" onClick={() => impressSubOrg(s)} disabled={impersonateId === s.id}>
+                        <ExternalLink className="w-3 h-3 mr-1" /> {impersonateId === s.id ? "..." : "Go to Sub-Org"}
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditSubOrg(s); setNewName(s.name); setShowEdit(true); }}><Pencil className="w-3 h-3" /></Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => deleteSubOrg(s.id)}><Trash2 className="w-3 h-3 text-red-400" /></Button>
+                    </div>
+                  )},
+                ]}
+                data={subOrgs} loading={false} emptyMessage="No sub-organizations found. Create your first one to isolate customer data."
+              />
+              <Pagination limit={limit} offset={offset} total={total} onPageChange={(l, o) => { setLimit(l); setOffset(o); }} />
+            </>
           )}
         </CardContent>
       </Card>
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create Sub-Organization">
         <div className="space-y-4">
-          <div className="space-y-1"><label className="text-sm font-medium">Name</label><Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Sub-org name" /></div>
-          <div className="space-y-1"><label className="text-sm font-medium">Root User Email (optional)</label><Input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="admin@suborg.com" /></div>
+          <p className="text-sm text-slate-500">Create an isolated workspace for a customer or team. Each sub-org has its own wallets, users, and policies.</p>
+          <div className="space-y-1"><label className="text-sm font-medium">Name</label><Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Alice's Company" /></div>
+          <div className="space-y-1"><label className="text-sm font-medium">Root User Email (optional)</label><Input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="admin@company.com" /></div>
           <div className="flex gap-2"><Button variant="secondary" onClick={() => setShowCreate(false)} className="flex-1">Cancel</Button><Button onClick={createSubOrg} disabled={saveLoading} className="flex-1">{saveLoading ? "Creating..." : "Create"}</Button></div>
         </div>
       </Modal>

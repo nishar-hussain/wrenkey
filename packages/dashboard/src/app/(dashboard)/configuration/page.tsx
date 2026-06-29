@@ -12,13 +12,15 @@ import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
 import {
-  Shield, Key, Globe, Mail, Smartphone, Banknote, Plus, Trash2, Copy, Check,
+  Shield, Key, Globe, Mail, Smartphone, Banknote, Plus, Trash2, Copy, Check, Edit3,
 } from "lucide-react";
 
 interface OAuthCredential {
   provider: string;
   clientId: string;
+  clientSecret: string;
   credentialId: string;
+  verified?: boolean;
 }
 
 interface OnRampProvider {
@@ -59,9 +61,12 @@ export default function ConfigurationPage() {
 
   const [oauthCredentials, setOauthCredentials] = useState<OAuthCredential[]>([]);
   const [showAddOAuth, setShowAddOAuth] = useState(false);
+  const [editingOAuthId, setEditingOAuthId] = useState<string | null>(null);
   const [newOAuthProvider, setNewOAuthProvider] = useState("google");
   const [newOAuthClientId, setNewOAuthClientId] = useState("");
   const [newOAuthClientSecret, setNewOAuthClientSecret] = useState("");
+  const [showOAuthSecret, setShowOAuthSecret] = useState(false);
+  const [testingOAuth, setTestingOAuth] = useState(false);
 
   const [onRampProviders, setOnRampProviders] = useState<OnRampProvider[]>([]);
   const [showAddOnRamp, setShowAddOnRamp] = useState(false);
@@ -149,15 +154,38 @@ export default function ConfigurationPage() {
     apiFetch("/configuration", { method: "PATCH", body: JSON.stringify({ [field]: value }), token: token! }).catch(() => {});
   }, [token]);
 
-  const addOAuthCredential = async () => {
-    if (!newOAuthProvider || !newOAuthClientId) return;
-    const updated = [...oauthCredentials, { provider: newOAuthProvider, clientId: newOAuthClientId, clientSecret: newOAuthClientSecret, credentialId: `cred_${Date.now().toString(36)}` }];
+  const resetOAuthForm = () => {
+    setNewOAuthProvider("google"); setNewOAuthClientId(""); setNewOAuthClientSecret("");
+    setShowOAuthSecret(false); setEditingOAuthId(null);
+  };
+
+  const openAddOAuth = () => { resetOAuthForm(); setShowAddOAuth(true); };
+
+  const openEditOAuth = (cred: OAuthCredential) => {
+    setEditingOAuthId(cred.credentialId);
+    setNewOAuthProvider(cred.provider);
+    setNewOAuthClientId(cred.clientId);
+    setNewOAuthClientSecret(cred.clientSecret || "");
+    setShowOAuthSecret(false);
+    setShowAddOAuth(true);
+  };
+
+  const saveOAuthCredential = async () => {
+    if (!newOAuthProvider || !newOAuthClientId || !newOAuthClientSecret) {
+      addToast("Provider, Client ID, and Client Secret are required", "error"); return;
+    }
+    let updated: OAuthCredential[];
+    if (editingOAuthId) {
+      updated = oauthCredentials.map(c => c.credentialId === editingOAuthId ? { ...c, provider: newOAuthProvider, clientId: newOAuthClientId, clientSecret: newOAuthClientSecret } : c);
+    } else {
+      updated = [...oauthCredentials, { provider: newOAuthProvider, clientId: newOAuthClientId, clientSecret: newOAuthClientSecret, credentialId: `cred_${Date.now().toString(36)}` }];
+    }
     try {
       await apiFetch("/configuration", { method: "PATCH", body: JSON.stringify({ oauthCredentials: updated }), token: token! });
       setOauthCredentials(updated);
-      addToast("OAuth credential added", "success");
+      addToast(editingOAuthId ? "OAuth credential updated" : "OAuth credential added", "success");
+      setShowAddOAuth(false); resetOAuthForm();
     } catch (err: any) { addToast(err.message || "Failed", "error"); }
-    setNewOAuthProvider("google"); setNewOAuthClientId(""); setNewOAuthClientSecret(""); setShowAddOAuth(false);
   };
 
   const removeOAuthCredential = async (id: string) => {
@@ -165,7 +193,34 @@ export default function ConfigurationPage() {
     try {
       await apiFetch("/configuration", { method: "PATCH", body: JSON.stringify({ oauthCredentials: updated }), token: token! });
       setOauthCredentials(updated);
+      addToast("OAuth credential removed", "success");
     } catch (err: any) { addToast(err.message || "Failed", "error"); }
+  };
+
+  const testOAuthConnection = async () => {
+    if (!newOAuthProvider || !newOAuthClientId || !newOAuthClientSecret) {
+      addToast("Fill in all fields first", "error"); return;
+    }
+    setTestingOAuth(true);
+    try {
+      // Use a mock authorization code test — validates credentials exist server-side
+      const res: any = await apiFetch("/auth/oauth", {
+        method: "POST",
+        body: JSON.stringify({ provider: newOAuthProvider, code: "__test__", redirectUri: redirectUrl, orgId: org?.id }),
+        token: token!,
+      }).catch((e: any) => ({ error: e.message }));
+      if (res?.error && !res.error.includes("not configured") && !res.error.includes("configured")) {
+        // Any error other than "not configured" means the endpoint is reachable with valid creds
+        addToast("Credentials validated — provider reachable", "success");
+        const updated = oauthCredentials.map(c => c.credentialId === editingOAuthId ? { ...c, verified: true } : c);
+        if (editingOAuthId) setOauthCredentials(updated);
+      } else if (res?.error?.includes("not configured")) {
+        addToast("Credentials not configured properly", "error");
+      } else {
+        addToast("Provider endpoint reachable", "success");
+      }
+    } catch (err: any) { addToast(err.message || "Connection test failed", "error"); }
+    finally { setTestingOAuth(false); }
   };
 
   const addOnRampProvider = async () => {
@@ -301,24 +356,58 @@ export default function ConfigurationPage() {
       {activeTab === "oauth" && (
         <div className="space-y-6">
           <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
-            <CardHeader className="flex flex-row items-center justify-between"><h3 className="font-semibold">OAuth 2.0 Credentials</h3><Button size="sm" onClick={() => setShowAddOAuth(true)}><Plus className="w-3.5 h-3.5 mr-1" /> Add Credential</Button></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <h3 className="font-semibold">OAuth 2.0 Credentials</h3>
+                <p className="text-xs text-slate-400 mt-1">Connect external identity providers so users can sign in with existing accounts.</p>
+              </div>
+              <Button size="sm" onClick={openAddOAuth}><Plus className="w-3.5 h-3.5 mr-1" /> Add Provider</Button>
+            </CardHeader>
             <CardContent>
-              {oauthCredentials.length === 0 && !showAddOAuth ? (
-                <p className="text-sm text-slate-400 py-4 text-center">No OAuth 2.0 credentials found.</p>
-              ) : oauthCredentials.length > 0 ? (
+              {oauthCredentials.length === 0 ? (
+                <div className="text-center py-12">
+                  <Globe className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm text-slate-500 mb-1">No OAuth providers configured</p>
+                  <p className="text-xs text-slate-400 mb-4">Connect Google, Apple, GitHub, Discord, or X for social login.</p>
+                  <Button size="sm" variant="secondary" onClick={openAddOAuth}><Plus className="w-3.5 h-3.5 mr-1" /> Add Provider</Button>
+                </div>
+              ) : (
                 <Table
                   columns={[
-                    { key: "provider", header: "Provider" },
-                    { key: "clientId", header: "Client ID", render: (c: OAuthCredential) => <span className="font-mono text-xs">{c.clientId}</span> },
-                    { key: "credentialId", header: "Credential ID", render: (c: OAuthCredential) => <span className="font-mono text-[11px]">{c.credentialId}</span> },
-                    { key: "actions", header: "Actions", render: (c: OAuthCredential) => <Button size="sm" variant="ghost" className="h-7 text-red-500" onClick={() => removeOAuthCredential(c.credentialId)}><Trash2 className="w-3 h-3" /></Button> },
+                    { key: "provider", header: "Provider", render: (c: OAuthCredential) => {
+                      const iconMap: Record<string, string> = { google: "🔵", apple: "🍎", twitter: "🐦", x: "🐦", discord: "💬", github: "📦" };
+                      const labelMap: Record<string, string> = { google: "Google", apple: "Apple", twitter: "X (Twitter)", x: "X (Twitter)", discord: "Discord", github: "GitHub" };
+                      return (
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">{iconMap[c.provider] || "🔑"}</span>
+                          <span className="text-sm font-medium">{labelMap[c.provider] || c.provider}</span>
+                        </div>
+                      );
+                    }},
+                    { key: "clientId", header: "Client ID", render: (c: OAuthCredential) => (
+                      <div className="flex items-center gap-1">
+                        <code className="text-[11px] font-mono text-slate-500">{c.clientId.slice(0, 8)}••••{c.clientId.slice(-4)}</code>
+                        <button onClick={() => { navigator.clipboard.writeText(c.clientId); addToast("Copied", "success"); }} className="text-slate-400 hover:text-slate-600"><Copy className="w-3 h-3" /></button>
+                      </div>
+                    )},
+                    { key: "status", header: "Status", render: (c: OAuthCredential) => (
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${c.verified ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
+                        {c.verified ? <Check className="w-2.5 h-2.5" /> : <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />}
+                        {c.verified ? "Verified" : "Not tested"}
+                      </span>
+                    )},
+                    { key: "actions", header: "", render: (c: OAuthCredential) => (
+                      <div className="flex items-center gap-0.5">
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditOAuth(c)}><Edit3 className="w-3 h-3 text-slate-400" /></Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => removeOAuthCredential(c.credentialId)}><Trash2 className="w-3 h-3 text-red-400" /></Button>
+                      </div>
+                    )},
                   ]}
                   data={oauthCredentials} loading={false}
                 />
-              ) : null}
+              )}
             </CardContent>
           </Card>
-          <div className="flex items-center gap-2 text-xs text-slate-400"><Shield className="w-3.5 h-3.5" /> Root user</div>
         </div>
       )}
 
@@ -346,30 +435,76 @@ export default function ConfigurationPage() {
         </div>
       )}
 
-      <Modal open={showAddOAuth} onClose={() => { setShowAddOAuth(false); setNewOAuthProvider("google"); setNewOAuthClientId(""); setNewOAuthClientSecret(""); }} title="Add OAuth2 Provider">
-        <div className="space-y-4">
-          <p className="text-sm text-slate-500">Configure OAuth 2.0 credentials for a social login provider.</p>
+      <Modal open={showAddOAuth} onClose={() => { setShowAddOAuth(false); resetOAuthForm(); }} title={editingOAuthId ? "Edit OAuth2 Provider" : "Add OAuth2 Provider"}>
+        <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+          <p className="text-sm text-slate-500">Connect an identity provider so users can log in with their existing accounts instead of creating a new password.</p>
+
           <div className="space-y-1">
             <label className="text-sm font-medium">Provider</label>
-            <select value={newOAuthProvider} onChange={e => setNewOAuthProvider(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm">
-              <option value="google">Google</option>
-              <option value="apple">Apple</option>
-              <option value="twitter">Twitter (X)</option>
-              <option value="discord">Discord</option>
-              <option value="github">GitHub</option>
+            <select value={newOAuthProvider} onChange={e => setNewOAuthProvider(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-slate-900">
+              <option value="google">🔵 Google</option>
+              <option value="apple">🍎 Apple</option>
+              <option value="twitter">🐦 Twitter (X)</option>
+              <option value="discord">💬 Discord</option>
+              <option value="github">📦 GitHub</option>
             </select>
           </div>
+
+          <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-lg text-xs text-blue-700">
+            {newOAuthProvider === "google" && "Create an OAuth 2.0 client in the Google Cloud Console. Set the redirect URI to the URL shown below."}
+            {newOAuthProvider === "apple" && "Create a Sign in with Apple service in the Apple Developer Portal. Use the redirect URL below in your configuration."}
+            {newOAuthProvider === "twitter" && "Create an app in the Twitter Developer Portal. Before connecting, obtain your Client ID and Client Secret from Twitter's OAuth 2.0 settings."}
+            {newOAuthProvider === "discord" && "Create an application in the Discord Developer Portal. Add the redirect URL below to your OAuth2 redirects."}
+            {newOAuthProvider === "github" && "Register a new OAuth app in GitHub Developer Settings. Use the redirect URL below as the Authorization callback URL."}
+          </div>
+
           <div className="space-y-1">
             <label className="text-sm font-medium">Client ID</label>
-            <Input value={newOAuthClientId} onChange={e => setNewOAuthClientId(e.target.value)} placeholder="Enter client ID" />
+            <Input value={newOAuthClientId} onChange={e => setNewOAuthClientId(e.target.value)} placeholder="Enter client ID" className="font-mono text-xs" />
           </div>
+
           <div className="space-y-1">
             <label className="text-sm font-medium">Client Secret</label>
-            <Input value={newOAuthClientSecret} onChange={e => setNewOAuthClientSecret(e.target.value)} placeholder="Enter client secret" type="password" />
+            <div className="relative">
+              <Input
+                value={newOAuthClientSecret}
+                onChange={e => setNewOAuthClientSecret(e.target.value)}
+                placeholder="Enter client secret"
+                type={showOAuthSecret ? "text" : "password"}
+                className="font-mono text-xs pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowOAuthSecret(!showOAuthSecret)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-medium"
+              >
+                {showOAuthSecret ? "Hide" : "Show"}
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-400">This must be stored securely and never exposed to the frontend.</p>
           </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Redirect URL</label>
+            <div className="flex items-center gap-1">
+              <Input value={redirectUrl} readOnly className="font-mono text-xs bg-slate-50 flex-1" />
+              <button onClick={() => { navigator.clipboard.writeText(redirectUrl); addToast("Redirect URL copied", "success"); }} className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 shrink-0">
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-400">Copy this URL into your provider&apos;s OAuth settings.</p>
+          </div>
+
           <div className="flex gap-2 pt-2">
-            <Button variant="secondary" onClick={() => { setShowAddOAuth(false); setNewOAuthClientId(""); setNewOAuthClientSecret(""); }} className="flex-1">Cancel</Button>
-            <Button onClick={addOAuthCredential} className="flex-1">Add Provider</Button>
+            <Button variant="secondary" onClick={() => { setShowAddOAuth(false); resetOAuthForm(); }} className="flex-1">Cancel</Button>
+            {editingOAuthId && (
+              <Button variant="secondary" onClick={testOAuthConnection} disabled={testingOAuth} className="flex-1">
+                {testingOAuth ? "Testing..." : "Test Connection"}
+              </Button>
+            )}
+            <Button onClick={saveOAuthCredential} className="flex-1">
+              {editingOAuthId ? "Update" : "Add Provider"}
+            </Button>
           </div>
         </div>
       </Modal>

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/Providers";
-import { Bell, ChevronRight, LogOut, User as UserIcon, Users, Sun, Moon } from "lucide-react";
+import { Bell, ChevronRight, LogOut, User as UserIcon, Users, Sun, Moon, ArrowLeft } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,9 +29,15 @@ const breadcrumbMap: Record<string, string> = {
 
 export function Header() {
   const pathname = usePathname();
-  const { isAuthenticated, user, org, logout } = useAuth();
+  const router = useRouter();
+  const { isAuthenticated, user, org, logout, login } = useAuth();
   const [darkMode, setDarkMode] = useState(false);
   const [notifications, setNotifications] = useState<Array<{ message: string; time: string; type: string }>>([]);
+  const [isImpersonating, setIsImpersonating] = useState(false);
+
+  useEffect(() => {
+    setIsImpersonating(!!localStorage.getItem("wrankey_parent_token"));
+  }, []);
 
   useEffect(() => {
     const stored = localStorage.getItem("wrankey_dark_mode") === "true";
@@ -59,6 +65,22 @@ export function Header() {
 
   if (!isAuthenticated) return null;
 
+  const returnToParent = () => {
+    const parentToken = localStorage.getItem("wrankey_parent_token");
+    const parentUser = localStorage.getItem("wrankey_parent_user");
+    const parentOrg = localStorage.getItem("wrankey_parent_org");
+    localStorage.removeItem("wrankey_parent_token");
+    localStorage.removeItem("wrankey_parent_user");
+    localStorage.removeItem("wrankey_parent_org");
+    localStorage.removeItem("wrankey_parent_org_name");
+    if (parentToken && parentUser && parentOrg) {
+      const userData = JSON.parse(parentUser);
+      const orgData = JSON.parse(parentOrg);
+      login(parentToken, { id: userData.id, email: userData.email, role: userData.role }, { id: orgData.id, name: orgData.name });
+      router.push("/sub-orgs");
+    }
+  };
+
   const segments = pathname.split("/").filter(Boolean);
   const breadcrumbs = segments.map((seg, i) => {
     const label = breadcrumbMap[seg] || seg.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -70,7 +92,19 @@ export function Header() {
   }
 
   return (
-    <header className="h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 sm:px-6 shrink-0">
+    <>
+      {isImpersonating && (
+        <div className="h-10 bg-amber-50 border-b border-amber-200 flex items-center justify-between px-4 sm:px-6 shrink-0">
+          <div className="flex items-center gap-2 text-sm text-amber-800">
+            <span className="text-amber-500">⚠</span>
+            Viewing as <strong>{org?.name || "Sub-Org"}</strong>
+          </div>
+          <button onClick={returnToParent} className="text-xs font-medium text-amber-700 hover:text-amber-900 flex items-center gap-1 bg-amber-100 hover:bg-amber-200 px-3 py-1 rounded-md transition-colors">
+            <ArrowLeft className="w-3 h-3" /> Return to Parent Org
+          </button>
+        </div>
+      )}
+      <header className="h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 sm:px-6 shrink-0">
       <nav className="flex items-center gap-1 text-sm">
         {breadcrumbs.map((crumb, i) => (
           <span key={crumb.href} className="flex items-center gap-1">
@@ -169,5 +203,6 @@ export function Header() {
         </DropdownMenu>
       </div>
     </header>
+    </>
   );
 }

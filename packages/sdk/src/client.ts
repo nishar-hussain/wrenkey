@@ -91,8 +91,8 @@ export class WranKeyClient {
     return res;
   }
 
-  async oauthLogin(provider: string, code: string, redirectUri: string): Promise<AuthResponse> {
-    const res = await this.request<AuthResponse>("POST", "/auth/oauth", { provider, code, redirectUri });
+  async oauthLogin(provider: string, code: string, redirectUri: string, orgId?: string): Promise<AuthResponse> {
+    const res = await this.request<AuthResponse>("POST", "/auth/oauth", { provider, code, redirectUri, orgId });
     this.sessionToken = res.sessionToken;
     return res;
   }
