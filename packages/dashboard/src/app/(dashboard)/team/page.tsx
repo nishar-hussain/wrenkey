@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,7 +13,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Users, Shield, Bot, Plus, Copy, Search, ChevronDown, User, Settings } from "lucide-react";
+import { Users, Shield, Bot, Plus, Copy, Search, ChevronDown, User, Settings, AlertTriangle } from "lucide-react";
 
 interface TeamMember {
   id: string;
@@ -116,9 +117,9 @@ export default function TeamPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "Users", value: stats.users, icon: Users, color: "blue" },
-          { label: "Root Users", value: stats.rootUsers, icon: Shield, color: "violet" },
+          { label: "Root Users", value: stats.rootUsers, icon: Shield, color: "violet", footer: <Link href="/team/root-quorum" className="text-[10px] text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1 mt-1"><AlertTriangle className="w-3 h-3" /> Security Liability</Link> },
           { label: "Service Users", value: stats.serviceUsers, icon: Bot, color: "amber" },
-          { label: "Approval Threshold", value: "1/1", icon: Settings, color: "slate", suffix: <Button variant="ghost" size="sm" className="h-6 text-xs hover:text-brand-600">Edit</Button> },
+          { label: "Approval Threshold", value: "1/1", icon: Settings, color: "slate", suffix: <Button variant="ghost" size="sm" className="h-6 text-xs hover:text-brand-600">Edit</Button>, footer: <Link href="/team/root-quorum" className="text-[10px] text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1 mt-1"><AlertTriangle className="w-3 h-3" /> Security Liability</Link> },
         ].map(s => {
           const Icon = s.icon;
           const colors: Record<string, string> = {
@@ -136,15 +137,11 @@ export default function TeamPage() {
                 </div>
                 <p className="text-xl font-bold text-slate-900 dark:text-white">{s.value}</p>
                 <p className="text-xs text-slate-500">{s.label}</p>
+                {s.footer}
               </CardContent>
             </Card>
           );
         })}
-      </div>
-
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-slate-500">Organization ID</span>
-        <span className="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded select-all">{org?.id?.slice(0, 4)}····{org?.id?.slice(-4)}</span>
       </div>
 
       <div className="flex items-center gap-3">
