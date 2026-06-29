@@ -10,99 +10,127 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Shield, Search, ChevronLeft, AlertTriangle } from "lucide-react";
+import { Shield, Search, ChevronLeft, AlertTriangle, CheckCircle, Info } from "lucide-react";
 
 interface QuorumMember {
   id: string;
   name?: string;
   email?: string;
   role: string;
+  tags: string[];
   isRoot: boolean;
   isService: boolean;
-  tags: string[];
+  isQuorumMember: boolean;
+}
+
+interface QuorumHealth {
+  status: string;
+  label: string;
+  message: string;
+  severity: string;
+}
+
+interface QuorumData {
+  members: QuorumMember[];
+  threshold: number;
+  memberIds: string[];
+  health: QuorumHealth;
 }
 
 export default function RootQuorumPage() {
   const router = useRouter();
   const { isAuthenticated, token, org, user } = useAuth();
   const { addToast } = useToast();
-  const [members, setMembers] = useState<QuorumMember[]>([]);
+  const [quorumData, setQuorumData] = useState<QuorumData | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [threshold, setThreshold] = useState(1);
   const [saving, setSaving] = useState(false);
 
-  const fetchMembers = useCallback(async () => {
+  const fetchQuorum = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: "100" });
-      if (search) params.set("search", search);
-      const res: any = await apiFetch(`/users?${params}`, { token });
-      const data = res.data || [];
-
-      const agentsRes: any = await apiFetch("/agents?limit=100", { token }).catch(() => ({ data: [] }));
-      const agentUserIds = new Set((agentsRes.data || []).map((a: any) => a.userId));
-
-      const mapped: QuorumMember[] = data.map((m: any) => ({
-        id: m.id,
-        name: m.name,
-        email: m.email,
-        role: m.role,
-        isRoot: m.role === "ORG_ADMIN",
-        isService: agentUserIds.has(m.id),
-        tags: m.tags || [],
-      }));
-
-      setMembers(mapped);
-
-      // Pre-select root users as quorum members
-      const rootIds = new Set(mapped.filter((m) => m.isRoot).map((m) => m.id));
-      setSelectedIds(rootIds);
+      const res: any = await apiFetch("/quorum", { token });
+      const data: QuorumData = res.data;
+      setQuorumData(data);
+      setSelectedIds(new Set(data.memberIds));
+      setThreshold(data.threshold);
     } catch {
-      addToast("Failed to load members", "error");
+      addToast("Failed to load quorum configuration", "error");
     } finally {
       setLoading(false);
     }
-  }, [token, search]);
+  }, [token]);
 
   useEffect(() => {
     if (!isAuthenticated) {
       router.push("/login");
       return;
     }
-    fetchMembers();
-  }, [isAuthenticated, fetchMembers, router]);
+    fetchQuorum();
+  }, [isAuthenticated, fetchQuorum, router]);
 
   const toggleMember = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   };
 
-  const quorumCount = selectedIds.size;
-  const threshold = quorumCount > 0 ? Math.ceil(quorumCount / 2) : 1;
-
   const saveQuorum = async () => {
     setSaving(true);
     try {
-      await apiFetch("/org/config", {
-        method: "POST",
-        body: JSON.stringify({ rootQuorumIds: Array.from(selectedIds), approvalThreshold: threshold }),
+      const res: any = await apiFetch("/quorum", {
+        method: "PUT",
+        body: JSON.stringify({ memberIds: Array.from(selectedIds), threshold }),
         token: token!,
       });
+      setQuorumData((prev) => prev ? { ...prev, ...res.data, memberIds: res.data.memberIds, health: res.data.health } : prev);
       addToast("Root quorum updated", "success");
-    } catch {
-      addToast("Failed to save quorum configuration", "error");
+    } catch (err: any) {
+      addToast(err?.message || "Failed to save quorum configuration", "error");
     } finally {
       setSaving(false);
     }
   };
 
   if (!isAuthenticated) return null;
+
+  const filteredMembers = quorumData?.members.filter((m) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      m.email?.toLowerCase().includes(q) ||
+      m.name?.toLowerCase().includes(q) ||
+      m.role?.toLowerCase().includes(q)
+    );
+  }) || [];
+
+  const health = quorumData?.health;
+  const severityIcon =
+    health?.severity === "critical" || health?.severity === "warning"
+      ? AlertTriangle
+      : health?.severity === "success"
+        ? CheckCircle
+        : Info;
+
+  const severityColors: Record<string, { bg: string; border: string; text: string; icon: string }> = {
+    critical: { bg: "bg-red-50 dark:bg-red-950/20", border: "border-red-200", text: "text-red-800 dark:text-red-200", icon: "text-red-600" },
+    warning: { bg: "bg-amber-50 dark:bg-amber-950/20", border: "border-amber-200", text: "text-amber-800 dark:text-amber-200", icon: "text-amber-600" },
+    info: { bg: "bg-blue-50 dark:bg-blue-950/20", border: "border-blue-200", text: "text-blue-800 dark:text-blue-200", icon: "text-blue-600" },
+    success: { bg: "bg-emerald-50 dark:bg-emerald-950/20", border: "border-emerald-200", text: "text-emerald-800 dark:text-emerald-200", icon: "text-emerald-600" },
+  };
+
+  const sc = severityColors[health?.severity || "warning"] || severityColors.warning;
+  const SeverityIcon = severityIcon;
+  const quorumCount = selectedIds.size;
 
   return (
     <div className="space-y-6">
@@ -139,7 +167,7 @@ export default function RootQuorumPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {members.map((m) => {
+          {filteredMembers.map((m) => {
             const eligible = m.isRoot && !m.isService;
             return (
               <Card
@@ -201,26 +229,51 @@ export default function RootQuorumPage() {
 
       <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
         <CardContent className="p-4">
-          <p className="text-xs text-slate-500 mb-1">Approval Threshold</p>
-          <p className="text-xl font-bold text-slate-900 dark:text-white">1/1</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-slate-500 mb-1">Approval Threshold</p>
+              <p className="text-xl font-bold text-slate-900 dark:text-white">{threshold}/{quorumCount}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                disabled={threshold <= 1}
+                onClick={() => setThreshold((t) => Math.max(1, t - 1))}
+              >
+                −
+              </Button>
+              <span className="text-sm font-medium w-4 text-center">{threshold}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                disabled={threshold >= quorumCount}
+                onClick={() => setThreshold((t) => Math.min(quorumCount, t + 1))}
+              >
+                +
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      <Card className="border border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+      <Card className={`border ${sc.border} ${sc.bg}`}>
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <SeverityIcon className={`w-5 h-5 ${sc.icon} shrink-0 mt-0.5`} />
             <div>
-              <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">Quorum health</p>
-              <p className="text-sm font-medium text-amber-700 dark:text-amber-300 mt-0.5">
-                Single point of failure
+              <p className={`text-sm font-semibold ${sc.text}`}>Quorum health</p>
+              <p className={`text-sm font-medium mt-0.5 ${sc.text}`}>
+                {health?.label || "Single point of failure"}
               </p>
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                One compromised key gives full root access. Add root users to enable a quorum. Recommended minimum setup: 2/3.
+              <p className={`text-xs mt-1 ${sc.text} opacity-80`}>
+                {health?.message || "One compromised key gives full root access. Add root users to enable a quorum. Recommended minimum setup: 2/3."}
               </p>
               <a
                 href="#"
-                className="inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-800 font-medium mt-2"
+                className={`inline-flex items-center gap-1 text-xs font-medium mt-2 ${sc.text} hover:opacity-80`}
               >
                 Visit documentation to learn more about root quorum configuration
               </a>

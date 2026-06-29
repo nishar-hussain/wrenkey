@@ -25,6 +25,7 @@ import { billingRoutes } from "./modules/billing/routes.js";
 import { subOrgRoutes } from "./modules/sub-org/routes.js";
 import { contractInterfaceRoutes } from "./modules/contract-interface/routes.js";
 import { privateKeyRoutes } from "./modules/private-key/routes.js";
+import { quorumRoutes } from "./modules/quorum/routes.js";
 
 export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
   const app = Fastify({ logger: false, bodyLimit: 1048576 });
@@ -155,6 +156,7 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
     await api.register(subOrgRoutes);
     await api.register(contractInterfaceRoutes);
     await api.register(privateKeyRoutes);
+    await api.register(quorumRoutes);
   }, { prefix: "/api/v1" });
 
   return app;

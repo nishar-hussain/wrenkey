@@ -27,6 +27,8 @@ const DEFAULT_CONFIG = {
   walletAuth: true,
   oauthCredentials: [] as Array<{ provider: string; clientId: string; clientSecret: string; credentialId: string }>,
   onRampProviders: [] as Array<{ provider: string; publishableKey: string; secretKey: string; projectId: string; privateKey: string; environment: string; credentialId: string }>,
+  rootQuorumMembers: [] as string[],
+  rootQuorumThreshold: 1,
 };
 
 export async function configRoutes(app: FastifyInstance) {
