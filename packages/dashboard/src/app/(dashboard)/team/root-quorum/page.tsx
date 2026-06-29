@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Shield, Search, ChevronLeft, AlertTriangle, ExternalLink } from "lucide-react";
+import { Shield, Search, ChevronLeft, AlertTriangle } from "lucide-react";
 
 interface QuorumMember {
   id: string;
@@ -85,7 +85,6 @@ export default function RootQuorumPage() {
 
   const quorumCount = selectedIds.size;
   const threshold = quorumCount > 0 ? Math.ceil(quorumCount / 2) : 1;
-  const quorumHealthy = quorumCount >= 2;
 
   const saveQuorum = async () => {
     setSaving(true);
@@ -203,7 +202,7 @@ export default function RootQuorumPage() {
       <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
         <CardContent className="p-4">
           <p className="text-xs text-slate-500 mb-1">Approval Threshold</p>
-          <p className="text-xl font-bold text-slate-900 dark:text-white">{threshold}/{quorumCount}</p>
+          <p className="text-xl font-bold text-slate-900 dark:text-white">1/1</p>
         </CardContent>
       </Card>
 
@@ -214,19 +213,16 @@ export default function RootQuorumPage() {
             <div>
               <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">Quorum health</p>
               <p className="text-sm font-medium text-amber-700 dark:text-amber-300 mt-0.5">
-                {quorumHealthy ? "Quorum configured" : "Single point of failure"}
+                Single point of failure
               </p>
               <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                {quorumHealthy
-                  ? "Your quorum requires multiple approvals for critical operations."
-                  : "One compromised key gives full root access. Add root users to enable a quorum. Recommended minimum setup: 2/3."}
+                One compromised key gives full root access. Add root users to enable a quorum. Recommended minimum setup: 2/3.
               </p>
               <a
                 href="#"
                 className="inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-800 font-medium mt-2"
               >
                 Visit documentation to learn more about root quorum configuration
-                <ExternalLink className="w-3 h-3" />
               </a>
             </div>
           </div>
