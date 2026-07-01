@@ -29,6 +29,29 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/wrankey
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=dev-jwt-secret-change-in-production
+      - ENCRYPTION_KEY=dev-encryption-key-change-in-prod
+      - NODE_ENV=development
+      - CORS_ORIGIN=http://localhost:3000,http://localhost:5173,http://localhost:8080
+      - DEFAULT_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:

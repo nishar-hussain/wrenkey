@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/Providers";
@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { apiFetch } from "@/lib/api";
 
 const breadcrumbMap: Record<string, string> = {
   "": "Dashboard",
@@ -27,17 +28,79 @@ const breadcrumbMap: Record<string, string> = {
   "audit-logs": "Audit Logs",
 };
 
+const actionLabels: Record<string, string> = {
+  WALLET_CREATE: "New wallet created",
+  WALLET_IMPORT: "Wallet imported",
+  WALLET_DELETE: "Wallet deleted",
+  WALLET_EXPORT: "Wallet exported",
+  WALLET_FREEZE: "Wallet frozen",
+  WALLET_UNFREEZE: "Wallet unfrozen",
+  WALLET_ROTATE: "Wallet rotated",
+  TX_SIGN: "Transaction signed",
+  TX_BROADCAST: "Transaction broadcasted",
+  TX_CONFIRMED: "Transaction confirmed",
+  TX_FAILED: "Transaction failed",
+  POLICY_CREATE: "Policy created",
+  POLICY_DELETE: "Policy deleted",
+  POLICY_DENY: "Transaction blocked by policy",
+  AGENT_CREATE: "Agent created",
+  AGENT_DELETE: "Agent revoked",
+  USER_CREATE: "Team member invited",
+  USER_DELETE: "Team member removed",
+  ORG_CREATE: "Organization created",
+  SPENDING_LIMIT_CREATE: "Spending limit set",
+  APPROVAL_REQUEST: "Approval requested",
+  APPROVAL_GRANT: "Approval granted",
+  APPROVAL_REJECT: "Approval rejected",
+  CONFIG_UPDATE: "Configuration updated",
+};
+
+function timeAgo(date: string): string {
+  const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
-  const { isAuthenticated, user, org, logout, login } = useAuth();
+  const { isAuthenticated, user, org, logout, login, token } = useAuth();
   const [darkMode, setDarkMode] = useState(false);
   const [notifications, setNotifications] = useState<Array<{ message: string; time: string; type: string }>>([]);
+  const [notificationCount, setNotificationCount] = useState(0);
   const [isImpersonating, setIsImpersonating] = useState(false);
 
+  const fetchNotifications = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res: any = await apiFetch("/activities?limit=10&offset=0", { token });
+      if (res.data && Array.isArray(res.data)) {
+        const items = res.data.slice(0, 10).map((item: any) => ({
+          message: actionLabels[item.action] || item.type || item.action,
+          time: timeAgo(item.createdAt),
+          type: item.action?.toLowerCase() || "",
+        }));
+        setNotifications(items);
+      }
+      if (typeof res.pendingCount === "number") {
+        setNotificationCount(res.pendingCount);
+      }
+    } catch {
+      // Silently fail — notifications are non-critical
+    }
+  }, [token]);
+
   useEffect(() => {
-    setIsImpersonating(!!localStorage.getItem("wrankey_parent_token"));
-  }, []);
+    if (!isAuthenticated) return;
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, fetchNotifications]);
 
   useEffect(() => {
     const stored = localStorage.getItem("wrankey_dark_mode") === "true";
@@ -53,15 +116,6 @@ export function Header() {
     if (next) document.documentElement.classList.add("dark");
     else document.documentElement.classList.remove("dark");
   };
-
-  // Simulate some notifications
-  useEffect(() => {
-    setNotifications([
-      { message: "Transaction confirmed: #0xabc123...", time: "2m ago", type: "tx" },
-      { message: "New wallet created: Trading Wallet", time: "15m ago", type: "wallet" },
-      { message: "Policy updated: Allow Small Transactions", time: "1h ago", type: "policy" },
-    ]);
-  }, []);
 
   if (!isAuthenticated) return null;
 
@@ -133,8 +187,10 @@ export function Header() {
           <DropdownMenuTrigger asChild>
             <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors relative">
               <Bell className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-              {notifications.length > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full" />
+              {notificationCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-red-500 rounded-full text-[10px] text-white font-medium flex items-center justify-center px-1">
+                  {notificationCount}
+                </span>
               )}
             </button>
           </DropdownMenuTrigger>

@@ -11,6 +11,39 @@ import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { Download } from "lucide-react";
+
+function escapeCsvCell(value: string): string {
+  if (!value) return "";
+  const str = String(value);
+  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function downloadCsv(data: Transaction[]) {
+  const headers = ["Tx Hash", "To", "Value", "Chain", "Status", "Date"];
+  const rows = data.map((tx) => [
+    tx.txHash || "",
+    tx.to,
+    tx.value,
+    tx.chain,
+    tx.status,
+    new Date(tx.createdAt).toISOString(),
+  ].map(escapeCsvCell));
+
+  const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 interface Transaction {
   id: string;
@@ -34,6 +67,31 @@ export default function TransactionsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [chainFilter, setChainFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportCsv = async () => {
+    if (!token) return;
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", "1000");
+      params.set("offset", "0");
+      if (statusFilter) params.set("status", statusFilter);
+      if (searchQuery) params.set("search", searchQuery);
+
+      const res: any = await apiFetch(`/transactions?${params.toString()}`, { token });
+      if (res.data && res.data.length > 0) {
+        downloadCsv(res.data);
+        addToast(`Exported ${res.data.length} transactions`, "success");
+      } else {
+        addToast("No transactions to export", "info");
+      }
+    } catch (err: any) {
+      addToast(err.message || "Export failed", "error");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const fetchData = useCallback(async () => {
     if (!token) return;
@@ -80,7 +138,13 @@ export default function TransactionsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Transactions</h1>
-        <Button onClick={() => router.push("/transactions/send")}>Send Transaction</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExportCsv} disabled={exporting || loading}>
+            <Download className="h-4 w-4 mr-2" />
+            {exporting ? "Exporting..." : "Download CSV"}
+          </Button>
+          <Button onClick={() => router.push("/transactions/send")}>Send Transaction</Button>
+        </div>
       </div>
 
       <div className="flex gap-3 mb-4 flex-wrap">

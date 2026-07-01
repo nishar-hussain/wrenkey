@@ -127,16 +127,10 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
   ];
 
   app.addHook("onRequest", async (request, reply) => {
-    // Skip OPTIONS (CORS preflight) and non-API routes
     if (request.method === "OPTIONS") return;
     if (!request.url.startsWith("/api/v1/") || publicPaths.includes(request.url)) return;
-    // Allow invitation endpoints without auth
     if (request.url.startsWith("/api/v1/auth/invitation/")) return;
-    try {
-      await authMiddleware(request, reply);
-    } catch (err) {
-      reply.send(err);
-    }
+    await authMiddleware(request, reply);
   });
 
   await app.register(async (api) => {

@@ -19,6 +19,7 @@ import { getChainById } from "../../services/chain.js";
 import { acquireNonceLock, releaseNonceLock, getNextNonce } from "../../services/nonce.js";
 import { assessTransactionRisk, validateSpendingLimits } from "../../services/risk.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
+import { notifyLargeTransaction, notifyTransactionFailed, notifyPolicyDenial } from "../../services/notifications.js";
 import { parsePagination } from "../../utils/pagination.js";
 
 function parseTxStatus(txStatus: string): "PENDING" | "SIGNED" | "BROADCAST" | "CONFIRMED" | "FAILED" | "CANCELLED" | "REPLACED" | "RETRY" {
@@ -137,6 +138,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       if (!policyResult.allowed) {
         await createAuditLog(request.orgId, "POLICY_DENY", { walletId, to, value, reason: policyResult.reason }, request.userId, request);
         triggerWebhookEvents(request.orgId, "policy.triggered", { walletId, to, value, allowed: false, reason: policyResult.reason });
+        notifyPolicyDenial(request.orgId, policyResult.reason || "Policy denied", to, value, chainInfo.name).catch(() => {});
         return sendSuccess(reply, { allowed: false, requiresConsensus: policyResult.requiresConsensus, reason: policyResult.reason, riskScore: risk.score, riskFlags: risk.flags }, 200);
       }
 
@@ -223,6 +225,10 @@ export async function transactionRoutes(app: FastifyInstance) {
         await createAuditLog(request.orgId, "TX_BROADCAST", { transactionId: transaction.id, txHash: hash }, request.userId, request);
         triggerWebhookEvents(request.orgId, "transaction.submitted", { transactionId: transaction.id, txHash: hash, walletId, to, value, nonce });
 
+        if (risk.flags.length > 0 || numericValue > parseFloat(config.gasSponsorship.maxSponsorAmount || "1.0")) {
+          notifyLargeTransaction(request.orgId, hash, value, chainInfo.name, to).catch(() => {});
+        }
+
         return sendSuccess(reply, {
           transactionId: transaction.id, txHash: hash, status: "BROADCAST",
           to, value, nonce, chain: chainInfo.name, riskScore: risk.score, riskFlags: risk.flags,
@@ -233,6 +239,7 @@ export async function transactionRoutes(app: FastifyInstance) {
           data: { status: "FAILED", error: broadcastErr.message },
         });
         triggerWebhookEvents(request.orgId, "transaction.failed", { transactionId: transaction.id, error: broadcastErr.message });
+        notifyTransactionFailed(request.orgId, transaction.id, broadcastErr.message, chainInfo.name).catch(() => {});
         throw broadcastErr;
       }
     } catch (err) {

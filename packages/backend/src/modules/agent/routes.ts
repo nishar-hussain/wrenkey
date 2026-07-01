@@ -5,6 +5,7 @@ import { sendSuccess, sendError, ValidationError, NotFoundError } from "../../ut
 import { createAuditLog } from "../../utils/audit.js";
 import { generateRandomToken, hashSha256 } from "../../utils/crypto.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
+import { notifyAgentCreated } from "../../services/notifications.js";
 import { parsePagination } from "../../utils/pagination.js";
 
 export async function agentRoutes(app: FastifyInstance) {
@@ -41,6 +42,7 @@ export async function agentRoutes(app: FastifyInstance) {
 
       await createAuditLog(request.orgId, "AGENT_CREATE", { agentId: agent.id, name, userId: user.id }, request.userId, request);
       triggerWebhookEvents(request.orgId, "agent.created", { agentId: agent.id, name, userId: user.id, permissions: permissions || ["wallet:sign"] });
+      notifyAgentCreated(request.orgId, name, agent.id).catch(() => {});
 
       return sendSuccess(reply, {
         agent: { id: agent.id, name: agent.name, status: agent.status, userId: user.id },

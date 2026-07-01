@@ -16,6 +16,7 @@ import {
 import { getChainByName, getDefaultChain } from "../../services/chain.js";
 import { getTokenBalances } from "../../services/tokens.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
+import { notifyWalletCreated } from "../../services/notifications.js";
 
 export async function walletRoutes(app: FastifyInstance) {
   app.post("/wallets", { preHandler: [authMiddleware] }, async (request, reply) => {
@@ -58,6 +59,7 @@ export async function walletRoutes(app: FastifyInstance) {
 
       await createAuditLog(request.orgId, "WALLET_CREATE", { walletId: wallet.id, name, ...(accountsCreate.length > 0 ? { address: accountsCreate[0].address, chain: chain || "default" } : {}) }, request.userId, request);
       triggerWebhookEvents(request.orgId, "wallet.created", { walletId: wallet.id, name, ownerType: wallet.ownerType, ownerId: wallet.ownerId });
+      notifyWalletCreated(request.orgId, name, wallet.id).catch(() => {});
 
       return sendSuccess(reply, {
         walletId: wallet.id, name: wallet.name, ownerType: wallet.ownerType, ownerId: wallet.ownerId,
@@ -107,6 +109,7 @@ export async function walletRoutes(app: FastifyInstance) {
 
       await createAuditLog(request.orgId, "WALLET_IMPORT", { walletId: wallet.id, name, chain: chainInfo.name }, request.userId, request);
       triggerWebhookEvents(request.orgId, "wallet.imported", { walletId: wallet.id, name, address: hdNode.address, chain: chainInfo.name });
+      notifyWalletCreated(request.orgId, name, wallet.id).catch(() => {});
 
       return sendSuccess(reply, {
         walletId: wallet.id, name: wallet.name,
