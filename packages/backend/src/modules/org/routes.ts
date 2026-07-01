@@ -98,9 +98,11 @@ export async function orgRoutes(app: FastifyInstance) {
       const baseUrl = config.corsOrigin[0] || "http://localhost:5173";
       const inviteLink = `${baseUrl}/accept-invitation?token=${inviteToken}`;
 
+      let emailStatus: "sent" | "skipped" | "failed" = "skipped";
+      let emailError = "";
+
       if (email && config.smtp.host && config.smtp.user && config.smtp.pass) {
         try {
-          // Read org branding config
           let branding = { appName: "WranKey", appLogo: "" };
           try {
             const orgConfigRow = await prisma.orgConfig.findUnique({ where: { orgId: request.orgId } });
@@ -139,15 +141,23 @@ export async function orgRoutes(app: FastifyInstance) {
               <p style="color:#64748b;font-size:14px;">This invitation expires in 7 days.</p>
             </div>`,
           });
+          emailStatus = "sent";
           console.log(`[EMAIL] Sent invitation to ${email}`);
         } catch (err: any) {
-          console.error(`[EMAIL] Failed to send invitation to ${email}:`, err.message);
+          emailStatus = "failed";
+          emailError = err.message || "Unknown SMTP error";
+          console.error(`[EMAIL] Failed to send invitation to ${email}:`, emailError);
         }
-      } else {
+      } else if (email) {
         console.log(`[DEV] Invitation for ${email}: ${inviteLink}`);
       }
 
-      return sendSuccess(reply, { ...user, inviteToken: config.isDev ? inviteToken : undefined }, 201);
+      return sendSuccess(reply, {
+        ...user,
+        inviteLink,
+        emailStatus,
+        emailError: emailError || undefined,
+      }, 201);
     } catch (err) {
       return sendError(reply, err);
     }
@@ -159,7 +169,7 @@ export async function orgRoutes(app: FastifyInstance) {
       const [data, total] = await Promise.all([
         prisma.user.findMany({
           where: { orgId: request.orgId },
-          select: { id: true, name: true, email: true, phone: true, role: true, tags: true, createdAt: true, _count: { select: { sessions: true } } },
+          select: { id: true, name: true, email: true, phone: true, role: true, tags: true, createdAt: true, _count: { select: { sessions: { where: { expiresAt: { gte: new Date() } } } } } },
           orderBy: { createdAt: "desc" }, take: limit, skip: offset,
         }),
         prisma.user.count({ where: { orgId: request.orgId } }),

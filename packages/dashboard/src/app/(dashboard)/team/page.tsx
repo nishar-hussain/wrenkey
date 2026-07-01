@@ -46,6 +46,7 @@ export default function TeamPage() {
   const [agentName, setAgentName] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
   const [credentials, setCredentials] = useState<any>(null);
+  const [inviteResult, setInviteResult] = useState<any>(null);
 
   const [stats, setStats] = useState({ users: 0, rootUsers: 0, serviceUsers: 0 });
 
@@ -89,9 +90,16 @@ export default function TeamPage() {
     if (!newEmail.trim()) { addToast("Email required", "error"); return; }
     setCreateLoading(true);
     try {
-      await apiFetch("/users", { method: "POST", body: JSON.stringify({ email: newEmail, name: newName, role: "DEVELOPER" }), token: token! });
-      setShowTeamMemberModal(false); setNewEmail(""); setNewName("");
-      addToast("Team member added", "success"); fetchMembers();
+      const res: any = await apiFetch("/users", { method: "POST", body: JSON.stringify({ email: newEmail, name: newName, role: "DEVELOPER" }), token: token! });
+      setInviteResult(res);
+      if (res.emailStatus === "sent") {
+        addToast("Invitation email sent", "success");
+      } else if (res.emailStatus === "failed") {
+        addToast(`Email failed: ${res.emailError || "Unknown error"}. Share the link manually.`, "error");
+      } else {
+        addToast("Invite created. No email configured — share the link manually.", "info");
+      }
+      fetchMembers();
     } catch (err: any) { addToast(err.message || "Failed", "error"); } finally { setCreateLoading(false); }
   };
 
@@ -192,10 +200,12 @@ export default function TeamPage() {
                   { key: "apiKeys", header: "API Keys", render: (m: TeamMember) => <span className="text-sm">{m.apiKeyCount || "—"}</span> },
                   { key: "createdAt", header: "Created", render: (m: TeamMember) => <span className="text-xs text-slate-500">{new Date(m.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</span> },
                   { key: "status", header: "Status", render: (m: TeamMember) => {
+                    const isCurrentUser = m.id === user?.id;
                     const hasSession = (m._count?.sessions ?? 0) > 0;
+                    const isActive = isCurrentUser || hasSession;
                     return (
-                      <span className={`inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full border ${hasSession ? "text-emerald-700 bg-emerald-50 border-emerald-100" : "text-amber-700 bg-amber-50 border-amber-100"}`}>
-                        {hasSession ? "Active" : "Invited"}
+                      <span className={`inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full border ${isActive ? "text-emerald-700 bg-emerald-50 border-emerald-100" : "text-amber-700 bg-amber-50 border-amber-100"}`}>
+                        {isCurrentUser ? "Active" : hasSession ? "Active" : "Invited"}
                       </span>
                     );
                   } },
@@ -210,13 +220,35 @@ export default function TeamPage() {
         </CardContent>
       </Card>
 
-      <Modal open={showTeamMemberModal} onClose={() => setShowTeamMemberModal(false)} title="Add Team Member">
-        <div className="space-y-4">
-          <p className="text-sm text-slate-500">Invite a person to join your organization.</p>
-          <div className="space-y-1"><label className="text-sm font-medium">Email</label><Input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="person@example.com" /></div>
-          <div className="space-y-1"><label className="text-sm font-medium">Name (optional)</label><Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name" /></div>
-          <div className="flex gap-2"><Button variant="secondary" onClick={() => setShowTeamMemberModal(false)} className="flex-1">Cancel</Button><Button onClick={createTeamMember} disabled={createLoading} className="flex-1">{createLoading ? "Adding..." : "Add Member"}</Button></div>
-        </div>
+      <Modal open={showTeamMemberModal} onClose={() => { setShowTeamMemberModal(false); setInviteResult(null); }} title={inviteResult ? "Invite Created" : "Add Team Member"}>
+        {!inviteResult ? (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500">Invite a person to join your organization.</p>
+            <div className="space-y-1"><label className="text-sm font-medium">Email</label><Input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="person@example.com" /></div>
+            <div className="space-y-1"><label className="text-sm font-medium">Name (optional)</label><Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name" /></div>
+            <div className="flex gap-2"><Button variant="secondary" onClick={() => setShowTeamMemberModal(false)} className="flex-1">Cancel</Button><Button onClick={createTeamMember} disabled={createLoading} className="flex-1">{createLoading ? "Adding..." : "Add Member"}</Button></div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {inviteResult.emailStatus === "sent" ? (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-md text-sm"><p className="font-medium text-green-700">Invitation sent!</p><p className="text-green-600 mt-1">An email has been sent to {newEmail}.</p></div>
+            ) : inviteResult.emailStatus === "failed" ? (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm"><p className="font-medium text-amber-700">Email delivery failed</p><p className="text-amber-600 mt-1">{inviteResult.emailError || "Unknown error"}. Share the link below with the invited person.</p></div>
+            ) : (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm"><p className="font-medium text-blue-700">No email configured</p><p className="text-blue-600 mt-1">Share the invite link below with the invited person.</p></div>
+            )}
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Invite Link</label>
+              <div className="flex gap-2">
+                <Input value={inviteResult.inviteLink} readOnly className="font-mono text-xs flex-1" />
+                <Button variant="outline" size="sm" onClick={() => { navigator.clipboard.writeText(inviteResult.inviteLink); addToast("Link copied", "success"); }}>
+                  <Copy className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+            <Button onClick={() => { setShowTeamMemberModal(false); setInviteResult(null); setNewEmail(""); setNewName(""); }} variant="secondary" className="w-full">Close</Button>
+          </div>
+        )}
       </Modal>
 
       <Modal open={showServiceModal} onClose={() => { setShowServiceModal(false); setCredentials(null); }} title="Add Service User">
