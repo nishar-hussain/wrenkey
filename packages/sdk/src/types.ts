@@ -220,3 +220,102 @@ export interface AuthResponse {
   org: Organization;
   expiresAt: string;
 }
+
+// ─── WVC (Verifiable Compute) — PRD §8, §9, §19 ───────────────────────────
+
+export interface WvcApp {
+  id: string;
+  orgId: string;
+  name: string;
+  description: string;
+  quorumKeyId?: string | null;
+  liveDeploymentId?: string | null;
+  requiredApprovals: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WvcDeployment {
+  id: string;
+  appId: string;
+  imageUrl: string;
+  executablePath: string;
+  executableArgs: string[];
+  executableDigest: string;
+  expectedPcr0: string;
+  expectedPcr1: string;
+  expectedPcr2: string;
+  ingressPort: number;
+  healthPort: number;
+  cpuCount: number;
+  memoryMib: number;
+  replicaCount: number;
+  status: "pending_manifest" | "approved" | "provisioning" | "inactive" | "live" | "marked_for_deletion" | "deleted";
+  manifestId: string;
+  allowedUpgradeFrom: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WvcManifest {
+  id: string;
+  appId: string;
+  manifestJson: Record<string, unknown>;
+  manifestHash: string;
+  requiredApprovals: number;
+  createdAt: string;
+}
+
+export interface WvcOperator {
+  id: string;
+  orgId: string;
+  appId: string;
+  alias: string;
+  publicKey: string;
+  status: "active" | "revoked";
+  createdAt: string;
+}
+
+export interface WvcAppProof {
+  id: string;
+  deploymentId: string;
+  ephemeralPubkey: string;
+  payloadHash: string;
+  payloadType: "signature" | "parse_summary" | "policy_decision" | "oracle_result";
+  signature: string;
+  attestationDoc: string;
+  proofFormatVersion: string;
+  issuedAt: string;
+}
+
+export interface WvcBootProof {
+  id: string;
+  deploymentId: string;
+  manifestId: string;
+  attestationDoc: string;
+  bootedAt: string;
+}
+
+export interface WvcKeyCeremony {
+  id: string;
+  appId: string;
+  ceremonyType: "bootstrap" | "rotation" | "recovery";
+  initiatedBy?: string | null;
+  participatingOperators: string[];
+  newQuorumKeyId?: string | null;
+  status: "pending" | "completed" | "failed";
+  startedAt: string;
+  completedAt?: string | null;
+}
+
+export interface WvcInvokeResult {
+  result: Record<string, unknown>;
+  appProof: {
+    id: string;
+    ephemeralPubkey: string;
+    payloadHash: string;
+    payloadType: string;
+    signature: string;
+    attestationDoc: string;
+  };
+}

@@ -83,6 +83,26 @@ describe("WranKey SDK", () => {
 
     // Audit logs
     expect(typeof client.listAuditLogs).toBe("function");
+
+    // WVC (Verifiable Compute) methods exist
+    expect(typeof client.createWvcApp).toBe("function");
+    expect(typeof client.listWvcApps).toBe("function");
+    expect(typeof client.getWvcApp).toBe("function");
+    expect(typeof client.addWvcOperator).toBe("function");
+    expect(typeof client.listWvcOperators).toBe("function");
+    expect(typeof client.revokeWvcOperator).toBe("function");
+    expect(typeof client.createWvcDeployment).toBe("function");
+    expect(typeof client.getWvcManifest).toBe("function");
+    expect(typeof client.approveWvcManifest).toBe("function");
+    expect(typeof client.provisionWvcDeployment).toBe("function");
+    expect(typeof client.getWvcDeployment).toBe("function");
+    expect(typeof client.setWvcDeploymentLive).toBe("function");
+    expect(typeof client.deleteWvcDeployment).toBe("function");
+    expect(typeof client.restoreWvcDeployment).toBe("function");
+    expect(typeof client.invokeWvcDeployment).toBe("function");
+    expect(typeof client.getWvcAppProof).toBe("function");
+    expect(typeof client.startWvcCeremony).toBe("function");
+    expect(typeof client.getWvcCeremony).toBe("function");
   });
 
   it("should set and clear session token", async () => {
@@ -102,5 +122,6 @@ describe("WranKey SDK", () => {
     expect(reactSdk.useTransactions).toBeDefined();
     expect(reactSdk.usePolicies).toBeDefined();
     expect(reactSdk.useAgents).toBeDefined();
+    expect(reactSdk.useWvcApps).toBeDefined();
   });
 });

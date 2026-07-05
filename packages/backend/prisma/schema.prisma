@@ -14,23 +14,25 @@ model Organization {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  parent         Organization?  @relation("OrgHierarchy", fields: [parentOrgId], references: [id])
-  children       Organization[] @relation("OrgHierarchy")
-  users          User[]
-  wallets        Wallet[]
-  policies       Policy[]
-  agents         Agent[]
-  apiKeys        ApiKey[]
-  webhooks       Webhook[]
-  webhookDeliveries WebhookDelivery[]
-  auditLogs      AuditLog[]
-  spendingLimits SpendingLimit[]
-  approvalRequests ApprovalRequest[]
-  tags           Tag[]
-  config         OrgConfig?
-  invoices       Invoice[]
+  parent             Organization?       @relation("OrgHierarchy", fields: [parentOrgId], references: [id])
+  children           Organization[]      @relation("OrgHierarchy")
+  users              User[]
+  wallets            Wallet[]
+  policies           Policy[]
+  agents             Agent[]
+  apiKeys            ApiKey[]
+  webhooks           Webhook[]
+  webhookDeliveries  WebhookDelivery[]
+  auditLogs          AuditLog[]
+  spendingLimits     SpendingLimit[]
+  approvalRequests   ApprovalRequest[]
+  tags               Tag[]
+  config             OrgConfig?
+  invoices           Invoice[]
   contractInterfaces ContractInterface[]
-  privateKeys    PrivateKey[]
+  privateKeys        PrivateKey[]
+  wvcApps            WvcApp[]
+  wvcOperators       WvcOperator[]
 
   @@map("organizations")
 }
@@ -118,10 +120,10 @@ model Wallet {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  org      Organization     @relation(fields: [orgId], references: [id])
-  user   User?        @relation(fields: [userId], references: [id])
-  accounts WalletAccount[]
-  privateKeys PrivateKey[]
+  org            Organization    @relation(fields: [orgId], references: [id])
+  user           User?           @relation(fields: [userId], references: [id])
+  accounts       WalletAccount[]
+  privateKeys    PrivateKey[]
   spendingLimits SpendingLimit[]
 
   @@index([orgId])
@@ -144,8 +146,8 @@ model Chain {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  accounts        WalletAccount[]
-  spendingLimits  SpendingLimit[]
+  accounts            WalletAccount[]
+  spendingLimits      SpendingLimit[]
   privateKeyAddresses PrivateKeyAddress[]
 
   @@map("chains")
@@ -184,8 +186,8 @@ model PrivateKey {
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
-  org      Organization        @relation(fields: [orgId], references: [id])
-  wallet   Wallet              @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  org       Organization        @relation(fields: [orgId], references: [id])
+  wallet    Wallet              @relation(fields: [walletId], references: [id], onDelete: Cascade)
   addresses PrivateKeyAddress[]
 
   @@index([orgId])
@@ -209,38 +211,38 @@ model PrivateKeyAddress {
 }
 
 model SpendingLimit {
-  id          String   @id @default(uuid())
-  orgId       String   @map("org_id")
-  walletId    String?  @map("wallet_id")
-  chainId     String?  @map("chain_id")
-  name        String
-  maxPerTx    String?  @map("max_per_tx")
-  maxDaily    String?  @map("max_daily")
-  maxMonthly  String?  @map("max_monthly")
-  allowlist   String[] @default([])
-  denylist    String[] @default([])
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(uuid())
+  orgId      String   @map("org_id")
+  walletId   String?  @map("wallet_id")
+  chainId    String?  @map("chain_id")
+  name       String
+  maxPerTx   String?  @map("max_per_tx")
+  maxDaily   String?  @map("max_daily")
+  maxMonthly String?  @map("max_monthly")
+  allowlist  String[] @default([])
+  denylist   String[] @default([])
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
-  org   Organization @relation(fields: [orgId], references: [id])
-  wallet Wallet?     @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  chain  Chain?      @relation(fields: [chainId], references: [id])
+  org    Organization @relation(fields: [orgId], references: [id])
+  wallet Wallet?      @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  chain  Chain?       @relation(fields: [chainId], references: [id])
 
   @@map("spending_limits")
 }
 
 model ApprovalRequest {
-  id          String   @id @default(uuid())
-  orgId       String   @map("org_id")
-  transactionId String @map("transaction_id")
-  requestedBy String   @map("requested_by")
-  approvedBy  String[] @default([])
-  rejectedBy  String[] @default([])
-  requiredApprovals Int @default(2) @map("required_approvals")
-  status      String   @default("PENDING")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id                String   @id @default(uuid())
+  orgId             String   @map("org_id")
+  transactionId     String   @map("transaction_id")
+  requestedBy       String   @map("requested_by")
+  approvedBy        String[] @default([])
+  rejectedBy        String[] @default([])
+  requiredApprovals Int      @default(2) @map("required_approvals")
+  status            String   @default("PENDING")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   org Organization @relation(fields: [orgId], references: [id])
 
@@ -248,26 +250,26 @@ model ApprovalRequest {
 }
 
 model Transaction {
-  id           String    @id @default(uuid())
-  accountId    String    @map("account_id")
-  orgId        String    @map("org_id")
-  txHash       String?   @map("tx_hash")
-  chain        String    @default("sepolia")
-  to           String
-  value        String
-  nonce        Int?
-  gasLimit     String?   @map("gas_limit")
-  maxFeePerGas String?   @map("max_fee_per_gas")
-  maxPriorityFeePerGas String? @map("max_priority_fee_per_gas")
-  data         String?
-  status       String    @default("PENDING")
-  signedTx     String?   @map("signed_tx")
-  replacementFor String? @map("replacement_for")
-  error        String?
-  riskScore    Int?      @map("risk_score")
-  sponsored    Boolean   @default(false)
-  createdAt    DateTime  @default(now()) @map("created_at")
-  confirmedAt  DateTime? @map("confirmed_at")
+  id                   String    @id @default(uuid())
+  accountId            String    @map("account_id")
+  orgId                String    @map("org_id")
+  txHash               String?   @map("tx_hash")
+  chain                String    @default("sepolia")
+  to                   String
+  value                String
+  nonce                Int?
+  gasLimit             String?   @map("gas_limit")
+  maxFeePerGas         String?   @map("max_fee_per_gas")
+  maxPriorityFeePerGas String?   @map("max_priority_fee_per_gas")
+  data                 String?
+  status               String    @default("PENDING")
+  signedTx             String?   @map("signed_tx")
+  replacementFor       String?   @map("replacement_for")
+  error                String?
+  riskScore            Int?      @map("risk_score")
+  sponsored            Boolean   @default(false)
+  createdAt            DateTime  @default(now()) @map("created_at")
+  confirmedAt          DateTime? @map("confirmed_at")
 
   account WalletAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
@@ -323,8 +325,8 @@ model Webhook {
   active     Boolean  @default(true)
   createdAt  DateTime @default(now()) @map("created_at")
 
-  org  Organization @relation(fields: [orgId], references: [id])
-  user User?        @relation(fields: [userId], references: [id])
+  org        Organization      @relation(fields: [orgId], references: [id])
+  user       User?             @relation(fields: [userId], references: [id])
   deliveries WebhookDelivery[]
 
   @@map("webhooks")
@@ -362,7 +364,7 @@ model WebhookDelivery {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  webhook Webhook      @relation(fields: [webhookId], references: [id], onDelete: Cascade)
   org     Organization @relation(fields: [orgId], references: [id])
 
   @@index([status, nextAttemptAt])
@@ -430,4 +432,187 @@ model ContractInterface {
 
   @@index([orgId])
   @@map("contract_interfaces")
+}
+
+// ─── WVC (Verifiable Compute) ───────────────────────────────────────────────
+// WVC Apps: a logical, named unit of deployable verifiable code (§8)
+model WvcApp {
+  id                String   @id @default(uuid())
+  orgId             String   @map("org_id")
+  name              String
+  description       String?  @default("")
+  quorumKeyId       String?  @unique @map("quorum_key_id")
+  liveDeploymentId  String?  @unique @map("live_deployment_id")
+  requiredApprovals Int      @default(2) @map("required_approvals")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  org            Organization     @relation(fields: [orgId], references: [id])
+  quorumKey      WvcQuorumKey?    @relation("AppQuorumKey", fields: [quorumKeyId], references: [id])
+  liveDeployment WvcDeployment?   @relation("AppLiveDeployment", fields: [liveDeploymentId], references: [id])
+  deployments    WvcDeployment[]  @relation("DeploymentApp")
+  manifests      WvcManifest[]    @relation("ManifestApp")
+  operators      WvcOperator[]    @relation("OperatorApp")
+  quorumKeys     WvcQuorumKey[]   @relation("QuorumKeyApp")
+  keyCeremonies  WvcKeyCeremony[] @relation("CeremonyApp")
+
+  @@index([orgId])
+  @@map("wvc_apps")
+}
+
+// WVC Deployments: one specific attempt to run a given image+config (§8)
+model WvcDeployment {
+  id                 String   @id @default(uuid())
+  appId              String   @map("app_id")
+  imageUrl           String   @map("image_url")
+  executablePath     String   @map("executable_path")
+  executableArgs     String[] @default([]) @map("executable_args")
+  executableDigest   String   @map("executable_digest")
+  expectedPcr0       String   @map("expected_pcr0")
+  expectedPcr1       String   @map("expected_pcr1")
+  expectedPcr2       String   @map("expected_pcr2")
+  ingressPort        Int      @map("ingress_port")
+  healthPort         Int      @map("health_port")
+  cpuCount           Int      @default(2) @map("cpu_count")
+  memoryMib          Int      @default(1024) @map("memory_mib")
+  replicaCount       Int      @default(3) @map("replica_count")
+  status             String   @default("pending_manifest")
+  manifestId         String   @unique @map("manifest_id")
+  allowedUpgradeFrom String[] @default([]) @map("allowed_upgrade_from")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  app        WvcApp         @relation("DeploymentApp", fields: [appId], references: [id])
+  manifest   WvcManifest    @relation("DeploymentManifest", fields: [manifestId], references: [id])
+  liveForApp WvcApp?        @relation("AppLiveDeployment")
+  appProofs  WvcAppProof[]
+  bootProofs WvcBootProof[]
+
+  @@index([appId])
+  @@index([status])
+  @@map("wvc_deployments")
+}
+
+// WVC Manifests: the exact document operators cryptographically approve (§8, §12)
+model WvcManifest {
+  id                String   @id @default(uuid())
+  appId             String   @map("app_id")
+  manifestJson      Json     @map("manifest_json")
+  manifestHash      String   @map("manifest_hash")
+  requiredApprovals Int      @default(2) @map("required_approvals")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  app        WvcApp                @relation("ManifestApp", fields: [appId], references: [id])
+  deployment WvcDeployment?        @relation("DeploymentManifest")
+  approvals  WvcManifestApproval[]
+  bootProofs WvcBootProof[]
+
+  @@index([appId])
+  @@map("wvc_manifests")
+}
+
+// WVC Operators: humans/systems allowed to approve manifests (§8, §13)
+model WvcOperator {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  appId     String   @map("app_id")
+  alias     String
+  publicKey String   @map("public_key")
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  org                 Organization          @relation(fields: [orgId], references: [id])
+  app                 WvcApp                @relation("OperatorApp", fields: [appId], references: [id])
+  approvals           WvcManifestApproval[] @relation("ApprovalOperator")
+  ceremoniesInitiated WvcKeyCeremony[]      @relation("CeremonyInitiator")
+
+  @@index([orgId])
+  @@index([appId])
+  @@map("wvc_operators")
+}
+
+// WVC Manifest Approvals (§8, §13)
+model WvcManifestApproval {
+  id         String   @id @default(uuid())
+  manifestId String   @map("manifest_id")
+  operatorId String   @map("operator_id")
+  signature  String
+  approvedAt DateTime @default(now()) @map("approved_at")
+
+  manifest WvcManifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
+  operator WvcOperator @relation("ApprovalOperator", fields: [operatorId], references: [id])
+
+  @@unique([manifestId, operatorId])
+  @@map("wvc_manifest_approvals")
+}
+
+// WVC Quorum Keys: PUBLIC half only (§8, §17)
+model WvcQuorumKey {
+  id         String   @id @default(uuid())
+  appId      String   @map("app_id")
+  publicKey  String   @map("public_key")
+  algorithm  String   @default("P256")
+  generation Int      @default(1)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  app          WvcApp           @relation("QuorumKeyApp", fields: [appId], references: [id])
+  appForQuorum WvcApp?          @relation("AppQuorumKey")
+  ceremonies   WvcKeyCeremony[] @relation("CeremonyNewKey")
+
+  @@index([appId])
+  @@map("wvc_quorum_keys")
+}
+
+// WVC App Proofs: every proof ever issued (§8, §19)
+model WvcAppProof {
+  id                 String   @id @default(uuid())
+  deploymentId       String   @map("deployment_id")
+  ephemeralPubkey    String   @map("ephemeral_pubkey")
+  payloadHash        String   @map("payload_hash")
+  payloadType        String   @map("payload_type")
+  signature          String
+  attestationDoc     Bytes    @map("attestation_doc")
+  proofFormatVersion String   @default("v1") @map("proof_format_version")
+  issuedAt           DateTime @default(now()) @map("issued_at")
+
+  deployment WvcDeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+
+  @@index([deploymentId])
+  @@index([issuedAt])
+  @@map("wvc_app_proofs")
+}
+
+// WVC Boot Proofs (§8, §19)
+model WvcBootProof {
+  id             String   @id @default(uuid())
+  deploymentId   String   @map("deployment_id")
+  manifestId     String   @map("manifest_id")
+  attestationDoc Bytes    @map("attestation_doc")
+  bootedAt       DateTime @default(now()) @map("booted_at")
+
+  deployment WvcDeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+  manifest   WvcManifest   @relation(fields: [manifestId], references: [id])
+
+  @@index([deploymentId])
+  @@map("wvc_boot_proofs")
+}
+
+// WVC Key Ceremonies: Quorum key rotation/recovery ceremony log (§8, §18.4)
+model WvcKeyCeremony {
+  id                     String    @id @default(uuid())
+  appId                  String    @map("app_id")
+  ceremonyType           String    @map("ceremony_type")
+  initiatedBy            String?   @map("initiated_by")
+  participatingOperators String[]  @default([]) @map("participating_operators")
+  newQuorumKeyId         String?   @map("new_quorum_key_id")
+  status                 String    @default("pending")
+  startedAt              DateTime  @default(now()) @map("started_at")
+  completedAt            DateTime? @map("completed_at")
+
+  app          WvcApp        @relation("CeremonyApp", fields: [appId], references: [id])
+  initiator    WvcOperator?  @relation("CeremonyInitiator", fields: [initiatedBy], references: [id])
+  newQuorumKey WvcQuorumKey? @relation("CeremonyNewKey", fields: [newQuorumKeyId], references: [id])
+
+  @@index([appId])
+  @@map("wvc_key_ceremonies")
 }

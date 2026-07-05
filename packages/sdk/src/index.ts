@@ -14,4 +14,12 @@ export type {
   ApiKeyInfo,
   PaginatedResponse,
   AuthResponse,
+  WvcApp,
+  WvcDeployment,
+  WvcManifest,
+  WvcOperator,
+  WvcAppProof,
+  WvcBootProof,
+  WvcKeyCeremony,
+  WvcInvokeResult,
 } from "./types.js";

@@ -12,5 +12,8 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts"],
     testTimeout: 30000,
+    // Integration tests share a single database — run files sequentially to
+    // avoid parallel cleanup/setup races between suites.
+    fileParallelism: false,
   },
 });

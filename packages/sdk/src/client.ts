@@ -17,6 +17,13 @@ import type {
   Chain,
   SpendingLimit,
   ApprovalRequest,
+  WvcApp,
+  WvcDeployment,
+  WvcManifest,
+  WvcOperator,
+  WvcAppProof,
+  WvcKeyCeremony,
+  WvcInvokeResult,
 } from "./types.js";
 
 export class WranKeyClient {
@@ -480,6 +487,95 @@ export class WranKeyClient {
 
   async listAuditLogs(limit = 50, offset = 0): Promise<PaginatedResponse<AuditLog>> {
     return this.request("GET", `/audit-logs?limit=${limit}&offset=${offset}`);
+  }
+
+  // ─── WVC (Verifiable Compute) — PRD §9 ──────────────────────────────
+
+  async createWvcApp(name: string, options?: { description?: string; requiredApprovals?: number }): Promise<WvcApp> {
+    return this.request("POST", "/wvc/apps", { name, ...options });
+  }
+
+  async listWvcApps(limit = 50, offset = 0): Promise<PaginatedResponse<WvcApp>> {
+    return this.request("GET", `/wvc/apps?limit=${limit}&offset=${offset}`);
+  }
+
+  async getWvcApp(appId: string): Promise<WvcApp> {
+    return this.request("GET", `/wvc/apps/${appId}`);
+  }
+
+  async addWvcOperator(appId: string, alias: string, publicKey: string): Promise<WvcOperator> {
+    return this.request("POST", `/wvc/apps/${appId}/operators`, { alias, publicKey });
+  }
+
+  async listWvcOperators(appId: string): Promise<{ data: WvcOperator[]; total: number }> {
+    return this.request("GET", `/wvc/apps/${appId}/operators`);
+  }
+
+  async revokeWvcOperator(appId: string, operatorId: string): Promise<{ revoked: boolean }> {
+    return this.request("DELETE", `/wvc/apps/${appId}/operators/${operatorId}`);
+  }
+
+  async createWvcDeployment(appId: string, params: {
+    imageUrl: string; executablePath: string; executableArgs?: string[];
+    executableDigest: string; expectedPcr0: string; expectedPcr1: string; expectedPcr2: string;
+    ingressPort: number; healthPort: number; cpuCount?: number; memoryMib?: number;
+    replicaCount?: number; allowedUpgradeFrom?: string[];
+  }): Promise<{ deploymentId: string; manifestId: string; manifestHash: string; status: string }> {
+    return this.request("POST", `/wvc/apps/${appId}/deployments`, params);
+  }
+
+  async getWvcManifest(manifestId: string): Promise<WvcManifest & {
+    approvalsCount: number; approvals: Array<{ operatorId: string; alias: string; approvedAt: string }>;
+    status: string; deploymentId?: string;
+  }> {
+    return this.request("GET", `/wvc/manifests/${manifestId}`);
+  }
+
+  async approveWvcManifest(manifestId: string, operatorId: string, signature: string): Promise<{
+    approvalsCount: number; requiredApprovals: number; status: string;
+  }> {
+    return this.request("POST", `/wvc/manifests/${manifestId}/approve`, { operatorId, signature });
+  }
+
+  async provisionWvcDeployment(deploymentId: string): Promise<{ deploymentId: string; status: string }> {
+    return this.request("POST", `/wvc/deployments/${deploymentId}/provision`);
+  }
+
+  async getWvcDeployment(deploymentId: string): Promise<WvcDeployment & {
+    healthyReplicas: number; totalReplicas: number; isLive: boolean;
+    bootProofs: Array<{ id: string; bootedAt: string }>;
+  }> {
+    return this.request("GET", `/wvc/deployments/${deploymentId}`);
+  }
+
+  async setWvcDeploymentLive(deploymentId: string): Promise<{ deploymentId: string; status: string; isLive: boolean }> {
+    return this.request("POST", `/wvc/deployments/${deploymentId}/set-live`);
+  }
+
+  async deleteWvcDeployment(deploymentId: string): Promise<{ deploymentId: string; status: string; restorable: boolean }> {
+    return this.request("POST", `/wvc/deployments/${deploymentId}/delete`);
+  }
+
+  async restoreWvcDeployment(deploymentId: string): Promise<{ deploymentId: string; status: string }> {
+    return this.request("POST", `/wvc/deployments/${deploymentId}/restore`);
+  }
+
+  async invokeWvcDeployment(deploymentId: string, payload: {
+    payloadType: string; [key: string]: unknown;
+  }): Promise<WvcInvokeResult> {
+    return this.request("POST", `/wvc/deployments/${deploymentId}/invoke`, payload);
+  }
+
+  async getWvcAppProof(proofId: string): Promise<WvcAppProof> {
+    return this.request("GET", `/wvc/app-proofs/${proofId}`);
+  }
+
+  async startWvcCeremony(appId: string, ceremonyType: "bootstrap" | "rotation" | "recovery", participatingOperators: string[]): Promise<WvcKeyCeremony> {
+    return this.request("POST", `/wvc/apps/${appId}/quorum-key/ceremonies`, { ceremonyType, participatingOperators });
+  }
+
+  async getWvcCeremony(appId: string, ceremonyId: string): Promise<WvcKeyCeremony> {
+    return this.request("GET", `/wvc/apps/${appId}/quorum-key/ceremonies/${ceremonyId}`);
   }
 
   async signMessage(params: {

@@ -16,6 +16,9 @@ const WEBHOOK_EVENTS = [
   "transaction.submitted", "transaction.confirmed", "transaction.failed",
   "policy.created", "policy.deleted", "policy.triggered",
   "agent.created", "agent.revoked", "agent.login",
+  "wvc.deployment.live", "wvc.deployment.unhealthy",
+  "wvc.manifest.approved", "wvc.manifest.approval_needed",
+  "wvc.key_ceremony.started", "wvc.key_ceremony.completed",
 ];
 
 const MAX_RETRIES = parseInt(process.env.WEBHOOK_MAX_RETRIES || "5", 10);

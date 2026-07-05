@@ -44,6 +44,8 @@ jobs:
       - run: npx tsc --noEmit -p packages/backend/tsconfig.json
       - run: npx tsc --noEmit -p packages/dashboard/tsconfig.json
       - run: npx tsc --noEmit -p packages/sdk/tsconfig.json
+      - run: npx tsc --noEmit -p packages/wvc-verify/tsconfig.json
+      - run: npx tsc --noEmit -p packages/cli/tsconfig.json
       - run: npm test
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wrankey_test
@@ -58,3 +60,6 @@ jobs:
           WEBAUTHN_RP_ID: localhost
       - run: npm run test --workspace=packages/sdk
       - run: npm run test --workspace=packages/dashboard
+      - run: npm run test --workspace=packages/wvc-verify
+      - run: npm run build --workspace=packages/wvc-verify
+      - run: npm run build --workspace=packages/cli

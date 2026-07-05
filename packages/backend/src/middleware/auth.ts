@@ -48,6 +48,19 @@ const SCOPE_MAP: Array<{ pattern: RegExp; methods: string[]; scope: string }> = 
   { pattern: /^\/api\/v1\/sub-orgs/, methods: ["POST", "PATCH", "DELETE"], scope: "wallet:write" },
   { pattern: /^\/api\/v1\/contract-interfaces/, methods: ["GET"], scope: "wallet:read" },
   { pattern: /^\/api\/v1\/contract-interfaces/, methods: ["POST", "DELETE"], scope: "wallet:write" },
+  { pattern: /^\/api\/v1\/wvc\/apps/, methods: ["GET"], scope: "wvc:read" },
+  { pattern: /^\/api\/v1\/wvc\/apps/, methods: ["POST"], scope: "wvc:write" },
+  { pattern: /^\/api\/v1\/wvc\/apps\/[^/]+\/deployments/, methods: ["GET"], scope: "wvc:read" },
+  { pattern: /^\/api\/v1\/wvc\/apps\/[^/]+\/deployments/, methods: ["POST"], scope: "wvc:write" },
+  { pattern: /^\/api\/v1\/wvc\/deployments\/[^/]+\/invoke/, methods: ["POST"], scope: "wvc:invoke" },
+  { pattern: /^\/api\/v1\/wvc\/deployments/, methods: ["GET"], scope: "wvc:read" },
+  { pattern: /^\/api\/v1\/wvc\/deployments/, methods: ["POST"], scope: "wvc:write" },
+  { pattern: /^\/api\/v1\/wvc\/manifests/, methods: ["GET"], scope: "wvc:read" },
+  { pattern: /^\/api\/v1\/wvc\/manifests\/[^/]+\/approve/, methods: ["POST"], scope: "wvc:approve" },
+  { pattern: /^\/api\/v1\/wvc\/app-proofs/, methods: ["GET"], scope: "wvc:read" },
+  { pattern: /^\/api\/v1\/wvc\/apps\/[^/]+\/operators/, methods: ["GET"], scope: "wvc:read" },
+  { pattern: /^\/api\/v1\/wvc\/apps\/[^/]+\/operators/, methods: ["POST", "DELETE"], scope: "wvc:write" },
+  { pattern: /^\/api\/v1\/wvc\/apps\/[^/]+\/quorum-key/, methods: ["GET", "POST"], scope: "wvc:write" },
 ];
 
 function checkScope(permissions: string[], method: string, url: string): boolean {

@@ -18,6 +18,7 @@ beforeAll(async () => {
   await prisma.$connect();
 
   // Clean up any test leftovers
+  await prisma.$executeRaw`TRUNCATE TABLE wvc_app_proofs, wvc_boot_proofs, wvc_manifest_approvals, wvc_key_ceremonies, wvc_quorum_keys, wvc_manifests, wvc_deployments, wvc_operators, wvc_apps CASCADE`;
   await prisma.auditLog.deleteMany();
   await prisma.webhook.deleteMany();
   await prisma.agent.deleteMany();

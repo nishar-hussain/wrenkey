@@ -1,0 +1,306 @@
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { buildApp } from "../../src/app.js";
+import type { FastifyInstance } from "fastify";
+import { PrismaClient } from "@prisma/client";
+import { generateOperatorKeyPair, signWithOperatorKey } from "../../src/modules/wvc/operator.js";
+
+let app: FastifyInstance;
+let prisma: PrismaClient;
+let token: string;
+let orgId: string;
+let userId: string;
+let appId: string;
+let operatorId: string;
+let deploymentId: string;
+let manifestId: string;
+let manifestHash: string;
+let operatorKeys: { publicKeyPem: string; privateKeyPem: string };
+
+beforeAll(async () => {
+  app = await buildApp({ disableRateLimit: true });
+  await app.ready();
+
+  prisma = new PrismaClient();
+  await prisma.$connect();
+
+  // Clean WVC tables (TRUNCATE CASCADE handles circular FKs between apps/deployments/manifests)
+  await prisma.$executeRaw`TRUNCATE TABLE wvc_app_proofs, wvc_boot_proofs, wvc_manifest_approvals, wvc_key_ceremonies, wvc_quorum_keys, wvc_manifests, wvc_deployments, wvc_operators, wvc_apps CASCADE`;
+  // Clean all org-scoped tables (child-first for FK constraints)
+  await prisma.auditLog.deleteMany();
+  await prisma.webhookDelivery.deleteMany();
+  await prisma.webhook.deleteMany();
+  await prisma.agent.deleteMany();
+  await prisma.transaction.deleteMany();
+  await prisma.walletAccount.deleteMany();
+  await prisma.privateKeyAddress.deleteMany();
+  await prisma.privateKey.deleteMany();
+  await prisma.wallet.deleteMany();
+  await prisma.policy.deleteMany();
+  await prisma.spendingLimit.deleteMany();
+  await prisma.approvalRequest.deleteMany();
+  await prisma.apiKey.deleteMany();
+  await prisma.tag.deleteMany();
+  await prisma.invoice.deleteMany();
+  await prisma.contractInterface.deleteMany();
+  await prisma.orgConfig.deleteMany();
+  await prisma.session.deleteMany();
+  await prisma.authenticator.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.organization.deleteMany();
+
+  const org = await prisma.organization.create({ data: { name: "WVC Test Org" } });
+  orgId = org.id;
+
+  const user = await prisma.user.create({
+    data: { orgId, name: "WVC Admin", email: "wvc@test.local", role: "ORG_ADMIN" },
+  });
+  userId = user.id;
+
+  const { signToken } = await import("../../src/utils/jwt.js");
+  const jwt = signToken({ sub: userId, orgId, role: "ORG_ADMIN" });
+  await prisma.session.create({
+    data: { userId, token: jwt, type: "READ_WRITE", expiresAt: new Date(Date.now() + 3600 * 1000) },
+  });
+  token = jwt;
+
+  operatorKeys = generateOperatorKeyPair();
+});
+
+afterAll(async () => {
+  await app.close();
+  await prisma.$disconnect();
+});
+
+describe("WVC Routes (PRD §9)", () => {
+  it("POST /wvc/apps creates an app", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/wvc/apps",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: "wallet-signer", description: "Test signer", requiredApprovals: 1 },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.payload);
+    expect(body.id).toBeTruthy();
+    expect(body.name).toBe("wallet-signer");
+    expect(body.requiredApprovals).toBe(1);
+    appId = body.id;
+  });
+
+  it("GET /wvc/apps lists apps", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/wvc/apps",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.data.length).toBeGreaterThan(0);
+    expect(body.total).toBeGreaterThan(0);
+  });
+
+  it("POST /wvc/apps/:appId/operators adds an operator", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/apps/${appId}/operators`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { alias: "alice", publicKey: operatorKeys.publicKeyPem },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.payload);
+    expect(body.alias).toBe("alice");
+    expect(body.status).toBe("active");
+    operatorId = body.id;
+  });
+
+  it("POST /wvc/apps/:appId/deployments creates a deployment + manifest", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/apps/${appId}/deployments`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        imageUrl: "ghcr.io/wrankey/signer:v1@sha256:abc",
+        executablePath: "/app/signer",
+        executableArgs: ["--port", "3000"],
+        executableDigest: "sha256:def",
+        expectedPcr0: "a".repeat(64),
+        expectedPcr1: "b".repeat(64),
+        expectedPcr2: "c".repeat(64),
+        ingressPort: 3000,
+        healthPort: 3000,
+        cpuCount: 2,
+        memoryMib: 1024,
+        replicaCount: 3,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.payload);
+    expect(body.deploymentId).toBeTruthy();
+    expect(body.manifestId).toBeTruthy();
+    expect(body.manifestHash).toMatch(/^sha256:/);
+    expect(body.status).toBe("pending_manifest");
+    deploymentId = body.deploymentId;
+    manifestId = body.manifestId;
+    manifestHash = body.manifestHash;
+  });
+
+  it("GET /wvc/manifests/:manifestId shows the manifest", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/wvc/manifests/${manifestId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.manifestHash).toBe(manifestHash);
+    expect(body.approvalsCount).toBe(0);
+    expect(body.requiredApprovals).toBe(1);
+    expect(body.status).toBe("pending_manifest");
+  });
+
+  it("POST /wvc/manifests/:manifestId/approve with a valid signature transitions to approved", async () => {
+    const signature = signWithOperatorKey(operatorKeys.privateKeyPem, manifestHash);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/manifests/${manifestId}/approve`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { operatorId, signature },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.approvalsCount).toBe(1);
+    expect(body.status).toBe("approved");
+  });
+
+  it("POST /wvc/manifests/:manifestId/approve rejects a double-approval", async () => {
+    const signature = signWithOperatorKey(operatorKeys.privateKeyPem, manifestHash);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/manifests/${manifestId}/approve`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { operatorId, signature },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("POST /wvc/manifests/:manifestId/approve rejects an invalid signature", async () => {
+    // Try approving with a different operator whose signature won't match
+    const op2Keys = generateOperatorKeyPair();
+    const res2 = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/apps/${appId}/operators`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { alias: "bob", publicKey: op2Keys.publicKeyPem },
+    });
+    const op2Id = JSON.parse(res2.payload).id;
+    const badSignature = signWithOperatorKey(op2Keys.privateKeyPem, manifestHash);
+    // This manifest already has enough approvals; test invalid sig on a fresh manifest.
+    const deployRes = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/apps/${appId}/deployments`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        imageUrl: "ghcr.io/wrankey/signer:v2@sha256:xyz",
+        executablePath: "/app/signer",
+        executableArgs: [],
+        executableDigest: "sha256:diff",
+        expectedPcr0: "d".repeat(64), expectedPcr1: "e".repeat(64), expectedPcr2: "f".repeat(64),
+        ingressPort: 3000, healthPort: 3000, cpuCount: 2, memoryMib: 1024, replicaCount: 2,
+      },
+    });
+    const newManifestId = JSON.parse(deployRes.payload).manifestId;
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/manifests/${newManifestId}/approve`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { operatorId: op2Id, signature: badSignature + "tampered" },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("POST /wvc/deployments/:id/provision provisions an approved deployment", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/deployments/${deploymentId}/provision`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.status).toBe("inactive");
+  });
+
+  it("POST /wvc/deployments/:id/set-live sets it live", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/deployments/${deploymentId}/set-live`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.status).toBe("live");
+    expect(body.isLive).toBe(true);
+  });
+
+  it("GET /wvc/deployments/:id shows live status", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/wvc/deployments/${deploymentId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.status).toBe("live");
+    expect(body.isLive).toBe(true);
+    expect(body.healthyReplicas).toBe(body.totalReplicas);
+  });
+
+  it("POST /wvc/deployments/:id/delete soft-deletes", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/deployments/${deploymentId}/delete`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.status).toBe("marked_for_deletion");
+    expect(body.restorable).toBe(true);
+  });
+
+  it("POST /wvc/deployments/:id/restore restores", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/deployments/${deploymentId}/restore`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.status).toBe("inactive");
+  });
+
+  it("POST /wvc/deployments/:id/invoke returns a clear error without an enclave", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/deployments/${deploymentId}/invoke`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { payloadType: "signature", unsignedTx: "0x02f8..." },
+    });
+    // The deployment is inactive (restored), so it should 403 "not live" OR
+    // if set live, 403 "no enclave endpoint". Either way, a clear error.
+    expect(res.statusCode).toBe(403);
+    const body = JSON.parse(res.payload);
+    expect(body.error.message).toBeTruthy();
+  });
+
+  it("GET /wvc/apps/:appId shows full detail", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/wvc/apps/${appId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.id).toBe(appId);
+    expect(body.operators.length).toBeGreaterThan(0);
+    expect(body.deployments.length).toBeGreaterThan(0);
+  });
+});

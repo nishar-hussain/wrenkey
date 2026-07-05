@@ -14,6 +14,7 @@ interface UseWebSocketOptions {
   onTransactionStatus?: (data: { transactionId: string; status: string; txHash?: string }) => void;
   onWalletEvent?: (event: string, data: any) => void;
   onAgentEvent?: (event: string, data: any) => void;
+  onWvcEvent?: (event: string, data: any) => void;
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
 }
@@ -24,6 +25,7 @@ export function useWebSocket(apiBase: string, token: string | null, options: Use
     onTransactionStatus,
     onWalletEvent,
     onAgentEvent,
+    onWvcEvent,
     reconnectInterval = 5000,
     maxReconnectAttempts = 5,
   } = options;
@@ -68,6 +70,10 @@ export function useWebSocket(apiBase: string, token: string | null, options: Use
 
           if (msg.event?.startsWith("agent.") && onAgentEvent) {
             onAgentEvent(msg.event, msg.data);
+          }
+
+          if (msg.event?.startsWith("wvc.") && onWvcEvent) {
+            onWvcEvent(msg.event, msg.data);
           }
         } catch {}
       };

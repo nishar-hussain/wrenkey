@@ -1,0 +1,25 @@
+{
+  "name": "@wrankey/cli",
+  "version": "0.1.0",
+  "description": "WVC CLI — operator tool for WranKey Verifiable Compute (manifest approval, deployment lifecycle, proof verification).",
+  "license": "MIT",
+  "bin": {
+    "wvc": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@wrankey/wvc-verify": "*",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

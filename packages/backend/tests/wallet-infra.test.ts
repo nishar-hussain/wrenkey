@@ -20,6 +20,7 @@ beforeAll(async () => {
   prisma = new PrismaClient();
   await prisma.$connect();
 
+  await prisma.$executeRaw`TRUNCATE TABLE wvc_app_proofs, wvc_boot_proofs, wvc_manifest_approvals, wvc_key_ceremonies, wvc_quorum_keys, wvc_manifests, wvc_deployments, wvc_operators, wvc_apps CASCADE`;
   await prisma.approvalRequest.deleteMany();
   await prisma.spendingLimit.deleteMany();
   await prisma.auditLog.deleteMany();
