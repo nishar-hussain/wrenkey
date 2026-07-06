@@ -66,25 +66,25 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center gap-2">
             <img src="/logo-icon.png" alt="WranKey" className="w-8 h-8 rounded-md" />
-            <h1 className="text-2xl font-bold text-center">WranKey</h1>
+            <h1 className="text-2xl font-bold text-center text-foreground">WranKey</h1>
           </div>
-          <p className="text-sm text-slate-500 text-center">
+          <p className="text-sm text-muted-foreground text-center">
             {step === "request" ? "Reset Your Password" : "Set New Password"}
           </p>
         </CardHeader>
         <CardContent>
-          {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">{error}</div>}
-          {success && <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md text-sm text-green-600">{success}</div>}
+          {error && <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive">{error}</div>}
+          {success && <div className="mb-4 p-3 bg-success/10 border border-success/20 rounded-md text-sm text-success">{success}</div>}
 
           {step === "request" && (
             <form onSubmit={handleRequest} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-sm font-medium">Email</label>
+                <label className="text-sm font-medium text-foreground">Email</label>
                 <Input
                   type="email"
                   value={email}
@@ -96,7 +96,7 @@ export default function ResetPasswordPage() {
               <Button type="submit" disabled={loading} className="w-full">
                 Send Reset Link
               </Button>
-              <button type="button" onClick={() => router.push("/login")} className="text-sm text-brand-600 hover:underline w-full text-center">
+              <button type="button" onClick={() => router.push("/login")} className="text-sm text-primary hover:underline w-full text-center">
                 Back to Login
               </button>
             </form>
@@ -105,7 +105,7 @@ export default function ResetPasswordPage() {
           {step === "confirm" && (
             <form onSubmit={handleConfirm} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-sm font-medium">Reset Token</label>
+                <label className="text-sm font-medium text-foreground">Reset Token</label>
                 <Input
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
@@ -115,7 +115,7 @@ export default function ResetPasswordPage() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">New Password</label>
+                <label className="text-sm font-medium text-foreground">New Password</label>
                 <Input
                   type="password"
                   value={newPassword}
@@ -126,7 +126,7 @@ export default function ResetPasswordPage() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">Confirm Password</label>
+                <label className="text-sm font-medium text-foreground">Confirm Password</label>
                 <Input
                   type="password"
                   value={confirmPassword}
@@ -139,13 +139,13 @@ export default function ResetPasswordPage() {
               <Button type="submit" disabled={loading} className="w-full">
                 Reset Password
               </Button>
-              <button type="button" onClick={() => router.push("/login")} className="text-sm text-brand-600 hover:underline w-full text-center">
+              <button type="button" onClick={() => router.push("/login")} className="text-sm text-primary hover:underline w-full text-center">
                 Back to Login
               </button>
             </form>
           )}
 
-          <p className="text-xs text-slate-400 text-center mt-4">AI-Native Wallet & Agent Platform on Arc</p>
+          <p className="text-xs text-muted-foreground text-center mt-4">AI-Native Wallet & Agent Platform on Arc</p>
         </CardContent>
       </Card>
     </div>

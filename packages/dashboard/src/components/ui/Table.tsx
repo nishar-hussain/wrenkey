@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Column<T> {
   key: string;
@@ -23,11 +24,38 @@ export function Table<T>({
   emptyMessage = "No data found",
 }: TableProps<T>) {
   if (loading) {
-    return <div className="text-center py-12 text-muted-foreground text-sm">Loading...</div>;
+    return (
+      <div className="w-full">
+        <div className="border-b">
+          <div className="flex">
+            {columns.map((col) => (
+              <th key={col.key} className={cn("h-12 px-4 text-left align-middle font-medium text-muted-foreground", col.className)}>
+                {col.header}
+              </th>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-0">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex border-b">
+              {columns.map((col) => (
+                <div key={col.key} className={cn("p-4 align-middle", col.className)}>
+                  <Skeleton className="h-4 w-3/4" />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (!data || data.length === 0) {
-    return <div className="text-center py-12 text-muted-foreground text-sm">{emptyMessage}</div>;
+    return (
+      <div className="text-center py-16">
+        <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+      </div>
+    );
   }
 
   return (

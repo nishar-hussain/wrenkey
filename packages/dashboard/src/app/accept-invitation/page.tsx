@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
@@ -12,6 +12,14 @@ import { useToast } from "@/components/ui/Toast";
 import { Mail, KeyRound, Building2, ShieldAlert } from "lucide-react";
 
 export default function AcceptInvitationPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-muted/30"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
+      <AcceptInvitationContent />
+    </Suspense>
+  );
+}
+
+function AcceptInvitationContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
@@ -97,29 +105,29 @@ export default function AcceptInvitationPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12">
-      <Card className="w-full max-w-[420px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.03)] rounded-2xl bg-white overflow-hidden p-8">
+    <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4 py-12">
+      <Card className="w-full max-w-[420px] shadow-xl rounded-2xl overflow-hidden p-8">
         <CardContent className="p-0">
           {step === "verifying" && (
             <div className="flex flex-col items-center gap-4 py-8">
               <Skeleton className="h-8 w-48" />
               <Skeleton className="h-4 w-64" />
-              <p className="text-sm text-slate-400">Verifying invitation...</p>
+              <p className="text-sm text-muted-foreground">Verifying invitation...</p>
             </div>
           )}
 
           {step === "error" && (
             <div className="space-y-6 text-center">
               <div className="flex justify-center">
-                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-red-50 border border-red-100 text-red-500">
+                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-destructive/10 border border-destructive/20 text-destructive">
                   <ShieldAlert className="w-6 h-6 stroke-[1.5]" />
                 </div>
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-slate-800">Invalid Invitation</h2>
-                <p className="text-sm text-slate-500 mt-2">{error}</p>
+                <h2 className="text-xl font-semibold text-foreground">Invalid Invitation</h2>
+                <p className="text-sm text-muted-foreground mt-2">{error}</p>
               </div>
-              <Button onClick={() => router.push("/login")} className="w-full h-11 bg-slate-900 hover:bg-slate-800 text-white">
+              <Button onClick={() => router.push("/login")} className="w-full h-11">
                 Go to Login
               </Button>
             </div>
@@ -128,23 +136,23 @@ export default function AcceptInvitationPage() {
           {step === "send-otp" && (
             <div className="space-y-6">
               <div className="flex justify-center">
-                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-violet-50 border border-violet-100 text-violet-500">
+                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-primary/10 border border-primary/20 text-primary">
                   <Building2 className="w-6 h-6 stroke-[1.5]" />
                 </div>
               </div>
 
               <div className="text-center">
-                <h2 className="text-xl font-semibold text-slate-800 tracking-tight">You're Invited</h2>
-                <p className="text-sm text-slate-500 mt-2">
-                  Join <strong className="text-slate-700">{orgName}</strong> on WranKey
+                <h2 className="text-xl font-semibold text-foreground tracking-tight">You're Invited</h2>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Join <strong className="text-foreground">{orgName}</strong> on WranKey
                 </p>
-                <p className="text-sm text-slate-400 mt-1">
-                  as <strong className="text-slate-700">{email}</strong>
+                <p className="text-sm text-muted-foreground mt-1">
+                  as <strong className="text-foreground">{email}</strong>
                 </p>
               </div>
 
               {error && (
-                <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-xs font-medium text-red-600">
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-xs font-medium text-destructive">
                   {error}
                 </div>
               )}
@@ -152,13 +160,13 @@ export default function AcceptInvitationPage() {
               <Button
                 onClick={sendOtp}
                 disabled={loading}
-                className="w-full h-11 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
+                className="w-full h-11 font-medium rounded-lg text-sm transition-colors shadow-sm"
               >
                 <Mail className="w-4 h-4 mr-2" />
                 {loading ? "Sending..." : "Accept Invitation"}
               </Button>
 
-              <p className="text-[11px] text-center text-slate-400">
+              <p className="text-[11px] text-center text-muted-foreground">
                 You'll receive a verification code to complete your sign-in.
               </p>
             </div>
@@ -167,27 +175,27 @@ export default function AcceptInvitationPage() {
           {step === "verify-otp" && (
             <form onSubmit={acceptInvitation} className="space-y-6">
               <div className="flex justify-center">
-                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-slate-50 border border-slate-100 text-slate-400">
+                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-primary/10 border border-primary/20 text-primary">
                   <KeyRound className="w-6 h-6 stroke-[1.5]" />
                 </div>
               </div>
 
               <div className="text-center">
-                <h2 className="text-xl font-semibold text-slate-800 tracking-tight">Verify Your Email</h2>
-                <p className="text-sm text-slate-400 mt-1">
-                  Code sent to <strong className="text-slate-700 font-semibold">{email}</strong>
+                <h2 className="text-xl font-semibold text-foreground tracking-tight">Verify Your Email</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Code sent to <strong className="text-foreground font-semibold">{email}</strong>
                 </p>
               </div>
 
               {devOtp && (
-                <div className="p-4 bg-amber-50/50 border border-amber-100 rounded-xl text-center">
-                  <p className="text-xs font-semibold text-amber-700 tracking-wider uppercase">Dev Mode Code</p>
-                  <p className="text-2xl font-mono font-bold text-amber-600 tracking-widest mt-1">{devOtp}</p>
+                <div className="p-4 bg-warning/10 border border-warning/20 rounded-xl text-center">
+                  <p className="text-xs font-semibold text-warning tracking-wider uppercase">Dev Mode Code</p>
+                  <p className="text-2xl font-mono font-bold text-warning tracking-widest mt-1">{devOtp}</p>
                 </div>
               )}
 
               {error && (
-                <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-xs font-medium text-red-600">
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-xs font-medium text-destructive">
                   {error}
                 </div>
               )}
@@ -200,14 +208,14 @@ export default function AcceptInvitationPage() {
                   required
                   maxLength={6}
                   autoFocus
-                  className="h-11 text-center font-mono text-lg tracking-widest border-slate-200 bg-slate-50/50 focus:bg-white rounded-lg focus-visible:ring-slate-400 transition-colors placeholder:font-sans placeholder:tracking-normal placeholder:text-sm"
+                  className="h-11 text-center font-mono text-lg tracking-widest rounded-lg transition-colors placeholder:font-sans placeholder:tracking-normal placeholder:text-sm"
                 />
               </div>
 
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full h-11 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
+                className="w-full h-11 font-medium rounded-lg text-sm transition-colors shadow-sm"
               >
                 {loading ? "Verifying..." : "Verify & Accept"}
               </Button>
@@ -216,7 +224,7 @@ export default function AcceptInvitationPage() {
                 <button
                   type="button"
                   onClick={() => { setStep("send-otp"); setOtp(""); setDevOtp(""); setError(""); }}
-                  className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
                   ← Back
                 </button>

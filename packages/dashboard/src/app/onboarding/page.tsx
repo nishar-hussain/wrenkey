@@ -37,8 +37,8 @@ export default function OnboardingPage() {
 
   if (!ready || !isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -73,29 +73,29 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
-          <div className="mx-auto w-12 h-12 rounded-xl bg-brand-600 text-white flex items-center justify-center mb-2">
+          <div className="mx-auto w-12 h-12 rounded-xl bg-primary text-primary-foreground flex items-center justify-center mb-2">
             <Building2 className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-bold">Welcome to WranKey</h1>
-          <p className="text-sm text-slate-500">
-            Signed in as <strong>{user?.email || "—"}</strong>
+          <h1 className="text-2xl font-bold text-foreground">Welcome to WranKey</h1>
+          <p className="text-sm text-muted-foreground">
+            Signed in as <strong className="text-foreground">{user?.email || "—"}</strong>
           </p>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-muted-foreground">
             Name your organization to get started
           </p>
         </CardHeader>
         <CardContent>
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">
+            <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive">
               {error}
             </div>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium">Organization Name</label>
+              <label className="text-sm font-medium text-foreground">Organization Name</label>
               <Input
                 value={orgName}
                 onChange={(e) => { setOrgName(e.target.value); setError(""); }}
@@ -104,7 +104,7 @@ export default function OnboardingPage() {
                 autoFocus
                 disabled={saving}
               />
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted-foreground">
                 This will be your workspace name. You can change it later in settings.
               </p>
             </div>

@@ -152,25 +152,25 @@ export function Header() {
   return (
     <>
       {isImpersonating && (
-        <div className="h-10 bg-amber-50 border-b border-amber-200 flex items-center justify-between px-4 sm:px-6 shrink-0">
-          <div className="flex items-center gap-2 text-sm text-amber-800">
-            <span className="text-amber-500">⚠</span>
+        <div className="h-10 bg-warning/10 border-b border-warning/20 flex items-center justify-between px-4 sm:px-6 shrink-0">
+          <div className="flex items-center gap-2 text-sm text-warning">
+            <span>⚠</span>
             Viewing as <strong>{org?.name || "Sub-Org"}</strong>
           </div>
-          <button onClick={returnToParent} className="text-xs font-medium text-amber-700 hover:text-amber-900 flex items-center gap-1 bg-amber-100 hover:bg-amber-200 px-3 py-1 rounded-md transition-colors">
+          <button onClick={returnToParent} className="text-xs font-medium text-warning hover:text-warning-foreground flex items-center gap-1 bg-warning/15 hover:bg-warning/20 px-3 py-1 rounded-md transition-colors">
             <ArrowLeft className="w-3 h-3" /> Return to Parent Org
           </button>
         </div>
       )}
-      <header className="h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 sm:px-6 shrink-0">
+      <header className="h-16 bg-card border-b border-border flex items-center justify-between px-4 sm:px-6 shrink-0">
       <nav className="flex items-center gap-1 text-sm">
         {breadcrumbs.map((crumb, i) => (
           <span key={crumb.href} className="flex items-center gap-1">
-            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-gray-400 shrink-0" />}
+            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />}
             {crumb.last ? (
-              <span className="font-medium text-gray-900 dark:text-gray-100">{crumb.label}</span>
+              <span className="font-medium text-foreground">{crumb.label}</span>
             ) : (
-              <Link href={crumb.href} className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+              <Link href={crumb.href} className="text-muted-foreground hover:text-foreground transition-colors">
                 {crumb.label}
               </Link>
             )}
@@ -181,18 +181,18 @@ export function Header() {
       <div className="flex items-center gap-2">
         <button
           onClick={toggleDarkMode}
-          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+          className="p-2 hover:bg-accent rounded-lg transition-colors"
           title={darkMode ? "Light mode" : "Dark mode"}
         >
-          {darkMode ? <Sun className="h-4 w-4 text-gray-500 dark:text-gray-400" /> : <Moon className="h-4 w-4 text-gray-500" />}
+          {darkMode ? <Sun className="h-4 w-4 text-muted-foreground" /> : <Moon className="h-4 w-4 text-muted-foreground" />}
         </button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors relative">
-              <Bell className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+            <button className="p-2 hover:bg-accent rounded-lg transition-colors relative">
+              <Bell className="h-4 w-4 text-muted-foreground" />
               {notificationCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-red-500 rounded-full text-[10px] text-white font-medium flex items-center justify-center px-1">
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-destructive rounded-full text-[10px] text-destructive-foreground font-medium flex items-center justify-center px-1">
                   {notificationCount}
                 </span>
               )}
@@ -202,12 +202,12 @@ export function Header() {
             <DropdownMenuLabel>Notifications</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {notifications.length === 0 ? (
-              <div className="px-4 py-6 text-center text-sm text-gray-500">No new notifications</div>
+              <div className="px-4 py-6 text-center text-sm text-muted-foreground">No new notifications</div>
             ) : (
               notifications.map((n, i) => (
                 <DropdownMenuItem key={i} className="flex flex-col items-start py-2">
                   <span className="text-sm">{n.message}</span>
-                  <span className="text-xs text-gray-400">{n.time}</span>
+                  <span className="text-xs text-muted-foreground">{n.time}</span>
                 </DropdownMenuItem>
               ))
             )}
@@ -216,8 +216,8 @@ export function Header() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-              <div className="h-7 w-7 rounded-full bg-brand-600 text-white flex items-center justify-center text-xs font-medium ring-2 ring-gray-200 dark:ring-gray-600">
+            <button className="flex items-center gap-2 p-1.5 hover:bg-accent rounded-lg transition-colors">
+              <div className="h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-medium ring-2 ring-border">
                 {user?.email?.charAt(0).toUpperCase() || "U"}
               </div>
             </button>
@@ -226,7 +226,7 @@ export function Header() {
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <div className="h-9 w-9 rounded-full bg-brand-600 text-white flex items-center justify-center text-sm font-medium shrink-0">
+                  <div className="h-9 w-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium shrink-0">
                     {user?.email?.charAt(0).toUpperCase() || "U"}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -234,7 +234,7 @@ export function Header() {
                     <p className="text-xs text-muted-foreground capitalize">{user?.role?.replace("_", " ").toLowerCase() || "Member"}</p>
                   </div>
                 </div>
-                <div className="pt-1.5 border-t border-gray-100 dark:border-gray-700">
+                <div className="pt-1.5 border-t border-border">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Organization</p>
                   <p className="text-sm font-medium">{org?.name || "—"}</p>
                   <p className="text-xs text-muted-foreground font-mono">{org?.id ? `ID: ${org.id.slice(0, 8)}...` : "—"}</p>
@@ -255,7 +255,7 @@ export function Header() {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout} className="text-red-600 dark:text-red-400 cursor-pointer">
+            <DropdownMenuItem onClick={logout} className="text-destructive cursor-pointer">
               <LogOut className="h-4 w-4 mr-2" />
               Log out
             </DropdownMenuItem>

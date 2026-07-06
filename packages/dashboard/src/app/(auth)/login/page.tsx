@@ -196,11 +196,11 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12">
-      <Card className="w-full max-w-[420px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.03)] rounded-2xl bg-white overflow-hidden p-8">
+    <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4 py-12">
+      <Card className="w-full max-w-[420px] border border-border shadow-xl rounded-2xl bg-card overflow-hidden p-8">
         <CardContent className="p-0">
           {error && (
-            <div className="mb-6 p-3 bg-red-50 border border-red-100 rounded-lg text-xs font-medium text-red-600">
+            <div className="mb-6 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-xs font-medium text-destructive">
               {error}
             </div>
           )}
@@ -209,12 +209,12 @@ export default function LoginPage() {
           {step === "signup" && (
             <form onSubmit={handleSignupSubmit} className="space-y-4">
               <div className="flex justify-center mb-6">
-                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-slate-50 border border-slate-100 text-slate-400">
+                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-primary/10 border border-primary/20 text-primary">
                   <UserPlus className="w-6 h-6 stroke-[1.5]" />
                 </div>
               </div>
 
-              <h2 className="text-xl font-semibold text-center text-slate-800 tracking-tight mb-6">
+              <h2 className="text-xl font-semibold text-center text-foreground tracking-tight mb-6">
                 Create Your WranKey Account
               </h2>
 
@@ -225,7 +225,7 @@ export default function LoginPage() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   required
-                  className="h-11 px-4 border-slate-200 bg-slate-50/50 focus:bg-white rounded-lg placeholder:text-slate-400 focus-visible:ring-slate-400 transition-colors"
+                  className="h-11 px-4 rounded-lg transition-colors"
                 />
 
                 <Input
@@ -234,7 +234,7 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="h-11 px-4 border-slate-200 bg-slate-50/50 focus:bg-white rounded-lg placeholder:text-slate-400 focus-visible:ring-slate-400 transition-colors"
+                  className="h-11 px-4 rounded-lg transition-colors"
                 />
 
                 <Input
@@ -243,11 +243,11 @@ export default function LoginPage() {
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
                   required
-                  className="h-11 px-4 border-slate-200 bg-slate-50/50 focus:bg-white rounded-lg placeholder:text-slate-400 focus-visible:ring-slate-400 transition-colors"
+                  className="h-11 px-4 rounded-lg transition-colors"
                 />
 
                 <Select value={source} onValueChange={setSource}>
-                  <SelectTrigger className="h-11 px-4 border-slate-200 bg-slate-50/50 focus:bg-white rounded-lg text-slate-500 text-left transition-colors focus:ring-slate-400 focus:ring-offset-0">
+                  <SelectTrigger className="h-11 px-4 rounded-lg text-muted-foreground text-left transition-colors focus:ring-offset-0">
                     <SelectValue placeholder="How did you hear about us?" />
                   </SelectTrigger>
                   <SelectContent>
@@ -263,16 +263,16 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full h-11 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg text-sm mt-6 transition-colors shadow-sm"
+                className="w-full h-11 font-medium rounded-lg text-sm mt-6 transition-colors shadow-sm"
               >
                 {loading ? "Checking..." : "Continue"}
               </Button>
 
-              <p className="text-[11px] text-center text-slate-400 mt-6 leading-relaxed px-4">
+              <p className="text-[11px] text-center text-muted-foreground mt-6 leading-relaxed px-4">
                 By continuing, you agree to WranKey's{" "}
-                <a href="#" className="underline hover:text-slate-600 transition-colors font-medium">Terms and Conditions</a>{" "}
+                <a href="#" className="underline hover:text-foreground transition-colors font-medium">Terms and Conditions</a>{" "}
                 and{" "}
-                <a href="#" className="underline hover:text-slate-600 transition-colors font-medium">Privacy Policy</a>.
+                <a href="#" className="underline hover:text-foreground transition-colors font-medium">Privacy Policy</a>.
               </p>
             </form>
           )}
@@ -281,29 +281,29 @@ export default function LoginPage() {
           {step === "welcome-back" && rememberedUser && (
             <div className="space-y-6">
               <div className="flex justify-center">
-                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-slate-50 border border-slate-100 text-slate-400">
+                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-primary/10 border border-primary/20 text-primary">
                   <LogIn className="w-6 h-6 stroke-[1.5]" />
                 </div>
               </div>
 
               <div className="text-center">
-                <h2 className="text-xl font-semibold text-slate-800 tracking-tight">Welcome Back</h2>
-                <p className="text-sm text-slate-400 mt-1">Continue to sign in</p>
+                <h2 className="text-xl font-semibold text-foreground tracking-tight">Welcome Back</h2>
+                <p className="text-sm text-muted-foreground mt-1">Continue to sign in</p>
               </div>
 
               <div 
                 onClick={handleRememberedUserClick}
-                className="border border-slate-100 hover:border-slate-300 cursor-pointer rounded-xl p-4 bg-white flex items-center justify-between shadow-[0_1px_3px_rgba(0,0,0,0.01)] transition-all group"
+                className="border border-border hover:border-primary/40 cursor-pointer rounded-xl p-4 bg-card flex items-center justify-between transition-all group"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-slate-50 border border-slate-200 text-slate-400 group-hover:border-slate-300 transition-colors">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-muted border border-border text-muted-foreground group-hover:border-primary/40 transition-colors">
                     <User className="w-5 h-5 stroke-[1.5]" />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-semibold text-slate-800 leading-tight">
+                    <p className="text-sm font-semibold text-foreground leading-tight">
                       {rememberedUser.email}
                     </p>
-                    <p className="text-xs text-slate-400 mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       {rememberedUser.orgName}
                     </p>
                   </div>
@@ -314,14 +314,14 @@ export default function LoginPage() {
                     type="button" 
                     onClick={handleRememberedUserClick} 
                     disabled={loading} 
-                    className="p-1.5 hover:bg-slate-50 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+                    className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <ChevronRight className="w-5 h-5" />
                   </button>
                   <button 
                     type="button" 
                     onClick={handleRemoveRememberedUser} 
-                    className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                    className="p-1.5 hover:bg-destructive/10 rounded-lg text-muted-foreground hover:text-destructive transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -332,7 +332,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={handleDifferentEmail}
-                  className="text-sm text-slate-500 hover:text-slate-800 underline transition-colors"
+                  className="text-sm text-muted-foreground hover:text-foreground underline transition-colors"
                 >
                   Or enter a different email
                 </button>
@@ -344,22 +344,22 @@ export default function LoginPage() {
           {step === "otp-verify" && (
             <form onSubmit={verifyOtp} className="space-y-6">
               <div className="flex justify-center">
-                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-slate-50 border border-slate-100 text-slate-400">
+                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-primary/10 border border-primary/20 text-primary">
                   <KeyRound className="w-6 h-6 stroke-[1.5]" />
                 </div>
               </div>
 
               <div className="text-center">
-                <h2 className="text-xl font-semibold text-slate-800 tracking-tight">Verify Your Email</h2>
-                <p className="text-sm text-slate-400 mt-1">
-                  Code sent to <strong className="text-slate-700 font-semibold">{email}</strong>
+                <h2 className="text-xl font-semibold text-foreground tracking-tight">Verify Your Email</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Code sent to <strong className="text-foreground font-semibold">{email}</strong>
                 </p>
               </div>
 
               {devOtp && (
-                <div className="p-4 bg-amber-50/50 border border-amber-100 rounded-xl text-center">
-                  <p className="text-xs font-semibold text-amber-700 tracking-wider uppercase">Dev Mode Code</p>
-                  <p className="text-2xl font-mono font-bold text-amber-600 tracking-widest mt-1">{devOtp}</p>
+                <div className="p-4 bg-warning/10 border border-warning/20 rounded-xl text-center">
+                  <p className="text-xs font-semibold text-warning tracking-wider uppercase">Dev Mode Code</p>
+                  <p className="text-2xl font-mono font-bold text-warning tracking-widest mt-1">{devOtp}</p>
                 </div>
               )}
 
@@ -371,14 +371,14 @@ export default function LoginPage() {
                   required
                   maxLength={6}
                   autoFocus
-                  className="h-11 text-center font-mono text-lg tracking-widest border-slate-200 bg-slate-50/50 focus:bg-white rounded-lg focus-visible:ring-slate-400 transition-colors placeholder:font-sans placeholder:tracking-normal placeholder:text-sm"
+                  className="h-11 text-center font-mono text-lg tracking-widest rounded-lg transition-colors placeholder:font-sans placeholder:tracking-normal placeholder:text-sm"
                 />
               </div>
 
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full h-11 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
+                className="w-full h-11 font-medium rounded-lg text-sm transition-colors shadow-sm"
               >
                 {loading ? "Verifying..." : "Verify & Sign In"}
               </Button>
@@ -389,14 +389,13 @@ export default function LoginPage() {
                   onClick={() => {
                     setOtp("");
                     setDevOtp("");
-                    // Go back to either welcome-back or signup
                     if (rememberedUser && rememberedUser.email === email) {
                       setStep("welcome-back");
                     } else {
                       setStep("signup");
                     }
                   }}
-                  className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
                   ← Back to sign in
                 </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
@@ -9,6 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function OAuthCallbackPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-muted/30"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
+      <OAuthCallbackContent />
+    </Suspense>
+  );
+}
+
+function OAuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login } = useAuth();
@@ -62,29 +70,29 @@ export default function OAuthCallbackPage() {
   }, [searchParams, router, login]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12">
-      <Card className="w-full max-w-[420px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.03)] rounded-2xl bg-white overflow-hidden p-8">
+    <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4 py-12">
+      <Card className="w-full max-w-[420px] shadow-xl rounded-2xl overflow-hidden p-8">
         <CardContent className="p-0">
           {step === "exchanging" && (
             <div className="flex flex-col items-center gap-4 py-8">
-              <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               <Skeleton className="h-5 w-32" />
-              <p className="text-sm text-slate-400 text-center">Completing authentication...</p>
+              <p className="text-sm text-muted-foreground text-center">Completing authentication...</p>
             </div>
           )}
 
           {step === "error" && (
             <div className="space-y-6 text-center">
               <div className="flex justify-center">
-                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-red-50 border border-red-100 text-red-500 text-xl">
+                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-destructive/10 border border-destructive/20 text-destructive text-xl">
                   !
                 </div>
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-slate-800">Authentication Failed</h2>
-                <p className="text-sm text-slate-500 mt-2">{error}</p>
+                <h2 className="text-xl font-semibold text-foreground">Authentication Failed</h2>
+                <p className="text-sm text-muted-foreground mt-2">{error}</p>
               </div>
-              <Button onClick={() => router.push("/login")} className="w-full h-11 bg-slate-900 hover:bg-slate-800 text-white">
+              <Button onClick={() => router.push("/login")} className="w-full h-11">
                 Go to Login
               </Button>
             </div>

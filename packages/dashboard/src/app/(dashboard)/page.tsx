@@ -2,44 +2,44 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch, API_BASE } from "@/lib/api";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/Toast";
 import { useWebSocket } from "@/lib/websocket";
 import {
-  Wallet, Building2, Shield, CheckCircle, BookOpen, Radio,
-  Scale, Code, FileText, ChevronRight, ExternalLink,
+  Wallet, Send, Bot, CheckCircle, ArrowUpRight, Activity,
+  Plus, Settings, Key, FileCode, Shield,
 } from "lucide-react";
 
-const EMBEDDED_SDKS = [
-  { label: "React" }, { label: "React Native" }, { label: "Swift" },
-  { label: "Flutter" }, { label: "Kotlin" }, { label: "TypeScript | Frontend" }, { label: "TypeScript | Server" },
-];
+interface KpiData {
+  wallets: number;
+  transactions: number;
+  agents: number;
+  pendingApprovals: number;
+}
 
-const COMPANY_SDKS = [
-  { label: "TypeScript | Server" }, { label: "Go" }, { label: "Python" },
-  { label: "Ruby" }, { label: "Rust" }, { label: "Foundry" },
-];
-
-const FOUNDATIONS = [
-  { icon: Shield, label: "Security overview", href: "/policies", color: "blue" },
-  { icon: CheckCircle, label: "Production checklist", href: "/settings", color: "emerald" },
-  { icon: Scale, label: "Policies", href: "/policies", color: "violet" },
-  { icon: BookOpen, label: "Support", href: "/activity-logs", color: "amber" },
-  { icon: Radio, label: "Broadcasting", href: "/transactions", color: "rose" },
-  { icon: Wallet, label: "Balances", href: "/wallets", color: "cyan" },
-  { icon: Code, label: "SDK reference", href: "/api-keys", color: "indigo" },
-  { icon: FileText, label: "API reference", href: "/api-keys", color: "slate" },
-];
+interface TxRow {
+  id: string;
+  status: string;
+  txHash?: string;
+  to?: string;
+  value?: string;
+  chain?: string;
+  createdAt: string;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
   const { isAuthenticated, token, user } = useAuth();
   const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
+  const [kpi, setKpi] = useState<KpiData>({ wallets: 0, transactions: 0, agents: 0, pendingApprovals: 0 });
+  const [recentTxs, setRecentTxs] = useState<TxRow[]>([]);
   const [health, setHealth] = useState<Record<string, string>>({});
   const [wsConnected, setWsConnected] = useState(false);
 
@@ -63,158 +63,210 @@ export default function DashboardPage() {
     async function load() {
       setLoading(true);
       try {
+        const [walletsRes, txsRes, agentsRes, approvalsRes, recentTxsRes] = await Promise.all([
+          apiFetch<{ total: number }>("/wallets?limit=1", { token: token ?? undefined }),
+          apiFetch<{ total: number }>("/transactions?limit=1", { token: token ?? undefined }),
+          apiFetch<{ total: number }>("/agents?limit=1", { token: token ?? undefined }),
+          apiFetch<{ total: number }>("/approval-requests?limit=1&status=PENDING", { token: token ?? undefined }),
+          apiFetch<{ data: TxRow[]; total: number }>("/transactions?limit=5", { token: token ?? undefined }),
+        ]);
+        setKpi({
+          wallets: walletsRes.total,
+          transactions: txsRes.total,
+          agents: agentsRes.total,
+          pendingApprovals: approvalsRes.total,
+        });
+        setRecentTxs(recentTxsRes.data || []);
+      } catch {}
+      try {
         const healthRes = await fetch(`${API_BASE}/health/services`).then(r => r.json()).catch(() => ({ services: {} }));
         setHealth(healthRes.services || {});
-      } catch {} finally { setLoading(false); }
+      } catch {}
+      finally { setLoading(false); }
     }
     load();
     const interval = setInterval(async () => {
       try { const r = await fetch(`${API_BASE}/health/services`); const d = await r.json(); if (d?.services) setHealth(d.services); } catch {}
     }, 30000);
     return () => clearInterval(interval);
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, router, token]);
 
   if (!isAuthenticated) {
     return (
-      <div className="flex items-center justify-center h-screen bg-white dark:bg-gray-950">
+      <div className="flex items-center justify-center h-screen bg-background">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-slate-500">Redirecting to login...</p>
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Redirecting to login...</p>
         </div>
       </div>
     );
   }
 
-  const colorMap: Record<string, string> = {
-    blue: "bg-blue-50 border-blue-100 text-blue-600 dark:bg-blue-950/30 dark:border-blue-900/30 dark:text-blue-400",
-    emerald: "bg-emerald-50 border-emerald-100 text-emerald-600 dark:bg-emerald-950/30 dark:border-emerald-900/30 dark:text-emerald-400",
-    violet: "bg-violet-50 border-violet-100 text-violet-600 dark:bg-violet-950/30 dark:border-violet-900/30 dark:text-violet-400",
-    amber: "bg-amber-50 border-amber-100 text-amber-600 dark:bg-amber-950/30 dark:border-amber-900/30 dark:text-amber-400",
-    rose: "bg-rose-50 border-rose-100 text-rose-600 dark:bg-rose-950/30 dark:border-rose-900/30 dark:text-rose-400",
-    cyan: "bg-cyan-50 border-cyan-100 text-cyan-600 dark:bg-cyan-950/30 dark:border-cyan-900/30 dark:text-cyan-400",
-    indigo: "bg-indigo-50 border-indigo-100 text-indigo-600 dark:bg-indigo-950/30 dark:border-indigo-900/30 dark:text-indigo-400",
-    slate: "bg-slate-50 border-slate-100 text-slate-600 dark:bg-slate-950/30 dark:border-slate-900/30 dark:text-slate-400",
-  };
+  const kpiCards = [
+    { label: "Wallets", value: kpi.wallets, icon: Wallet, href: "/wallets", color: "text-blue-600 dark:text-blue-400" },
+    { label: "Transactions", value: kpi.transactions, icon: Send, href: "/transactions", color: "text-violet-600 dark:text-violet-400" },
+    { label: "Agents", value: kpi.agents, icon: Bot, href: "/agents", color: "text-emerald-600 dark:text-emerald-400" },
+    { label: "Pending Approvals", value: kpi.pendingApprovals, icon: CheckCircle, href: "/approvals", color: "text-amber-600 dark:text-amber-400" },
+  ];
+
+  const quickActions = [
+    { label: "New Wallet", icon: Plus, href: "/wallets" },
+    { label: "New Transaction", icon: Send, href: "/transactions" },
+    { label: "Create Agent", icon: Bot, href: "/agents" },
+    { label: "API Keys", icon: Key, href: "/api-keys" },
+    { label: "Policies", icon: Shield, href: "/policies" },
+    { label: "Settings", icon: Settings, href: "/configuration" },
+  ];
 
   return (
-    <div className="max-w-4xl mx-auto space-y-12">
-      <div className="pt-4 pb-2">
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-          Welcome{user?.email ? `, ${user.email.split("@")[0]}` : ""}
+    <div className="max-w-6xl mx-auto space-y-8">
+      {/* Header */}
+      <div className="pt-2">
+        <h1 className="text-2xl font-bold text-foreground tracking-tight">
+          Welcome back{user?.email ? `, ${user.email.split("@")[0]}` : ""}
         </h1>
-        <p className="text-slate-500 dark:text-slate-400">
-          AI-native wallet infrastructure and autonomous agent platform on Arc.
+        <p className="text-sm text-muted-foreground mt-1">
+          Here's what's happening in your organization.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900 overflow-hidden">
-          <div className="h-2 bg-blue-500" />
-          <CardContent className="p-6">
-            <div className="flex items-start gap-4 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 dark:bg-blue-950/30 dark:border-blue-900/30 flex items-center justify-center shrink-0">
-                <Wallet className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Embedded Wallets</h3>
-                <p className="text-sm text-slate-500 mt-1">Wallets embedded directly into your app experience.</p>
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Quickstart</p>
-              <p className="text-xs text-slate-500 mb-2">SDKs:</p>
-              <div className="flex flex-wrap gap-1.5">
-                {EMBEDDED_SDKS.map((sdk) => (
-                  <span key={sdk.label} className="text-[11px] bg-slate-50 border border-slate-100 dark:bg-slate-800 dark:border-slate-700 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-md font-mono">
-                    {sdk.label}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <Button variant="secondary" size="sm" onClick={() => router.push("/wallets")} className="text-xs">
-              Get Started <ChevronRight className="w-3.5 h-3.5 ml-1" />
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900 overflow-hidden">
-          <div className="h-2 bg-violet-500" />
-          <CardContent className="p-6">
-            <div className="flex items-start gap-4 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-violet-50 border border-violet-100 dark:bg-violet-950/30 dark:border-violet-900/30 flex items-center justify-center shrink-0">
-                <Building2 className="w-5 h-5 text-violet-600 dark:text-violet-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Company Wallets</h3>
-                <p className="text-sm text-slate-500 mt-1">Programmatic wallets for treasury and operations.</p>
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Quickstart</p>
-              <p className="text-xs text-slate-500 mb-2">SDKs:</p>
-              <div className="flex flex-wrap gap-1.5">
-                {COMPANY_SDKS.map((sdk) => (
-                  <span key={sdk.label} className="text-[11px] bg-slate-50 border border-slate-100 dark:bg-slate-800 dark:border-slate-700 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-md font-mono">
-                    {sdk.label}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <Button variant="secondary" size="sm" onClick={() => router.push("/wallets")} className="text-xs">
-              Get Started <ChevronRight className="w-3.5 h-3.5 ml-1" />
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div>
-        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">Foundations</h2>
-        <p className="text-sm text-slate-500 mb-5">Everything you need to build, secure, and scale.</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {FOUNDATIONS.map((item) => {
-            const Icon = item.icon;
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-5">
+                <Skeleton className="h-4 w-20 mb-3" />
+                <Skeleton className="h-8 w-16 mb-2" />
+                <Skeleton className="h-3 w-24" />
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          kpiCards.map((card) => {
+            const Icon = card.icon;
             return (
-              <div
-                key={item.label}
-                onClick={() => router.push(item.href)}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900 hover:border-slate-200 dark:hover:border-slate-700 hover:shadow-sm cursor-pointer transition-all group"
-              >
-                <div className={`w-9 h-9 rounded-lg border ${colorMap[item.color]} flex items-center justify-center`}>
-                  <Icon className="w-4 h-4" />
-                </div>
-                <span className="text-xs font-medium text-slate-600 dark:text-slate-400 text-center leading-tight">{item.label}</span>
-              </div>
+              <Link key={card.label} href={card.href}>
+                <Card className="hover:shadow-md hover:border-primary/30 transition-all cursor-pointer group">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-medium text-muted-foreground">{card.label}</span>
+                      <Icon className={`h-4 w-4 ${card.color}`} />
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-2xl font-bold text-foreground">{card.value}</span>
+                      <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
             );
-          })}
-        </div>
+          })
+        )}
       </div>
 
-      <div className="pb-8">
-        <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
-          <CardContent className="p-5">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">Platform Status</h3>
-            <div className="flex flex-wrap gap-6">
-              {[
-                { label: "Database", key: "database" },
-                { label: "Redis", key: "redis" },
-                { label: "RPC", key: "blockchain" },
-                { label: "WebSocket", key: wsConnected ? "ws" : "" },
-              ].map((svc) => {
-                const ok = svc.key === "ws" ? wsConnected : health[svc.key] === "operational";
-                return (
-                  <div key={svc.label} className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${ok ? "bg-emerald-500" : "bg-red-400"}`} />
-                    <span className="text-xs text-slate-500">{svc.label}</span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recent Transactions */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <CardTitle className="text-base font-semibold">Recent Transactions</CardTitle>
+            <Link href="/transactions" className="text-xs text-muted-foreground hover:text-primary transition-colors">
+              View all →
+            </Link>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {loading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-5 w-20" />
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            ) : recentTxs.length === 0 ? (
+              <div className="text-center py-10">
+                <Send className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No transactions yet</p>
+                <Button size="sm" variant="secondary" className="mt-3" onClick={() => router.push("/transactions")}>
+                  Create Transaction
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {recentTxs.map((tx) => (
+                  <Link key={tx.id} href="/transactions"
+                    className="flex items-center justify-between py-2.5 px-3 -mx-3 rounded-lg hover:bg-accent transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                        <Send className="h-3.5 w-3.5 text-muted-foreground" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate font-mono">
+                          {tx.txHash ? `${tx.txHash.slice(0, 10)}...${tx.txHash.slice(-6)}` : tx.to ? `${tx.to.slice(0, 10)}...${tx.to.slice(-6)}` : tx.id.slice(0, 12)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {tx.chain || "Unknown"} · {new Date(tx.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <StatusBadge status={tx.status} />
+                  </Link>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        {/* Quick Actions + Status */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-base font-semibold">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-3 gap-2">
+                {quickActions.map((action) => {
+                  const Icon = action.icon;
+                  return (
+                    <Link key={action.label} href={action.href}
+                      className="flex flex-col items-center gap-2 p-3 rounded-lg border border-border hover:border-primary/30 hover:bg-accent transition-all group">
+                      <Icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <span className="text-[11px] text-muted-foreground text-center leading-tight">{action.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-base font-semibold">Platform Status</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="space-y-2.5">
+                {[
+                  { label: "Database", key: "database" },
+                  { label: "Redis", key: "redis" },
+                  { label: "RPC Node", key: "blockchain" },
+                  { label: "WebSocket", key: wsConnected ? "ws" : "" },
+                ].map((svc) => {
+                  const ok = svc.key === "ws" ? wsConnected : health[svc.key] === "operational";
+                  return (
+                    <div key={svc.label} className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">{svc.label}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${ok ? "bg-success" : "bg-destructive"}`} />
+                        <span className="text-xs font-medium text-muted-foreground">{ok ? "Operational" : "Down"}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
