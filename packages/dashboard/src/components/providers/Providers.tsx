@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, createContext, useContext } from "react";
+import { ToastProvider } from "@/components/ui/Toast";
 
 interface AuthState {
   token: string | null;
@@ -15,9 +16,6 @@ interface AuthContextType extends AuthState {
   isAuthenticated: boolean;
   ready: boolean;
 }
-
-import { createContext, useContext } from "react";
-import { ToastProvider } from "@/components/ui/Toast";
 
 const AuthContext = createContext<AuthContextType>({
   token: null,
