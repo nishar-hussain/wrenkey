@@ -110,6 +110,12 @@ export default function WalletDetailPage() {
 
   const [activeParamId, setActiveParamId] = useState<string | null>(null);
 
+  const [balances, setBalances] = useState<BalanceEntry[]>([]);
+  const [tokenBalances, setTokenBalances] = useState<any[]>([]);
+  const [gasPrice, setGasPrice] = useState<any>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [securityLoading, setSecurityLoading] = useState<string | null>(null);
+
   const fetchData = useCallback(async () => {
     if (!token) return;
     setLoading(true);
@@ -128,6 +134,34 @@ export default function WalletDetailPage() {
     if (!isAuthenticated) { router.push("/login"); return; }
     fetchData();
   }, [isAuthenticated, fetchData, router]);
+
+  const fetchBalances = async () => {
+    if (!token) return;
+    setBalanceLoading(true);
+    try {
+      const [balRes, tokRes, gasRes] = await Promise.all([
+        apiFetch(`/wallets/${params.id}/balance`, { token: token! }).catch(() => null),
+        apiFetch(`/wallets/${params.id}/tokens`, { token: token! }).catch(() => null),
+        apiFetch(`/wallets/${params.id}/gas-price`, { token: token! }).catch(() => null),
+      ]);
+      if (balRes) setBalances((balRes as any).balances || []);
+      if (tokRes) setTokenBalances((tokRes as any).tokenBalances || []);
+      if (gasRes) setGasPrice(gasRes);
+    } catch (err: any) {
+      addToast(err.message || "Failed to load balances", "error");
+    } finally { setBalanceLoading(false); }
+  };
+
+  const handleSecurityAction = async (action: "freeze" | "unfreeze" | "rotate") => {
+    setSecurityLoading(action);
+    try {
+      await apiFetch(`/wallets/${params.id}/${action}`, { method: "POST", token: token! });
+      addToast(`Wallet ${action}${action === "freeze" ? "d" : "d"} successfully`, "success");
+      fetchData();
+    } catch (err: any) {
+      addToast(err.message || `Failed to ${action} wallet`, "error");
+    } finally { setSecurityLoading(null); }
+  };
 
   const handleRevealSeedPhrase = async () => {
     setSeedLoading(true);
@@ -294,6 +328,7 @@ export default function WalletDetailPage() {
           <h2 className="text-xl font-bold text-slate-700">{wallet.name}</h2>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="secondary" onClick={() => router.push(`/transactions?walletId=${wallet.id}`)}>View Transactions</Button>
           <Button onClick={() => { setShowExport(true); setExportData(null); setExportPassphrase(""); setExportPassConfirm(""); }}>Export</Button>
           <Button variant="secondary" onClick={() => { setEditName(wallet.name); setEditTags(wallet.tags.filter((t) => !t.startsWith("custom-token:")).join(", ")); setShowEdit(true); }}>Edit</Button>
           <Button variant="secondary" onClick={() => setShowDeleteConfirm(true)}>Delete</Button>
@@ -339,6 +374,69 @@ export default function WalletDetailPage() {
             <span className="text-slate-500">Created</span>
             <p className="text-xs mt-0.5">{new Date(wallet.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Balances & Security */}
+      <Card className="mb-6">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Balances & Security</h3>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={fetchBalances} disabled={balanceLoading}>
+                {balanceLoading ? "Loading..." : "Refresh Balances"}
+              </Button>
+              {wallet.status === "FROZEN" ? (
+                <Button size="sm" variant="secondary" onClick={() => handleSecurityAction("unfreeze")} disabled={securityLoading === "unfreeze"}>
+                  {securityLoading === "unfreeze" ? "Unfreezing..." : "Unfreeze"}
+                </Button>
+              ) : (
+                <Button size="sm" variant="secondary" onClick={() => handleSecurityAction("freeze")} disabled={securityLoading === "freeze"}>
+                  {securityLoading === "freeze" ? "Freezing..." : "Freeze"}
+                </Button>
+              )}
+              <Button size="sm" variant="secondary" onClick={() => handleSecurityAction("rotate")} disabled={securityLoading === "rotate"}>
+                {securityLoading === "rotate" ? "Rotating..." : "Rotate Keys"}
+              </Button>
+            </div>
+          </div>
+
+          {balances.length > 0 ? (
+            <div className="space-y-2">
+              {balances.map((b) => (
+                <div key={b.chainId} className="flex items-center justify-between text-sm py-1.5 border-b border-slate-100 last:border-0">
+                  <span className="capitalize text-slate-600">{b.chain}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-xs text-slate-400">{b.address.slice(0, 8)}...{b.address.slice(-4)}</span>
+                    <span className="font-medium">{b.balance} {b.symbol}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400">Click "Refresh Balances" to load on-chain balances.</p>
+          )}
+
+          {tokenBalances.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Token Balances</p>
+              {tokenBalances.map((tb: any, i: number) => (
+                <div key={i} className="text-sm">
+                  <span className="text-slate-500 capitalize">{tb.chain}: </span>
+                  {tb.tokens?.filter((t: any) => parseFloat(t.balance) > 0).map((t: any, j: number) => (
+                    <span key={j} className="ml-2 font-medium">{t.balanceFormatted} {t.token.symbol}</span>
+                  )) || <span className="text-slate-400">No tokens</span>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {gasPrice && (
+            <div className="mt-3 pt-3 border-t border-slate-100 text-sm">
+              <span className="text-slate-400">Gas Price: </span>
+              <span className="font-mono">{gasPrice.standard || "—"} wei (standard)</span>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -13,6 +13,7 @@ import {
   simulateTransaction,
   signMessage,
   deriveAccount,
+  getGasPrice,
 } from "../../utils/enclave.js";
 import { evaluatePolicies, EvaluationContext } from "../policy/engine.js";
 import { getChainById } from "../../services/chain.js";
@@ -70,6 +71,20 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       const chainInfo = await getChainById(targetAccount.chainId);
       const numericValue = parseFloat(value);
+
+      // Resolve gas params from speed preset if explicit values not provided (C6)
+      let resolvedMaxFeePerGas = maxFeePerGas;
+      let resolvedMaxPriorityFeePerGas = maxPriorityFeePerGas;
+      if (speed && !maxFeePerGas) {
+        try {
+          const gasPrices = await getGasPrice(chainInfo.rpcUrl);
+          const speedMap = { slow: gasPrices.slow, standard: gasPrices.standard, fast: gasPrices.fast };
+          resolvedMaxFeePerGas = speedMap[speed];
+          if (!resolvedMaxPriorityFeePerGas) {
+            resolvedMaxPriorityFeePerGas = (BigInt(resolvedMaxFeePerGas) / 2n).toString();
+          }
+        } catch { /* gas price fetch failed — fall back to network defaults */ }
+      }
 
       // Contract Interface ABI decoding
       let decodedFunction: { functionName: string; signature: string; args: Record<string, string> } | null = null;
@@ -144,30 +159,43 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       if (policyResult.requiresConsensus && !isRootUser) {
         const seed = decryptSeedFromStorage(wallet.encryptedSeed);
+
+        const consensusLockId = await acquireNonceLock(targetAccount.address);
+        let consensusNonce: number | undefined;
+        try {
+          consensusNonce = await getNextNonce(targetAccount.address, chainInfo.rpcUrl);
+        } finally {
+          if (consensusLockId) await releaseNonceLock(targetAccount.address, consensusLockId).catch(() => {});
+        }
+
         const tx: ethers.TransactionRequest = {
           to, value: ethers.parseEther(value), chainId: chainInfo.chainId,
+          nonce: consensusNonce,
           gasLimit: gasLimit ? BigInt(gasLimit) : undefined,
-          maxFeePerGas: maxFeePerGas ? BigInt(maxFeePerGas) : undefined,
-          maxPriorityFeePerGas: maxPriorityFeePerGas ? BigInt(maxPriorityFeePerGas) : undefined,
+          maxFeePerGas: resolvedMaxFeePerGas ? BigInt(resolvedMaxFeePerGas) : undefined,
+          maxPriorityFeePerGas: resolvedMaxPriorityFeePerGas ? BigInt(resolvedMaxPriorityFeePerGas) : undefined,
           data: data || undefined,
         };
 
-        const signedTx = await signTransaction(seed, tx);
+        const signedTx = await signTransaction(seed, targetAccount.index, targetAccount.chain.derivationPath, tx);
 
         const transaction = await prisma.transaction.create({
           data: {
             accountId: targetAccount.id, orgId: request.orgId, chain: chainInfo.name,
-            to, value, gasLimit, maxFeePerGas, maxPriorityFeePerGas, data, status: "SIGNED", signedTx, riskScore: risk.score,
+            to, value, nonce: consensusNonce, gasLimit, maxFeePerGas: resolvedMaxFeePerGas, maxPriorityFeePerGas: resolvedMaxPriorityFeePerGas, data, status: "SIGNED", signedTx, riskScore: risk.score,
             sponsored: isSponsored,
           },
         });
+
+        const orgConfig = await prisma.orgConfig.findUnique({ where: { orgId: request.orgId } });
+        const quorumThreshold = (orgConfig?.config as any)?.rootQuorumThreshold || 2;
 
         const approval = await prisma.approvalRequest.create({
           data: {
             orgId: request.orgId,
             transactionId: transaction.id,
             requestedBy: request.userId!,
-            requiredApprovals: 2,
+            requiredApprovals: quorumThreshold,
           },
         });
 
@@ -185,7 +213,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       }
 
       lockId = await acquireNonceLock(targetAccount.address);
-      const lockedAddress = targetAccount.address;
+      lockedAddress = targetAccount.address;
       const nonce = await getNextNonce(targetAccount.address, chainInfo.rpcUrl);
 
       const seed = decryptSeedFromStorage(wallet.encryptedSeed);
@@ -193,17 +221,17 @@ export async function transactionRoutes(app: FastifyInstance) {
         to, value: ethers.parseEther(value), chainId: chainInfo.chainId,
         nonce,
         gasLimit: gasLimit ? BigInt(gasLimit) : undefined,
-        maxFeePerGas: maxFeePerGas ? BigInt(maxFeePerGas) : undefined,
-        maxPriorityFeePerGas: maxPriorityFeePerGas ? BigInt(maxPriorityFeePerGas) : undefined,
+        maxFeePerGas: resolvedMaxFeePerGas ? BigInt(resolvedMaxFeePerGas) : undefined,
+        maxPriorityFeePerGas: resolvedMaxPriorityFeePerGas ? BigInt(resolvedMaxPriorityFeePerGas) : undefined,
         data: data || undefined,
       };
 
-      const signedTx = await signTransaction(seed, tx);
+      const signedTx = await signTransaction(seed, targetAccount.index, targetAccount.chain.derivationPath, tx);
 
       const transaction = await prisma.transaction.create({
         data: {
           accountId: targetAccount.id, orgId: request.orgId, chain: chainInfo.name,
-          to, value, nonce, gasLimit, maxFeePerGas, maxPriorityFeePerGas, data, status: "SIGNED", signedTx, riskScore: risk.score,
+          to, value, nonce, gasLimit, maxFeePerGas: resolvedMaxFeePerGas, maxPriorityFeePerGas: resolvedMaxPriorityFeePerGas, data, status: "SIGNED", signedTx, riskScore: risk.score,
           sponsored: isSponsored,
         },
       });
@@ -388,7 +416,7 @@ export async function transactionRoutes(app: FastifyInstance) {
         data: tx.data || undefined,
       };
 
-      const signedTx = await signTransaction(seed, txData);
+      const signedTx = await signTransaction(seed, account.index, account.chain.derivationPath, txData);
 
       const retryTx = await prisma.transaction.create({
         data: {
@@ -445,7 +473,7 @@ export async function transactionRoutes(app: FastifyInstance) {
         nonce: cancelNonce,
       };
 
-      const signedCancel = await signTransaction(seed, cancelTx);
+      const signedCancel = await signTransaction(seed, account.index, account.chain.derivationPath, cancelTx);
 
       const cancelTransaction = await prisma.transaction.create({
         data: {
@@ -476,6 +504,7 @@ export async function transactionRoutes(app: FastifyInstance) {
 
   app.post("/transactions/:id/speed-up", { preHandler: [authMiddleware] }, async (request, reply) => {
     let lockId: string | null = null;
+    let lockedAddress: string | null = null;
     try {
       const { id } = request.params as { id: string };
       const { gasMultiplier } = request.body as { gasMultiplier?: number };
@@ -493,6 +522,9 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       const seed = decryptSeedFromStorage(wallet.encryptedSeed);
 
+      lockId = await acquireNonceLock(account.address);
+      lockedAddress = account.address;
+
       const currentGas = BigInt(tx.maxFeePerGas || "0");
       const newGas = currentGas * BigInt(Math.floor(multiplier * 100)) / 100n;
 
@@ -509,7 +541,7 @@ export async function transactionRoutes(app: FastifyInstance) {
         data: tx.data || undefined,
       };
 
-      const signedTx = await signTransaction(seed, txData);
+      const signedTx = await signTransaction(seed, account.index, account.chain.derivationPath, txData);
 
       const replaceTx = await prisma.transaction.create({
         data: {
@@ -535,6 +567,8 @@ export async function transactionRoutes(app: FastifyInstance) {
       }
     } catch (err) {
       return sendError(reply, err);
+    } finally {
+      if (lockId && lockedAddress) await releaseNonceLock(lockedAddress, lockId).catch(() => {});
     }
   });
 

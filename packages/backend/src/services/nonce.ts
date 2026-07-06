@@ -60,15 +60,3 @@ export async function getNextNonce(address: string, rpcUrl: string, useDbTrackin
 
   return onChainNonce;
 }
-
-export async function incrementNonceForAccount(address: string, nonce: number): Promise<void> {
-  const redis = getRedis();
-  const key = `account_nonce:${address}`;
-  await redis.set(key, nonce + 1);
-}
-
-export async function getCachedNonce(address: string): Promise<number | null> {
-  const redis = getRedis();
-  const val = await redis.get(`account_nonce:${address}`);
-  return val ? parseInt(val, 10) : null;
-}

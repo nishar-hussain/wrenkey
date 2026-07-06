@@ -5,3 +5,7 @@ export { useTransactions } from "./useTransactions.js";
 export { usePolicies } from "./usePolicies.js";
 export { useAgents } from "./useAgents.js";
 export { useWvcApps } from "./useWvcApps.js";
+export { useSpendingLimits } from "./useSpendingLimits.js";
+export { useApprovalRequests } from "./useApprovalRequests.js";
+export { usePrivateKeys } from "./usePrivateKeys.js";
+export { useChains } from "./useChains.js";

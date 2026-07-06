@@ -17,6 +17,8 @@ import type {
   Chain,
   SpendingLimit,
   ApprovalRequest,
+  PrivateKey,
+  PrivateKeyAddress,
   WvcApp,
   WvcDeployment,
   WvcManifest,
@@ -223,6 +225,10 @@ export class WranKeyClient {
     return this.request("POST", `/wallets/${walletId}/accounts`, { chain });
   }
 
+  async deleteAccount(walletId: string, accountId: string): Promise<void> {
+    await this.request("DELETE", `/wallets/${walletId}/accounts/${accountId}`);
+  }
+
   async listAccounts(walletId: string): Promise<WalletAccount[]> {
     return this.request("GET", `/wallets/${walletId}/accounts`);
   }
@@ -254,7 +260,8 @@ export class WranKeyClient {
 
   async signAndSend(tx: {
     walletId: string; to: string; value: string;
-    chain?: string; gasLimit?: string; maxFeePerGas?: string; data?: string;
+    chain?: string; gasLimit?: string; maxFeePerGas?: string; maxPriorityFeePerGas?: string;
+    data?: string; speed?: "slow" | "standard" | "fast"; sponsored?: boolean;
   }): Promise<{ transactionId: string; txHash: string; status: string }> {
     return this.request("POST", "/transactions/sign", tx);
   }
@@ -263,20 +270,27 @@ export class WranKeyClient {
     return this.request("GET", `/transactions/${id}`);
   }
 
-  async listTransactions(limit = 50, offset = 0): Promise<PaginatedResponse<Transaction>> {
-    return this.request("GET", `/transactions?limit=${limit}&offset=${offset}`);
+  async listTransactions(limit = 50, offset = 0, filters?: { walletId?: string; status?: string; chain?: string; search?: string }): Promise<PaginatedResponse<Transaction>> {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (filters?.walletId) params.set("walletId", filters.walletId);
+    if (filters?.status) params.set("status", filters.status);
+    if (filters?.chain) params.set("chain", filters.chain);
+    if (filters?.search) params.set("search", filters.search);
+    return this.request("GET", `/transactions?${params.toString()}`);
   }
 
-  async getNonce(address: string): Promise<{ address: string; nonce: number }> {
-    return this.request("GET", `/accounts/${address}/nonce`);
+  async getNonce(address: string, chain?: string): Promise<{ address: string; nonce: number; chain: string }> {
+    const qs = chain ? `?chain=${chain}` : "";
+    return this.request("GET", `/accounts/${address}/nonce${qs}`);
   }
 
-  async estimateFee(tx: { to: string; value?: string; data?: string }): Promise<{
+  async estimateFee(tx: { to: string; value?: string; data?: string; chain?: string }): Promise<{
     gasLimit: string;
-    baseFeePerGas: string;
+    gasPrice: string;
     estimatedFee: string;
     estimatedFeeWei: string;
     chain: string;
+    chainId: number;
     currency: string;
   }> {
     return this.request("POST", "/transactions/estimate-fee", tx);
@@ -331,6 +345,37 @@ export class WranKeyClient {
 
   async speedUpTransaction(id: string, gasMultiplier?: number): Promise<{ transactionId: string; txHash: string; status: string }> {
     return this.request("POST", `/transactions/${id}/speed-up`, { gasMultiplier });
+  }
+
+  // ─── Private Keys ──────────────────────────────────
+
+  async createPrivateKey(walletId: string, name: string, chain?: string): Promise<PrivateKey> {
+    return this.request("POST", "/private-keys", { walletId, name, chain });
+  }
+
+  async listPrivateKeys(limit = 50, offset = 0, search?: string): Promise<PaginatedResponse<PrivateKey>> {
+    const qs = search ? `?limit=${limit}&offset=${offset}&search=${encodeURIComponent(search)}` : `?limit=${limit}&offset=${offset}`;
+    return this.request("GET", `/private-keys${qs}`);
+  }
+
+  async getPrivateKey(id: string): Promise<PrivateKey> {
+    return this.request("GET", `/private-keys/${id}`);
+  }
+
+  async exportPrivateKey(id: string): Promise<{ privateKeyId: string; privateKey: string; publicKey: string }> {
+    return this.request("POST", `/private-keys/${id}/export`);
+  }
+
+  async updatePrivateKey(id: string, data: { name?: string; tags?: string[] }): Promise<PrivateKey> {
+    return this.request("PATCH", `/private-keys/${id}`, data);
+  }
+
+  async deletePrivateKey(id: string): Promise<{ message: string }> {
+    return this.request("DELETE", `/private-keys/${id}`);
+  }
+
+  async addPrivateKeyAddress(id: string, chain?: string): Promise<PrivateKeyAddress> {
+    return this.request("POST", `/private-keys/${id}/addresses`, { chain });
   }
 
   // ─── Chains ────────────────────────────────────────

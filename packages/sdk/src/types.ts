@@ -130,8 +130,34 @@ export interface Transaction {
   replacementFor?: string;
   error?: string;
   riskScore?: number;
+  sponsored: boolean;
   createdAt: string;
   confirmedAt?: string;
+}
+
+export interface PrivateKey {
+  id: string;
+  orgId: string;
+  walletId: string;
+  name: string;
+  curve: string;
+  tags: string[];
+  publicKey: string;
+  derivationIndex: number;
+  exported: boolean;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  addresses?: PrivateKeyAddress[];
+}
+
+export interface PrivateKeyAddress {
+  id: string;
+  privateKeyId: string;
+  chainId: string;
+  address: string;
+  createdAt: string;
+  chain?: { name: string; chainId: number };
 }
 
 export interface Policy {

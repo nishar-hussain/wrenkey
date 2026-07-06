@@ -174,12 +174,15 @@ export async function walletRoutes(app: FastifyInstance) {
       if (!wallet) throw new NotFoundError("Wallet");
 
       const accountCount = await prisma.walletAccount.count({ where: { walletId: id } });
-      if (accountCount > 0) {
-        await prisma.$executeRaw`DELETE FROM transactions WHERE account_id IN (SELECT id FROM wallet_accounts WHERE wallet_id = ${id})`;
-      }
-      await prisma.$executeRaw`DELETE FROM spending_limits WHERE wallet_id = ${id}`;
-      await prisma.$executeRaw`DELETE FROM wallet_accounts WHERE wallet_id = ${id}`;
-      await prisma.$executeRaw`DELETE FROM wallets WHERE id = ${id}`;
+      await prisma.$transaction(async (tx) => {
+        if (accountCount > 0) {
+          await tx.$executeRaw`DELETE FROM transactions WHERE account_id IN (SELECT id FROM wallet_accounts WHERE wallet_id = ${id})`;
+        }
+        await tx.spendingLimit.deleteMany({ where: { walletId: id } });
+        await tx.privateKey.deleteMany({ where: { walletId: id } });
+        await tx.walletAccount.deleteMany({ where: { walletId: id } });
+        await tx.wallet.deleteMany({ where: { id, orgId: request.orgId } });
+      });
 
       await createAuditLog(request.orgId, "WALLET_DELETE", { walletId: id, name: wallet.name }, request.userId, request);
       triggerWebhookEvents(request.orgId, "wallet.deleted", { walletId: id });

@@ -44,8 +44,14 @@ export function decryptSeedWithPassphrase(encryptedSeed: string, passphrase: str
   return decrypt(encryptedSeed, normalized);
 }
 
-export function signTransaction(mnemonic: string, tx: ethers.TransactionRequest): Promise<string> {
-  const wallet = ethers.Wallet.fromPhrase(mnemonic);
+export function signTransaction(
+  mnemonic: string,
+  index: number,
+  derivationPath: string,
+  tx: ethers.TransactionRequest
+): Promise<string> {
+  const { privateKey } = deriveAccount(mnemonic, index, derivationPath);
+  const wallet = new ethers.Wallet(privateKey);
   return wallet.signTransaction(tx);
 }
 

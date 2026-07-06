@@ -133,6 +133,16 @@ export async function seedChains() {
       blockExplorerUrl: "https://basescan.org",
       active: true,
     },
+    {
+      name: "arc",
+      chainId: parseInt(process.env.ARC_CHAIN_ID || "1234", 10),
+      rpcUrl: process.env.ARC_RPC_URL || "https://rpc.arc.network",
+      nativeCurrency: "ARC",
+      symbol: "ARC",
+      derivationPath: "m/44'/60'/0'/0",
+      blockExplorerUrl: process.env.ARC_EXPLORER_URL || "",
+      active: true,
+    },
   ];
 
   for (const c of chains) {

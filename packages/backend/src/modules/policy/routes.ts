@@ -80,6 +80,18 @@ export async function policyRoutes(app: FastifyInstance) {
     try {
       const { id } = request.params as { id: string };
       const { active, name, effect, conditions, consensus, priority } = request.body as any;
+
+      if (effect || conditions || consensus) {
+        const validated = PolicyRuleSchema.safeParse({
+          effect: effect ?? "EFFECT_ALLOW",
+          conditions: conditions ?? [],
+          consensus: consensus ?? "ANY",
+        });
+        if (!validated.success) {
+          throw new ValidationError(`Invalid policy: ${validated.error.errors.map((e: any) => e.message).join(", ")}`);
+        }
+      }
+
       const policy = await prisma.policy.updateMany({
         where: { id, orgId: request.orgId },
         data: { active, name, effect, conditions, consensus, priority },

@@ -103,6 +103,18 @@ describe("WranKey SDK", () => {
     expect(typeof client.getWvcAppProof).toBe("function");
     expect(typeof client.startWvcCeremony).toBe("function");
     expect(typeof client.getWvcCeremony).toBe("function");
+
+    // Private key methods exist
+    expect(typeof client.createPrivateKey).toBe("function");
+    expect(typeof client.listPrivateKeys).toBe("function");
+    expect(typeof client.getPrivateKey).toBe("function");
+    expect(typeof client.exportPrivateKey).toBe("function");
+    expect(typeof client.updatePrivateKey).toBe("function");
+    expect(typeof client.deletePrivateKey).toBe("function");
+    expect(typeof client.addPrivateKeyAddress).toBe("function");
+
+    // Wallet deleteAccount method exists
+    expect(typeof client.deleteAccount).toBe("function");
   });
 
   it("should set and clear session token", async () => {
@@ -123,5 +135,9 @@ describe("WranKey SDK", () => {
     expect(reactSdk.usePolicies).toBeDefined();
     expect(reactSdk.useAgents).toBeDefined();
     expect(reactSdk.useWvcApps).toBeDefined();
+    expect(reactSdk.useSpendingLimits).toBeDefined();
+    expect(reactSdk.useApprovalRequests).toBeDefined();
+    expect(reactSdk.usePrivateKeys).toBeDefined();
+    expect(reactSdk.useChains).toBeDefined();
   });
 });

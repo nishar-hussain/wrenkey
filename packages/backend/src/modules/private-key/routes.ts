@@ -27,9 +27,13 @@ export async function privateKeyRoutes(app: FastifyInstance) {
       if (!chainInfo) throw new ValidationError("No active chain found");
 
       const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
-      const count = await prisma.privateKey.count({ where: { walletId } });
-      const fullPath = `${chainInfo.derivationPath}/${count}`;
-      const hdNode = deriveAccount(mnemonic, count, chainInfo.derivationPath);
+      const maxIndex = await prisma.privateKey.aggregate({
+        where: { walletId },
+        _max: { derivationIndex: true },
+      });
+      const index = (maxIndex._max.derivationIndex ?? -1) + 1;
+      const fullPath = `${chainInfo.derivationPath}/${index}`;
+      const hdNode = deriveAccount(mnemonic, index, chainInfo.derivationPath);
       const encryptedPk = encryptSeedForStorage(hdNode.privateKey);
 
       const privateKey = await prisma.privateKey.create({
@@ -39,6 +43,7 @@ export async function privateKeyRoutes(app: FastifyInstance) {
           name,
           encryptedPrivateKey: encryptedPk,
           publicKey: hdNode.address,
+          derivationIndex: index,
           addresses: {
             create: {
               chainId: chainInfo.id,
@@ -121,7 +126,7 @@ export async function privateKeyRoutes(app: FastifyInstance) {
       if (!wallet) throw new NotFoundError("Wallet");
 
       const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
-      const hdNode = deriveAccount(mnemonic, await prisma.privateKey.count({ where: { walletId: pk.walletId, createdAt: { lte: pk.createdAt } } }) - 1, pk.addresses[0]?.chain?.derivationPath || "m/44'/60'/0'/0");
+      const hdNode = deriveAccount(mnemonic, pk.derivationIndex, pk.addresses[0]?.chain?.derivationPath || "m/44'/60'/0'/0");
 
       await prisma.privateKey.update({ where: { id }, data: { exported: true } });
       await createAuditLog(request.orgId, "PRIVATE_KEY_EXPORT", { privateKeyId: id }, request.userId, request);
@@ -186,8 +191,7 @@ export async function privateKeyRoutes(app: FastifyInstance) {
       if (!wallet) throw new NotFoundError("Wallet");
 
       const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
-      const count = await prisma.privateKeyAddress.count({ where: { privateKeyId: id } });
-      const hdNode = deriveAccount(mnemonic, count, chainInfo.derivationPath);
+      const hdNode = deriveAccount(mnemonic, pk.derivationIndex, chainInfo.derivationPath);
 
       const address = await prisma.privateKeyAddress.create({
         data: {

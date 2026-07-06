@@ -181,6 +181,7 @@ model PrivateKey {
   tags                String[] @default([])
   encryptedPrivateKey String   @map("encrypted_private_key")
   publicKey           String   @map("public_key")
+  derivationIndex     Int      @default(0) @map("derivation_index")
   exported            Boolean  @default(false)
   status              String   @default("ACTIVE")
   createdAt           DateTime @default(now()) @map("created_at")
@@ -192,6 +193,7 @@ model PrivateKey {
 
   @@index([orgId])
   @@index([walletId])
+  @@index([publicKey])
   @@map("private_keys")
 }
 
@@ -229,6 +231,9 @@ model SpendingLimit {
   wallet Wallet?      @relation(fields: [walletId], references: [id], onDelete: Cascade)
   chain  Chain?       @relation(fields: [chainId], references: [id])
 
+  @@index([orgId])
+  @@index([walletId])
+  @@index([orgId, active])
   @@map("spending_limits")
 }
 
@@ -246,6 +251,8 @@ model ApprovalRequest {
 
   org Organization @relation(fields: [orgId], references: [id])
 
+  @@index([orgId, status])
+  @@index([transactionId])
   @@map("approval_requests")
 }
 
