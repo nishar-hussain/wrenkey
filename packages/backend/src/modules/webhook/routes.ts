@@ -222,12 +222,66 @@ export async function webhookRoutes(app: FastifyInstance) {
     try {
       const { id } = request.params as { id: string };
       const { active, url, events } = request.body as any;
+      if (events && Array.isArray(events)) {
+        const invalid = events.filter((e: string) => !WEBHOOK_EVENTS.includes(e));
+        if (invalid.length > 0) throw new ValidationError(`Invalid event types: ${invalid.join(", ")}`);
+      }
       const wh = await prisma.webhook.updateMany({
         where: { id, orgId: request.orgId }, data: { active, url, events },
       });
       if (wh.count === 0) throw new NotFoundError("Webhook not found");
       const updated = await prisma.webhook.findUnique({ where: { id } });
       return sendSuccess(reply, updated);
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // GET /webhooks/event-types — list all available event types
+  app.get("/webhooks/event-types", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      return sendSuccess(reply, { events: WEBHOOK_EVENTS });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // POST /webhooks/:id/test — send a test event to verify the endpoint is reachable
+  app.post("/webhooks/:id/test", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const wh = await prisma.webhook.findFirst({ where: { id, orgId: request.orgId } });
+      if (!wh) throw new NotFoundError("Webhook");
+      if (!wh.active) throw new ValidationError("Webhook is not active");
+
+      const testPayload = { event: "test", data: { message: "Test from WranKey", timestamp: new Date().toISOString() }, timestamp: new Date().toISOString() };
+      const result = await deliverWebhook({ id: "test", webhookId: wh.id, event: "test", payload: testPayload }, { url: wh.url, hmacSecret: wh.hmacSecret }, 0);
+      return sendSuccess(reply, { delivered: result, message: result ? "Test event delivered successfully" : "Test event delivery failed — check the endpoint URL" });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // POST /webhooks/:id/deliveries/:deliveryId/retry — manually retry a failed delivery
+  app.post("/webhooks/:id/deliveries/:deliveryId/retry", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id, deliveryId } = request.params as { id: string; deliveryId: string };
+      const wh = await prisma.webhook.findFirst({ where: { id, orgId: request.orgId } });
+      if (!wh) throw new NotFoundError("Webhook");
+
+      const delivery = await prisma.webhookDelivery.findFirst({ where: { id: deliveryId, webhookId: id } });
+      if (!delivery) throw new NotFoundError("Delivery");
+      if (delivery.status === "DELIVERED") throw new ValidationError("Delivery already succeeded");
+
+      await prisma.webhookDelivery.update({
+        where: { id: deliveryId },
+        data: { status: "PENDING", nextAttemptAt: new Date(), lastError: null },
+      });
+
+      // Fire immediate retry
+      deliverWebhook({ id: delivery.id, webhookId: wh.id, event: delivery.event, payload: delivery.payload }, { url: wh.url, hmacSecret: wh.hmacSecret }, delivery.attemptCount).catch(() => {});
+
+      return sendSuccess(reply, { message: "Delivery re-queued for retry" });
     } catch (err) {
       return sendError(reply, err);
     }

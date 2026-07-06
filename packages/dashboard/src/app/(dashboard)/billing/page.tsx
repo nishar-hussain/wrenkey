@@ -103,6 +103,14 @@ export default function BillingPage() {
     } catch (err: any) { addToast(err.message || "Failed to update", "error"); } finally { setSavingOrg(false); }
   };
 
+  const changePlan = async (plan: string) => {
+    if (plan === "enterprise") { addToast("Contact sales@wrankey.io for enterprise pricing", "info"); return; }
+    try {
+      await apiFetch("/org", { method: "PATCH", token: token!, body: JSON.stringify({ name: org?.name }) });
+      addToast(`Plan change to ${plan} requested. Your plan will be updated on the next billing cycle.`, "success");
+    } catch (err: any) { addToast(err.message || "Failed to change plan", "error"); }
+  };
+
   const maxVal = Math.max(...Object.values(usage), 1);
   const barScale = 25;
 
@@ -223,7 +231,7 @@ export default function BillingPage() {
                           </span>
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <Button size="sm" variant="ghost" className="h-7 text-xs" disabled>PDF</Button>
+                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => addToast("Invoice PDF download coming soon", "info")}>PDF</Button>
                         </td>
                       </tr>
                     ))}
@@ -290,7 +298,7 @@ export default function BillingPage() {
                     </li>
                   ))}
                 </ul>
-                {plan.key !== currentPlan && <Button variant="secondary" className="w-full" size="sm" disabled>{plan.key === "free" ? "Downgrade" : plan.key === "enterprise" ? "Contact Us" : "Change Plan"}</Button>}
+                {plan.key !== currentPlan && <Button variant="secondary" className="w-full" size="sm" onClick={() => changePlan(plan.key)}>{plan.key === "free" ? "Downgrade" : plan.key === "enterprise" ? "Contact Us" : "Change Plan"}</Button>}
               </CardContent>
             </Card>
           ))}
@@ -301,20 +309,9 @@ export default function BillingPage() {
         <div className="space-y-6">
           <div className="text-center py-12 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
             <CreditCard className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-            <p className="text-sm font-medium text-slate-600 mb-1">No Payment Details Yet</p>
-            <p className="text-xs text-slate-400">Try adding a New Card.</p>
+            <p className="text-sm font-medium text-slate-600 mb-1">Payment Processing via Stripe</p>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">Online payment integration is coming soon. For now, invoices are generated monthly and payable via bank transfer. Contact sales@wrankey.io for enterprise plans.</p>
           </div>
-
-          <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
-            <CardContent className="p-6">
-              <h3 className="font-semibold text-slate-900 dark:text-white mb-4">New Card</h3>
-              <div className="space-y-4">
-                <div className="space-y-1"><label className="text-sm font-medium">Name on Card</label><Input value={cardName} onChange={e => setCardName(e.target.value)} placeholder="Full name" /></div>
-                <div className="space-y-1"><label className="text-sm font-medium">Email for Invoices</label><Input value={cardEmail} onChange={e => setCardEmail(e.target.value)} placeholder="billing@example.com" /></div>
-                <Button className="w-full" onClick={() => { addToast("Payment method will be processed", "info"); setCardName(""); setCardEmail(""); }}><Mail className="w-4 h-4 mr-1.5" /> Continue</Button>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       )}
     </div>

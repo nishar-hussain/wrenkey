@@ -72,7 +72,3 @@ export function notifyOrg(orgId: string, event: string, data: unknown) {
 export function notifyTransactionStatus(orgId: string, transactionId: string, status: string, txHash?: string) {
   notifyOrg(orgId, "transaction.status", { transactionId, status, txHash });
 }
-
-export function notifyWalletEvent(orgId: string, event: string, data: unknown) {
-  notifyOrg(orgId, event, data);
-}

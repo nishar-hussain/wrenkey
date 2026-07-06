@@ -49,7 +49,7 @@ export function Header() {
         {/* Console CTA Button */}
         <div className="flex items-center space-x-4">
           <a
-            href="/dashboard"
+            href="http://localhost:3000"
             className="inline-flex items-center justify-center h-10 px-5 text-sm font-semibold text-black bg-white hover:bg-white/90 rounded-lg shadow-sm hover:shadow transition-all duration-200 active:scale-[0.98]"
           >
             Launch Console

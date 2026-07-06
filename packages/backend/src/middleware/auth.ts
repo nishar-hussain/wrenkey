@@ -140,6 +140,13 @@ export async function authMiddleware(request: FastifyRequest, _reply: FastifyRep
     };
     request.orgId = apiKey.orgId;
     request.permissions = apiKey.permissions;
+
+    // Fire agent.login webhook if this API key belongs to an agent (fire-and-forget, non-blocking)
+    if (apiKey.name?.startsWith("Agent Key:")) {
+      import("../modules/webhook/routes.js").then(({ triggerWebhookEvents }) => {
+        triggerWebhookEvents(apiKey.orgId, "agent.login", { apiKeyId: apiKey.id, keyPrefix: apiKey.keyPrefix }).catch(() => {});
+      }).catch(() => {});
+    }
     return;
   }
 

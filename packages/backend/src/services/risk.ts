@@ -189,6 +189,8 @@ export function invalidateScamCache(): void {
   } catch {}
 }
 
+import { notifySpendingLimitExceeded } from "./notifications.js";
+
 export async function validateSpendingLimits(
   orgId: string,
   walletId: string,
@@ -222,6 +224,7 @@ export async function validateSpendingLimits(
     if (limit.maxPerTx) {
       const maxPerTx = parseFloat(limit.maxPerTx);
       if (value > maxPerTx) {
+        notifySpendingLimitExceeded(orgId, limit.name, "Per-transaction", String(value), limit.maxPerTx).catch(() => {});
         return { allowed: false, reason: `Transaction value ${value} exceeds max-per-tx ${maxPerTx} for "${limit.name}"` };
       }
     }
@@ -230,6 +233,7 @@ export async function validateSpendingLimits(
       const dailyTotal = await getDailyTotal(walletId);
       const maxDaily = parseFloat(limit.maxDaily);
       if (dailyTotal + value > maxDaily) {
+        notifySpendingLimitExceeded(orgId, limit.name, "Daily", String(dailyTotal + value), limit.maxDaily).catch(() => {});
         return { allowed: false, reason: `Daily total would exceed ${maxDaily} for "${limit.name}"` };
       }
     }
@@ -238,6 +242,7 @@ export async function validateSpendingLimits(
       const monthlyTotal = await getMonthlyTotal(walletId);
       const maxMonthly = parseFloat(limit.maxMonthly);
       if (monthlyTotal + value > maxMonthly) {
+        notifySpendingLimitExceeded(orgId, limit.name, "Monthly", String(monthlyTotal + value), limit.maxMonthly).catch(() => {});
         return { allowed: false, reason: `Monthly total would exceed ${maxMonthly} for "${limit.name}"` };
       }
     }

@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import prisma from "../../db.js";
-import { authMiddleware } from "../../middleware/auth.js";
+import { authMiddleware, adminMiddleware } from "../../middleware/auth.js";
 import { sendSuccess, sendError, ValidationError, NotFoundError, ForbiddenError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
 import { parsePagination } from "../../utils/pagination.js";
@@ -166,9 +166,10 @@ export async function subOrgRoutes(app: FastifyInstance) {
 
       let rootUser = await prisma.user.findFirst({ where: { orgId: id, role: "ORG_ADMIN" } });
       if (!rootUser) {
-        rootUser = await prisma.user.create({
-          data: { orgId: id, email: `admin@org-${id.slice(0, 6)}.local`, role: "ORG_ADMIN", name: "Sub-Org Admin" },
-        });
+        rootUser = await prisma.user.findFirst({ where: { orgId: id } });
+      }
+      if (!rootUser) {
+        throw new ValidationError("Sub-org has no users — cannot impersonate. Invite a user to the sub-org first.");
       }
 
       const token = signToken({ sub: rootUser.id, orgId: id, role: "ORG_ADMIN" });
@@ -189,7 +190,7 @@ export async function subOrgRoutes(app: FastifyInstance) {
   });
 
   // Rename sub-org
-  app.patch("/sub-orgs/:id", { preHandler: [authMiddleware] }, async (request, reply) => {
+  app.patch("/sub-orgs/:id", { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const { name } = request.body as { name?: string };
@@ -202,7 +203,7 @@ export async function subOrgRoutes(app: FastifyInstance) {
   });
 
   // Delete sub-org
-  app.delete("/sub-orgs/:id", { preHandler: [authMiddleware] }, async (request, reply) => {
+  app.delete("/sub-orgs/:id", { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       await verifyParentOrg(request, id);

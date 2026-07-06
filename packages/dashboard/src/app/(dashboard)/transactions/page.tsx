@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, API_BASE } from "@/lib/api";
+import { useWebSocket } from "@/lib/websocket";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table } from "@/components/ui/Table";
@@ -120,6 +121,10 @@ export default function TransactionsPage() {
     const interval = setInterval(fetchData, 15000);
     return () => clearInterval(interval);
   }, [isAuthenticated, fetchData, router]);
+
+  useWebSocket(API_BASE, token, {
+    onTransactionStatus: () => { fetchData(); },
+  });
 
   if (!isAuthenticated) return null;
 

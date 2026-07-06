@@ -40,7 +40,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run db:generate
-      - run: npm run lint || true
+      - run: npm run lint
       - run: npx tsc --noEmit -p packages/backend/tsconfig.json
       - run: npx tsc --noEmit -p packages/dashboard/tsconfig.json
       - run: npx tsc --noEmit -p packages/sdk/tsconfig.json
@@ -61,5 +61,7 @@ jobs:
       - run: npm run test --workspace=packages/sdk
       - run: npm run test --workspace=packages/dashboard
       - run: npm run test --workspace=packages/wvc-verify
+      - run: npm run build --workspace=packages/sdk
       - run: npm run build --workspace=packages/wvc-verify
       - run: npm run build --workspace=packages/cli
+      - run: npm run build --workspace=packages/dashboard

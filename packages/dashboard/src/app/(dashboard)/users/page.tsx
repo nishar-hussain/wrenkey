@@ -35,6 +35,10 @@ export default function UsersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", role: "DEVELOPER" });
   const [createLoading, setCreateLoading] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [editUser, setEditUser] = useState<User | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", role: "DEVELOPER", tags: "" });
+  const [editLoading, setEditLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!token) return;
@@ -80,6 +84,33 @@ export default function UsersPage() {
     }
   };
 
+  const openEdit = (u: User) => {
+    setEditUser(u);
+    setEditForm({ name: u.name || "", role: u.role, tags: u.tags.join(", ") });
+    setShowEdit(true);
+  };
+
+  const updateUser = async () => {
+    if (!editUser) return;
+    setEditLoading(true);
+    try {
+      await apiFetch(`/users/${editUser.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: editForm.name,
+          role: editForm.role,
+          tags: editForm.tags ? editForm.tags.split(",").map((s) => s.trim()) : [],
+        }),
+        token: token!,
+      });
+      addToast("User updated", "success");
+      setShowEdit(false);
+      fetchData();
+    } catch (err: any) {
+      addToast(err.message || "Failed to update user", "error");
+    } finally { setEditLoading(false); }
+  };
+
   if (!isAuthenticated) return null;
 
   const columns = [
@@ -90,7 +121,12 @@ export default function UsersPage() {
     { key: "createdAt", header: "Created", render: (u: User) => new Date(u.createdAt).toLocaleDateString() },
     {
       key: "actions", header: "",
-      render: (u: User) => <Button variant="destructive" size="sm" onClick={() => deleteUser(u.id)}>Delete</Button>,
+      render: (u: User) => (
+        <div className="flex gap-2">
+          <Button variant="secondary" size="sm" onClick={() => openEdit(u)}>Edit</Button>
+          <Button variant="destructive" size="sm" onClick={() => deleteUser(u.id)}>Delete</Button>
+        </div>
+      ),
     },
   ];
 
@@ -136,6 +172,28 @@ export default function UsersPage() {
             </select>
           </div>
           <Button onClick={createUser} disabled={createLoading} className="w-full">Add User</Button>
+        </div>
+      </Modal>
+
+      <Modal open={showEdit} onClose={() => setShowEdit(false)} title="Edit User">
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Name</label>
+            <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
+            <select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm">
+              <option value="DEVELOPER">Developer</option>
+              <option value="ORG_ADMIN">Org Admin</option>
+              <option value="AUDITOR">Auditor</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Tags (comma-separated)</label>
+            <Input value={editForm.tags} onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })} />
+          </div>
+          <Button onClick={updateUser} disabled={editLoading} className="w-full">{editLoading ? "Saving..." : "Save Changes"}</Button>
         </div>
       </Modal>
     </div>

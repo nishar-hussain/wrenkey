@@ -17,11 +17,3 @@ export function signToken(payload: Omit<JwtPayload, "type"> & { type?: string })
 export function verifyToken(token: string): JwtPayload {
   return jwt.verify(token, config.jwtSecret) as JwtPayload;
 }
-
-export function signApiKeyToken(orgId: string, keyId: string, _permissions: string[]): string {
-  return jwt.sign(
-    { sub: keyId, orgId, role: "API_KEY", type: "api_key" },
-    config.jwtSecret,
-    { expiresIn: config.apiKeyExpiryDays * 86400 }
-  );
-}

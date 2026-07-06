@@ -95,6 +95,8 @@ export async function agentRoutes(app: FastifyInstance) {
 
       await prisma.agent.update({ where: { id }, data: { status: "REVOKED" } });
       if (agent.apiKeyId) await prisma.apiKey.deleteMany({ where: { id: agent.apiKeyId } });
+      // Kill all active sessions for the agent's user so revoked agents can't stay authenticated
+      await prisma.session.deleteMany({ where: { userId: agent.userId, expiresAt: { gt: new Date() } } });
 
       await createAuditLog(request.orgId, "AGENT_DELETE", { agentId: id }, request.userId, request);
       triggerWebhookEvents(request.orgId, "agent.revoked", { agentId: id });

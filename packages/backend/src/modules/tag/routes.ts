@@ -68,36 +68,18 @@ export async function tagRoutes(app: FastifyInstance) {
 
       const tag = await prisma.tag.findFirst({ where: { id, orgId: request.orgId } });
       if (!tag) throw new NotFoundError("Tag");
-
       if (!name || !name.trim()) throw new ValidationError("New name required");
       const oldName = tag.name;
       const newName = name.trim();
 
-      await prisma.tag.update({ where: { id }, data: { name: newName } });
-
-      if (tag.type === "user") {
-        const users = await prisma.user.findMany({
-          where: { orgId: request.orgId, tags: { has: oldName } },
-          select: { id: true, tags: true },
-        });
-        for (const u of users) {
-          await prisma.user.update({
-            where: { id: u.id },
-            data: { tags: u.tags.map((t: string) => t === oldName ? newName : t) },
-          });
+      await prisma.$transaction(async (tx) => {
+        await tx.tag.update({ where: { id }, data: { name: newName } });
+        if (tag.type === "user") {
+          await tx.$executeRaw`UPDATE users SET tags = array_replace(tags, ${oldName}, ${newName}) WHERE org_id = ${request.orgId} AND ${oldName} = ANY(tags)`;
+        } else {
+          await tx.$executeRaw`UPDATE wallets SET tags = array_replace(tags, ${oldName}, ${newName}) WHERE org_id = ${request.orgId} AND ${oldName} = ANY(tags)`;
         }
-      } else {
-        const wallets = await prisma.wallet.findMany({
-          where: { orgId: request.orgId, tags: { has: oldName } },
-          select: { id: true, tags: true },
-        });
-        for (const w of wallets) {
-          await prisma.wallet.update({
-            where: { id: w.id },
-            data: { tags: w.tags.map((t: string) => t === oldName ? newName : t) },
-          });
-        }
-      }
+      });
 
       await createAuditLog(request.orgId, "TAG_RENAME", { tagId: id, oldName, newName, type: tag.type }, request.userId, request);
       return sendSuccess(reply, { message: "Tag renamed", oldName, newName });
@@ -112,31 +94,14 @@ export async function tagRoutes(app: FastifyInstance) {
       const tag = await prisma.tag.findFirst({ where: { id, orgId: request.orgId } });
       if (!tag) throw new NotFoundError("Tag");
 
-      if (tag.type === "user") {
-        const users = await prisma.user.findMany({
-          where: { orgId: request.orgId, tags: { has: tag.name } },
-          select: { id: true, tags: true },
-        });
-        for (const u of users) {
-          await prisma.user.update({
-            where: { id: u.id },
-            data: { tags: u.tags.filter((t: string) => t !== tag.name) },
-          });
+      await prisma.$transaction(async (tx) => {
+        if (tag.type === "user") {
+          await tx.$executeRaw`UPDATE users SET tags = array_remove(tags, ${tag.name}) WHERE org_id = ${request.orgId} AND ${tag.name} = ANY(tags)`;
+        } else {
+          await tx.$executeRaw`UPDATE wallets SET tags = array_remove(tags, ${tag.name}) WHERE org_id = ${request.orgId} AND ${tag.name} = ANY(tags)`;
         }
-      } else {
-        const wallets = await prisma.wallet.findMany({
-          where: { orgId: request.orgId, tags: { has: tag.name } },
-          select: { id: true, tags: true },
-        });
-        for (const w of wallets) {
-          await prisma.wallet.update({
-            where: { id: w.id },
-            data: { tags: w.tags.filter((t: string) => t !== tag.name) },
-          });
-        }
-      }
-
-      await prisma.tag.delete({ where: { id } });
+        await tx.tag.delete({ where: { id } });
+      });
       await createAuditLog(request.orgId, "TAG_DELETE", { tagId: id, name: tag.name, type: tag.type }, request.userId, request);
       return sendSuccess(reply, { message: "Tag deleted" });
     } catch (err) {

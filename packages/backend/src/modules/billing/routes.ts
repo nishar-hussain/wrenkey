@@ -51,12 +51,14 @@ export async function billingRoutes(app: FastifyInstance) {
       const start = new Date(y, m, 1);
       const end = new Date(y, m + 1, 1);
 
-      const [wallets, txs, agents, users, webhooks] = await Promise.all([
+      const [wallets, txs, agents, users, webhooks, subOrgs, privateKeys] = await Promise.all([
         prisma.wallet.count({ where: { orgId: request.orgId } }),
         prisma.transaction.count({ where: { orgId: request.orgId } }),
         prisma.agent.count({ where: { orgId: request.orgId } }),
         prisma.user.count({ where: { orgId: request.orgId } }),
         prisma.webhook.count({ where: { orgId: request.orgId } }),
+        prisma.organization.count({ where: { parentOrgId: request.orgId } }),
+        prisma.privateKey.count({ where: { orgId: request.orgId } }),
       ]);
 
       const periodTxs = await prisma.transaction.count({
@@ -72,9 +74,9 @@ export async function billingRoutes(app: FastifyInstance) {
           Signatures: periodTxs,
           Activities: periodAudit,
           Wallets: wallets,
-          "Sub-orgs": 0,
-          "Private Keys": wallets,
-          "Private Keys (in/out)": periodTxs,
+          "Sub-orgs": subOrgs,
+          "Private Keys": privateKeys,
+          "Transactions (in/out)": periodTxs,
         },
       });
     } catch (err) {

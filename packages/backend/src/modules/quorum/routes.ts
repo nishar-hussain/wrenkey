@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import prisma from "../../db.js";
-import { authMiddleware } from "../../middleware/auth.js";
+import { authMiddleware, adminMiddleware } from "../../middleware/auth.js";
 import { sendSuccess, sendError, ValidationError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
 
@@ -52,7 +52,7 @@ export async function quorumRoutes(app: FastifyInstance) {
   });
 
   // PUT /quorum — update quorum members and threshold
-  app.put("/quorum", { preHandler: [authMiddleware] }, async (request, reply) => {
+  app.put("/quorum", { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
     try {
       const body = request.body as Record<string, any> || {};
       const memberIds: string[] = body.memberIds || [];

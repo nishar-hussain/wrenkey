@@ -38,6 +38,7 @@ export default function ActivityLogsPage() {
   const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState("");
+  const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
 
   const fetchData = useCallback(async () => {
     if (!token) return;
@@ -50,7 +51,15 @@ export default function ActivityLogsPage() {
     } catch { addToast("Failed to load data", "error"); } finally { setLoading(false); }
   }, [token, limit, offset]);
 
-  useEffect(() => { if (!isAuthenticated) { router.push("/login"); return; } fetchData(); }, [isAuthenticated, fetchData, router]);
+  const fetchPending = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res: any = await apiFetch(`/approval-requests?limit=50&offset=0`, { token });
+      setPendingApprovals((res.data || []).filter((a: any) => a.status === "PENDING"));
+    } catch { /* non-critical */ }
+  }, [token]);
+
+  useEffect(() => { if (!isAuthenticated) { router.push("/login"); return; } fetchData(); fetchPending(); }, [isAuthenticated, fetchData, fetchPending, router]);
 
   if (!isAuthenticated) return null;
 
@@ -68,7 +77,7 @@ export default function ActivityLogsPage() {
     { key: "denials", header: "Denials", render: (a: ActivityItem) => <span className="text-sm text-slate-500">{a.denials}</span> },
     { key: "createdAt", header: "Created", render: (a: ActivityItem) => <span className="text-xs text-slate-500 whitespace-nowrap">{new Date(a.createdAt).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit", hour: "numeric", minute: "2-digit" })}</span> },
     { key: "updatedAt", header: "Updated", render: (a: ActivityItem) => <span className="text-xs text-slate-500 whitespace-nowrap">{new Date(a.updatedAt).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit", hour: "numeric", minute: "2-digit" })}</span> },
-    { key: "action", header: "Your Action", render: () => <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><CheckCircle className="w-3 h-3" />Approved</span> },
+    { key: "action", header: "Action", render: (a: ActivityItem) => <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">{a.action || a.type}</span> },
     { key: "status", header: "Status", render: (a: ActivityItem) => (
       <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${a.status === "Completed" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-amber-50 text-amber-700 border-amber-100"}`}>
         <span className={`w-1.5 h-1.5 rounded-full ${a.status === "Completed" ? "bg-emerald-500" : "bg-amber-500"}`} />{a.status}
@@ -94,15 +103,35 @@ export default function ActivityLogsPage() {
       </div>
 
       {activeTab === "pending" && (
-        <Card className="border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <Clock className="w-12 h-12 text-slate-300 mb-4" />
-            <h2 className="text-lg font-semibold text-slate-600 mb-2">Pending Activities</h2>
-            <p className="text-sm text-slate-500 mb-1">You&apos;re All Caught Up</p>
-            <p className="text-xs text-slate-400 mb-4">View your previous activities in History.</p>
-            <Button variant="secondary" size="sm" onClick={() => setActiveTab("history")}>View History <ChevronRight className="w-3.5 h-3.5 ml-1" /></Button>
-          </CardContent>
-        </Card>
+        pendingApprovals.length > 0 ? (
+          <Card>
+            <CardContent className="p-0">
+              <Table
+                columns={[
+                  { key: "id", header: "ID", render: (a: any) => <span className="font-mono text-[11px] text-slate-500">{a.id.slice(0, 8)}…</span> },
+                  { key: "transactionId", header: "Transaction", render: (a: any) => <span className="font-mono text-[11px] text-slate-500">{a.transactionId?.slice(0, 8) ?? "—"}…</span> },
+                  { key: "requiredApprovals", header: "Required", render: (a: any) => a.requiredApprovals },
+                  { key: "approvedBy", header: "Approved By", render: (a: any) => `${a.approvedBy?.length || 0}/${a.requiredApprovals}` },
+                  { key: "createdAt", header: "Created", render: (a: any) => new Date(a.createdAt).toLocaleDateString() },
+                  { key: "actions", header: "", render: (a: any) => <Button size="sm" variant="secondary" onClick={() => router.push("/approvals")}>Review</Button> },
+                ]}
+                data={pendingApprovals}
+                loading={false}
+                emptyMessage="No pending approvals."
+              />
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+              <Clock className="w-12 h-12 text-slate-300 mb-4" />
+              <h2 className="text-lg font-semibold text-slate-600 mb-2">Pending Activities</h2>
+              <p className="text-sm text-slate-500 mb-1">You&apos;re All Caught Up</p>
+              <p className="text-xs text-slate-400 mb-4">No pending approvals. View your previous activities in History.</p>
+              <Button variant="secondary" size="sm" onClick={() => setActiveTab("history")}>View History <ChevronRight className="w-3.5 h-3.5 ml-1" /></Button>
+            </CardContent>
+          </Card>
+        )
       )}
 
       {activeTab === "history" && (

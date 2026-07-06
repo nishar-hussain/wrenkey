@@ -8,21 +8,36 @@ import { useAuth } from "@/components/providers/Providers";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Building2, Settings, UsersRound, Tag, Shield, Activity, CreditCard, Webhook, Wallet, Wrench, Layers, Cloud, Plus, Minus,
-  Menu, X, FileCode,
+  Menu, X, FileCode, Send, Key, Bot, CheckCircle, BarChart3, Lock, ScrollText, DollarSign,
 } from "lucide-react";
 
 const mainNav = [
   { href: "/", label: "Home", icon: LayoutDashboard },
+  { href: "/wallets", label: "Wallets", icon: Wallet },
+  { href: "/transactions", label: "Transactions", icon: Send },
   { href: "/company-wallets", label: "Company Wallets", icon: Building2 },
+];
+
+const walletChildren = [
+  { href: "/spending-limits", label: "Spending Limits", icon: DollarSign },
+  { href: "/private-keys", label: "Private Keys", icon: Lock },
+  { href: "/approvals", label: "Approvals", icon: CheckCircle },
+];
+
+const developerChildren = [
+  { href: "/agents", label: "Agents", icon: Bot },
+  { href: "/api-keys", label: "API Keys", icon: Key },
+  { href: "/contract-interfaces", label: "Contract Interfaces", icon: FileCode },
 ];
 
 const orgSettingsChildren = [
   { href: "/team", label: "Team", icon: UsersRound },
   { href: "/tags", label: "Tags", icon: Tag },
   { href: "/policies", label: "Policies", icon: Shield },
-  { href: "/contract-interfaces", label: "Contract Interfaces", icon: FileCode },
   { href: "/activity-logs", label: "Activity Log", icon: Activity },
-  { href: "/billing", label: "Billing & Usage", icon: CreditCard },
+  { href: "/audit-logs", label: "Audit Logs", icon: ScrollText },
+  { href: "/billing", label: "Billing", icon: CreditCard },
+  { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/webhooks", label: "Webhooks", icon: Webhook },
 ];
 
@@ -37,6 +52,8 @@ export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [orgOpen, setOrgOpen] = useState(false);
   const [embeddedOpen, setEmbeddedOpen] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
+  const [developerOpen, setDeveloperOpen] = useState(false);
 
   if (!isAuthenticated) return null;
 
@@ -73,6 +90,12 @@ export function Sidebar() {
       <div className="flex-1 overflow-y-auto py-4 px-3">
         <div className="space-y-0.5">
           {mainNav.map(item => <NavItem key={item.href} {...item} />)}
+
+          <SectionHeader label="Wallet & Security" icon={Lock} open={walletOpen} onClick={() => setWalletOpen(!walletOpen)} />
+          {walletOpen && walletChildren.map(item => <NavItem key={item.href} {...item} indent />)}
+
+          <SectionHeader label="Developer" icon={Bot} open={developerOpen} onClick={() => setDeveloperOpen(!developerOpen)} />
+          {developerOpen && developerChildren.map(item => <NavItem key={item.href} {...item} indent />)}
 
           <SectionHeader label="Organization Settings" icon={Settings} open={orgOpen} onClick={() => setOrgOpen(!orgOpen)} />
           {orgOpen && orgSettingsChildren.map(item => <NavItem key={item.href} {...item} indent />)}

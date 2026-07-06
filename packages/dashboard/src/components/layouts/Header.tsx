@@ -109,6 +109,10 @@ export function Header() {
     else document.documentElement.classList.remove("dark");
   }, []);
 
+  useEffect(() => {
+    setIsImpersonating(!!localStorage.getItem("wrankey_parent_token"));
+  }, [pathname]);
+
   const toggleDarkMode = () => {
     const next = !darkMode;
     setDarkMode(next);
