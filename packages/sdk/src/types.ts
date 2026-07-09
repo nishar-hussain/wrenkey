@@ -68,11 +68,6 @@ export interface WalletAccount {
   createdAt: string;
 }
 
-export interface WalletBalanceSnapshot {
-  balance: string;
-  snapshotAt: string;
-}
-
 export interface Chain {
   id: string;
   name: string;

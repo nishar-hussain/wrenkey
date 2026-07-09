@@ -122,10 +122,9 @@ model Wallet {
 
   org            Organization    @relation(fields: [orgId], references: [id])
   user           User?           @relation(fields: [userId], references: [id])
-  accounts        WalletAccount[]
-  privateKeys     PrivateKey[]
-  spendingLimits  SpendingLimit[]
-  balanceSnapshots WalletBalanceSnapshot[]
+  accounts       WalletAccount[]
+  privateKeys    PrivateKey[]
+  spendingLimits SpendingLimit[]
 
   @@index([orgId])
   @@index([userId])
@@ -150,7 +149,6 @@ model Chain {
   accounts            WalletAccount[]
   spendingLimits      SpendingLimit[]
   privateKeyAddresses PrivateKeyAddress[]
-  balanceSnapshots    WalletBalanceSnapshot[]
 
   @@map("chains")
 }
@@ -258,22 +256,6 @@ model ApprovalRequest {
   @@map("approval_requests")
 }
 
-model WalletBalanceSnapshot {
-  id        String   @id @default(uuid())
-  walletId  String   @map("wallet_id")
-  chainId   String   @map("chain_id")
-  balance   String
-  snapshotAt DateTime @default(now()) @map("snapshot_at")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  chain  Chain  @relation(fields: [chainId], references: [id])
-
-  @@index([walletId, chainId, snapshotAt(sort: Desc)])
-  @@index([snapshotAt])
-  @@map("wallet_balance_snapshots")
-}
-
 model Transaction {
   id                   String    @id @default(uuid())
   accountId            String    @map("account_id")
@@ -293,7 +275,6 @@ model Transaction {
   error                String?
   riskScore            Int?      @map("risk_score")
   sponsored            Boolean   @default(false)
-  searchDocument       Unsupported("tsvector")?
   createdAt            DateTime  @default(now()) @map("created_at")
   confirmedAt          DateTime? @map("confirmed_at")
 

@@ -16,7 +16,7 @@ import {
   getGasPrice,
 } from "../../utils/enclave.js";
 import { evaluatePolicies, EvaluationContext } from "../policy/engine.js";
-import { getChainById, getChainByName } from "../../services/chain.js";
+import { getChainById } from "../../services/chain.js";
 import { acquireNonceLock, releaseNonceLock, getNextNonce } from "../../services/nonce.js";
 import { assessTransactionRisk, validateSpendingLimits } from "../../services/risk.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
@@ -103,102 +103,7 @@ export async function transactionRoutes(app: FastifyInstance) {
               if (decoded.fragment && "inputs" in decoded.fragment) {
                 for (let i = 0; i < decoded.fragment.inputs.length; i++) {
                   args[decoded.fragment.inputs[i].name || `arg${i}`] = String(decoded.args[i]);
-  app.post("/erc4337/build-userop", { preHandler: [authMiddleware] }, async (request, reply) => {
-    try {
-      const {
-        walletAddress,
-        to,
-        value,
-        data,
-        chain: chainName,
-        paymasterAddress,
-        factoryAddress,
-        ownerAddress,
-        salt,
-      } = request.body as {
-        walletAddress: string;
-        to: string;
-        value: string;
-        data?: string;
-        chain?: string;
-        paymasterAddress?: string;
-        factoryAddress?: string;
-        ownerAddress?: string;
-        salt?: string;
-      };
-
-      if (!walletAddress || !to || value === undefined) {
-        throw new ValidationError("walletAddress, to, and value are required");
-      }
-
-      const { chainId, rpcUrl } = await (async () => {
-        if (chainName) {
-          const c = await getChainByName(chainName).catch(() => null);
-          if (c) return { chainId: c.chainId, rpcUrl: c.rpcUrl };
-        }
-        for (const name of ["arbitrum", "optimism", "base", "polygon", "ethereum", "sepolia"]) {
-          const c = await getChainByName(name).catch(() => null);
-          if (c) return { chainId: c.chainId, rpcUrl: c.rpcUrl };
-        }
-        return { chainId: 11155111, rpcUrl: "https://sepolia.gateway.tenderly.co" };
-      })();
-
-      const { buildUserOperation, getUserOpHash } = await import("../../utils/userop.js");
-      const userOp = await buildUserOperation(
-        { walletAddress, to, value, data, chainId, paymasterAddress, factoryAddress, ownerAddress, salt },
-        rpcUrl
-      );
-
-      const opHash = getUserOpHash(userOp, "0x0000000071727De22E5E9d8BAf0edAc6f37da032", chainId);
-
-      await createAuditLog(request.orgId, "ERC4337_BUILD_USEROP", {
-        walletAddress, to, value, chainId, opHash,
-      }, request.userId, request);
-
-      return sendSuccess(reply, { userOperation: userOp, userOpHash: opHash, entryPoint: "0x0000000071727De22E5E9d8BAf0edAc6f37da032" }, 201);
-    } catch (err) {
-      return sendError(reply, err);
-    }
-  });
-
-  app.post("/erc4337/estimate-gas", { preHandler: [authMiddleware] }, async (request, reply) => {
-    try {
-      const { walletAddress, to, value, data, chain: chainName } = request.body as {
-        walletAddress: string; to: string; value: string; data?: string; chain?: string;
-      };
-
-      if (!walletAddress || !to || value === undefined) {
-        throw new ValidationError("walletAddress, to, and value are required");
-      }
-
-      const { chainId, rpcUrl } = await (async () => {
-        if (chainName) {
-          const c = await getChainByName(chainName).catch(() => null);
-          if (c) return { chainId: c.chainId, rpcUrl: c.rpcUrl };
-        }
-        const c = await getChainByName("sepolia").catch(() => null);
-        if (c) return { chainId: c.chainId, rpcUrl: c.rpcUrl };
-        return { chainId: 11155111, rpcUrl: "https://sepolia.gateway.tenderly.co" };
-      })();
-
-      const { buildUserOperation, estimateUserOpGas } = await import("../../utils/userop.js");
-      const userOp = await buildUserOperation(
-        { walletAddress, to, value, data, chainId },
-        rpcUrl
-      );
-
-      const gasEstimate = await estimateUserOpGas(
-        userOp,
-        "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
-        rpcUrl
-      );
-
-      return sendSuccess(reply, { chainId, ...gasEstimate });
-    } catch (err) {
-      return sendError(reply, err);
-    }
-  });
-}
+                }
               }
               decodedFunction = {
                 functionName: decoded.name,
@@ -461,17 +366,14 @@ export async function transactionRoutes(app: FastifyInstance) {
         if (accounts.length > 0) where.accountId = { in: accounts.map((a) => a.id) };
       }
       if (search) {
-        where.searchDocument = {
-          search: search.split(/\s+/).map((term: string) => `${term}:*`).join(" & "),
-        };
+        where.OR = [
+          { txHash: { contains: search, mode: "insensitive" } },
+          { to: { contains: search, mode: "insensitive" } },
+        ];
       }
 
       const [data, total] = await Promise.all([
-        prisma.transaction.findMany({
-          where,
-          orderBy: { createdAt: "desc" } as any,
-          take: limit, skip: offset,
-        }),
+        prisma.transaction.findMany({ where, orderBy: { createdAt: "desc" }, take: limit, skip: offset }),
         prisma.transaction.count({ where }),
       ]);
       return sendSuccess(reply, { data, total, limit, offset });
