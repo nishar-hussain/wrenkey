@@ -582,13 +582,17 @@ export class WranKeyClient {
     return this.request("POST", `/wvc/manifests/${manifestId}/approve`, { operatorId, signature });
   }
 
-  async provisionWvcDeployment(deploymentId: string): Promise<{ deploymentId: string; status: string }> {
+  async provisionWvcDeployment(deploymentId: string): Promise<{
+    deploymentId: string; status: string; runtime?: string; healthyReplicas?: number; totalReplicas?: number;
+    bootProofs?: Array<{ manifestId: string; replicaIndex?: number; proofFormatVersion?: string }>;
+  }> {
     return this.request("POST", `/wvc/deployments/${deploymentId}/provision`);
   }
 
   async getWvcDeployment(deploymentId: string): Promise<WvcDeployment & {
     healthyReplicas: number; totalReplicas: number; isLive: boolean;
-    bootProofs: Array<{ id: string; bootedAt: string }>;
+    proofCounts?: { appProofs: number; bootProofs: number };
+    bootProofs: Array<{ id: string; bootedAt: string; attestationDoc?: string; proofFormatVersion?: string }>;
   }> {
     return this.request("GET", `/wvc/deployments/${deploymentId}`);
   }

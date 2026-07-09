@@ -17,6 +17,8 @@ let manifestHash: string;
 let operatorKeys: { publicKeyPem: string; privateKeyPem: string };
 
 beforeAll(async () => {
+  process.env.WVC_ALLOW_LOCAL_PROOFS = "true";
+
   app = await buildApp({ disableRateLimit: true });
   await app.ready();
 
@@ -219,6 +221,15 @@ describe("WVC Routes (PRD §9)", () => {
   });
 
   it("POST /wvc/deployments/:id/provision provisions an approved deployment", async () => {
+    process.env.WVC_ALLOW_LOCAL_PROOFS = "false";
+    const blocked = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/deployments/${deploymentId}/provision`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(blocked.statusCode).toBe(403);
+
+    process.env.WVC_ALLOW_LOCAL_PROOFS = "true";
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/wvc/deployments/${deploymentId}/provision`,
@@ -227,6 +238,12 @@ describe("WVC Routes (PRD §9)", () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.payload);
     expect(body.status).toBe("inactive");
+    expect(body.runtime).toBe("local");
+    expect(body.healthyReplicas).toBe(3);
+    expect(body.bootProofs.length).toBe(3);
+
+    const bootProofs = await prisma.wvcBootProof.findMany({ where: { deploymentId } });
+    expect(bootProofs).toHaveLength(3);
   });
 
   it("POST /wvc/deployments/:id/set-live sets it live", async () => {
@@ -252,6 +269,33 @@ describe("WVC Routes (PRD §9)", () => {
     expect(body.status).toBe("live");
     expect(body.isLive).toBe(true);
     expect(body.healthyReplicas).toBe(body.totalReplicas);
+    expect(body.bootProofs.length).toBeGreaterThan(0);
+    expect(body.bootProofs[0].proofFormatVersion).toBe("local-dev-v1");
+  });
+
+  it("POST /wvc/deployments/:id/invoke persists a local app proof", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wvc/deployments/${deploymentId}/invoke`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { payloadType: "generate_seed", walletName: "Local Demo" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.result.seedId).toMatch(/^local-seed-/);
+    expect(body.appProof.id).toBeTruthy();
+    expect(body.appProof.proofFormatVersion).toBe("local-dev-v1");
+
+    const proofRes = await app.inject({
+      method: "GET",
+      url: `/api/v1/wvc/app-proofs/${body.appProof.id}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(proofRes.statusCode).toBe(200);
+    const proof = JSON.parse(proofRes.payload);
+    expect(proof.id).toBe(body.appProof.id);
+    expect(proof.proofFormatVersion).toBe("local-dev-v1");
+    expect(proof.payloadType).toBe("generate_seed");
   });
 
   it("POST /wvc/deployments/:id/delete soft-deletes", async () => {
@@ -277,18 +321,16 @@ describe("WVC Routes (PRD §9)", () => {
     expect(body.status).toBe("inactive");
   });
 
-  it("POST /wvc/deployments/:id/invoke returns a clear error without an enclave", async () => {
+  it("POST /wvc/deployments/:id/invoke rejects inactive deployments", async () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/wvc/deployments/${deploymentId}/invoke`,
       headers: { authorization: `Bearer ${token}` },
       payload: { payloadType: "signature", unsignedTx: "0x02f8..." },
     });
-    // The deployment is inactive (restored), so it should 403 "not live" OR
-    // if set live, 403 "no enclave endpoint". Either way, a clear error.
     expect(res.statusCode).toBe(403);
     const body = JSON.parse(res.payload);
-    expect(body.error.message).toBeTruthy();
+    expect(body.error.message).toContain("not live");
   });
 
   it("GET /wvc/apps/:appId shows full detail", async () => {

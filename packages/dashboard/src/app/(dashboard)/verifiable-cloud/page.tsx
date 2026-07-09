@@ -93,7 +93,7 @@ export default function VerifiableCloudPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><Cloud className="h-6 w-6" /> Verifiable Compute</h1>
-          <p className="text-sm text-slate-500 mt-1">Hardware-isolated signing with cryptographic attestation proofs (AWS Nitro Enclaves).</p>
+          <p className="text-sm text-slate-500 mt-1">Manage WVC apps, operator approvals, deployments, and proofs. Local dev proofs are clearly marked until AWS Nitro runtime is connected.</p>
         </div>
         <Button onClick={() => setShowCreate(true)}>Create App</Button>
       </div>
@@ -108,7 +108,7 @@ export default function VerifiableCloudPage() {
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Cloud className="w-10 h-10 text-slate-300 mb-3" />
               <p className="text-sm text-slate-500 mb-1">No WVC apps yet.</p>
-              <p className="text-xs text-slate-400 max-w-md mb-4">Create an app to manage verifiable enclave deployments, operator approvals, and attested signing.</p>
+              <p className="text-xs text-slate-400 max-w-md mb-4">Create an app to manage WVC deployments, operator approvals, and proof-producing workloads.</p>
               <Button onClick={() => setShowCreate(true)}>Create your first app</Button>
             </div>
           ) : (

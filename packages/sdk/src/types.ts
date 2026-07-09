@@ -307,7 +307,7 @@ export interface WvcAppProof {
   deploymentId: string;
   ephemeralPubkey: string;
   payloadHash: string;
-  payloadType: "signature" | "parse_summary" | "policy_decision" | "oracle_result";
+  payloadType: "signature" | "parse_summary" | "policy_decision" | "oracle_result" | "generate_seed";
   signature: string;
   attestationDoc: string;
   proofFormatVersion: string;
@@ -343,5 +343,6 @@ export interface WvcInvokeResult {
     payloadType: string;
     signature: string;
     attestationDoc: string;
+    proofFormatVersion?: string;
   };
 }

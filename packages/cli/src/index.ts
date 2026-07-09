@@ -190,6 +190,24 @@ deploy
     console.log(`Restored (status: ${res.status}).`);
   });
 
+deploy
+  .command("invoke <deploymentId>")
+  .description("Invoke a live deployment through the configured Host Agent/local runtime")
+  .requiredOption("--payload <json>", "Invoke payload JSON, e.g. '{\"payloadType\":\"generate_seed\"}'")
+  .action(async (deploymentId: string, opts: any) => {
+    const payload = JSON.parse(opts.payload);
+    const res: any = await api(`/wvc/deployments/${deploymentId}/invoke`, {
+      method: "POST",
+      body: payload,
+    });
+    console.log("--- Result ---");
+    console.log(JSON.stringify(res.result, null, 2));
+    console.log("--- App Proof ---");
+    console.log(`  ID:      ${res.appProof?.id}`);
+    console.log(`  Format:  ${res.appProof?.proofFormatVersion || "v1"}`);
+    console.log(`  Payload: ${res.appProof?.payloadType}`);
+  });
+
 // ─── wvc manifest ──────────────────────────────────────────────────────────
 const manifest = program.command("manifest").description("Manifest review and approval (PRD §12, §13)");
 
@@ -242,8 +260,21 @@ program
   .argument("<proofFile>", "JSON file containing the App Proof bundle")
   .requiredOption("--expected-pcrs <file>", "JSON file with {pcr0, pcr1, pcr2} you trust")
   .option("--max-age-ms <ms>", "Max acceptable attestation age in ms", String(5 * 60 * 1000))
+  .option("--allow-local", "Accept local-dev-v1 simulated proofs (dev/test only)", false)
   .action((proofFile: string, opts: any) => {
     const proof = JSON.parse(fs.readFileSync(proofFile, "utf8"));
+    const format = proof.proofFormatVersion || proof.proof_format_version || "v1";
+    if (format === "local-dev-v1") {
+      if (!opts.allowLocal) {
+        console.error("Proof is local-dev-v1. Re-run with --allow-local only for dev/test simulated proofs.");
+        process.exit(1);
+      }
+      console.log("Local dev proof accepted.");
+      console.log("  Format: local-dev-v1");
+      console.log("  Warning: This is not an AWS Nitro attestation and must not be trusted in production.");
+      console.log(`  Payload: ${proof.payloadType || proof.payload_type || "unknown"}`);
+      return;
+    }
     const expectedPcrs = JSON.parse(fs.readFileSync(opts.expectedPcrs, "utf8"));
     const result = verifyAppProof(proof, expectedPcrs, { maxAgeMs: parseInt(opts.maxAgeMs, 10) });
     if (result.valid) {

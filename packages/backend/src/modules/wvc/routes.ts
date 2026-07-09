@@ -7,7 +7,7 @@ import { parsePagination } from "../../utils/pagination.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
 import { computeManifestHash, buildManifestObject } from "./manifest.js";
 import { verifyOperatorSignature, normalizePublicKey } from "./operator.js";
-import { invokeDeployment, type InvokeRequest } from "../../services/wvc-relay.js";
+import { invokeDeployment, provisionDeployment, type InvokeRequest } from "../../services/wvc-relay.js";
 
 // Deployment status constants (PRD §11)
 const STATUS = {
@@ -77,13 +77,29 @@ export async function wvcRoutes(app: FastifyInstance) {
         include: {
           liveDeployment: true,
           quorumKey: true,
-          deployments: { orderBy: { createdAt: "desc" }, take: 10 },
+          deployments: {
+            orderBy: { createdAt: "desc" },
+            take: 10,
+            include: {
+              bootProofs: { orderBy: { bootedAt: "desc" }, take: 3 },
+              _count: { select: { appProofs: true, bootProofs: true } },
+            },
+          },
           operators: { where: { status: "active" } },
           keyCeremonies: { orderBy: { startedAt: "desc" }, take: 5 },
         },
       });
       if (!app) throw new NotFoundError("WVC app");
-      return sendSuccess(reply, app);
+      return sendSuccess(reply, {
+        ...app,
+        deployments: app.deployments.map((deployment) => ({
+          ...deployment,
+          bootProofs: deployment.bootProofs.map((proof) => ({
+            ...proof,
+            attestationDoc: Buffer.from(proof.attestationDoc).toString("base64"),
+          })),
+        })),
+      });
     } catch (err) { return sendError(reply, err); }
   });
 
@@ -310,16 +326,29 @@ export async function wvcRoutes(app: FastifyInstance) {
         throw new ForbiddenError(`Cannot provision: deployment status is ${deployment.status}, must be ${STATUS.APPROVED}`);
       }
 
-      // Transition to provisioning. A real orchestrator would boot the Nitro parent
-      // instance here; in this environment we mark it provisioning then inactive
-      // (no replicas without AWS hardware). The Host Agent + Nitro CLI hook here.
-      const updated = await prisma.wvcDeployment.update({
-        where: { id: deploymentId },
-        data: { status: STATUS.INACTIVE },
-      });
+      const result = await provisionDeployment(deploymentId, request.orgId);
 
-      await createAuditLog(request.orgId, "WVC_DEPLOYMENT_PROVISION", { deploymentId, status: updated.status }, request.userId, request);
-      return sendSuccess(reply, { deploymentId, status: updated.status, healthyReplicas: 0, totalReplicas: deployment.replicaCount });
+      await createAuditLog(request.orgId, "WVC_DEPLOYMENT_PROVISION", {
+        deploymentId,
+        status: result.status,
+        runtime: result.runtime,
+        healthyReplicas: result.healthyReplicas,
+        totalReplicas: result.totalReplicas,
+        bootProofs: result.bootProofs.length,
+      }, request.userId, request);
+
+      return sendSuccess(reply, {
+        deploymentId,
+        status: result.status,
+        runtime: result.runtime,
+        healthyReplicas: result.healthyReplicas,
+        totalReplicas: result.totalReplicas,
+        bootProofs: result.bootProofs.map((proof) => ({
+          manifestId: proof.manifestId,
+          replicaIndex: proof.replicaIndex,
+          proofFormatVersion: proof.proofFormatVersion,
+        })),
+      });
     } catch (err) { return sendError(reply, err); }
   });
 
@@ -329,19 +358,32 @@ export async function wvcRoutes(app: FastifyInstance) {
       const { deploymentId } = request.params as { deploymentId: string };
       const deployment = await prisma.wvcDeployment.findFirst({
         where: { id: deploymentId, app: { orgId: request.orgId } },
-        include: { manifest: true, bootProofs: { orderBy: { bootedAt: "desc" }, take: 5 } },
+        include: {
+          manifest: true,
+          bootProofs: { orderBy: { bootedAt: "desc" }, take: 5 },
+          _count: { select: { appProofs: true, bootProofs: true } },
+        },
       });
       if (!deployment) throw new NotFoundError("Deployment");
+      const healthyReplicas = deployment.status === STATUS.LIVE || deployment.status === STATUS.INACTIVE
+        ? Math.min(deployment.replicaCount, deployment._count.bootProofs)
+        : 0;
       return sendSuccess(reply, {
         id: deployment.id, appId: deployment.appId, status: deployment.status,
         imageUrl: deployment.imageUrl, executableDigest: deployment.executableDigest,
         expectedPcrs: { pcr0: deployment.expectedPcr0, pcr1: deployment.expectedPcr1, pcr2: deployment.expectedPcr2 },
         ingressPort: deployment.ingressPort, healthPort: deployment.healthPort,
         cpuCount: deployment.cpuCount, memoryMib: deployment.memoryMib, replicaCount: deployment.replicaCount,
-        healthyReplicas: deployment.status === STATUS.LIVE ? deployment.replicaCount : 0,
+        healthyReplicas,
         totalReplicas: deployment.replicaCount,
         isLive: deployment.status === STATUS.LIVE,
-        bootProofs: deployment.bootProofs.map((b) => ({ id: b.id, bootedAt: b.bootedAt })),
+        proofCounts: { appProofs: deployment._count.appProofs, bootProofs: deployment._count.bootProofs },
+        bootProofs: deployment.bootProofs.map((b) => ({
+          id: b.id,
+          bootedAt: b.bootedAt,
+          attestationDoc: Buffer.from(b.attestationDoc).toString("base64"),
+          proofFormatVersion: decodeProofFormatVersion(b.attestationDoc),
+        })),
         createdAt: deployment.createdAt, updatedAt: deployment.updatedAt,
       });
     } catch (err) { return sendError(reply, err); }
@@ -508,4 +550,14 @@ export async function wvcRoutes(app: FastifyInstance) {
       return sendSuccess(reply, ceremony);
     } catch (err) { return sendError(reply, err); }
   });
+}
+
+function decodeProofFormatVersion(attestationDoc: Buffer | Uint8Array): string {
+  try {
+    const raw = Buffer.from(attestationDoc).toString("utf8");
+    const parsed = JSON.parse(raw);
+    return parsed.proof_format_version || "v1";
+  } catch {
+    return "v1";
+  }
 }

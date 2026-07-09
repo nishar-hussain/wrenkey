@@ -68,6 +68,7 @@ export const config = {
     // When set, the /wvc/deployments/:id/invoke relay forwards to this Host Agent
     // endpoint (PRD §20). Empty in dev => invoke returns a clear "no enclave" error.
     enclaveEndpoint: process.env.WVC_ENCLAVE_ENDPOINT || "",
+    allowLocalProofs: process.env.WVC_ALLOW_LOCAL_PROOFS === "true",
     invokeTimeoutMs: parseInt(process.env.WVC_INVOKE_TIMEOUT_MS || "30000", 10),
   },
 };

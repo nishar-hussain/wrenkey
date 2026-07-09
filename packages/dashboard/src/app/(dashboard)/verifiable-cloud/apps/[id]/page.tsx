@@ -204,7 +204,9 @@ export default function WvcAppDetailPage() {
                 { key: "id", header: "ID", render: (d: any) => <span className="font-mono text-xs">{d.id.slice(0, 8)}…</span> },
                 { key: "status", header: "Status", render: (d: any) => <StatusBadge status={d.status} /> },
                 { key: "image", header: "Image", render: (d: any) => <span className="text-xs font-mono truncate max-w-[200px] block">{d.imageUrl}</span> },
-                { key: "replicas", header: "Replicas", render: (d: any) => d.replicaCount },
+                { key: "replicas", header: "Replicas", render: (d: any) => `${Math.min(d.replicaCount, d._count?.bootProofs ?? 0)}/${d.replicaCount}` },
+                { key: "proofs", header: "Proofs", render: (d: any) => `${d._count?.bootProofs ?? 0} boot / ${d._count?.appProofs ?? 0} app` },
+                { key: "format", header: "Proof Format", render: (d: any) => <span className="text-xs font-mono">{decodeProofFormat(d.bootProofs?.[0]?.attestationDoc)}</span> },
                 { key: "createdAt", header: "Created", render: (d: any) => new Date(d.createdAt).toLocaleDateString() },
                 {
                   key: "actions", header: "",
@@ -247,7 +249,7 @@ export default function WvcAppDetailPage() {
               emptyMessage="No operators added."
             />
           </CardContent></Card>
-          <p className="text-xs text-slate-400 mt-2">Operators generate P256 keys locally via <code className="bg-slate-100 px-1 rounded">wvc operator init</code> and approve manifests via the CLI — private keys never touch the browser.</p>
+          <p className="text-xs text-slate-400 mt-2">Operators generate P256 keys locally via <code className="bg-slate-100 px-1 rounded">wvc operator init</code> and approve manifests via the CLI. Private keys never touch the browser.</p>
         </div>
       )}
 
@@ -330,4 +332,14 @@ export default function WvcAppDetailPage() {
       </Modal>
     </div>
   );
+}
+
+function decodeProofFormat(attestationDoc?: string): string {
+  if (!attestationDoc) return "none";
+  try {
+    const parsed = JSON.parse(atob(attestationDoc));
+    return parsed.proof_format_version || "v1";
+  } catch {
+    return "v1";
+  }
 }
