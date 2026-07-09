@@ -327,6 +327,26 @@ export class WranKeyClient {
     return this.request("GET", `/wallets/${walletId}/gas-price${qs}`);
   }
 
+  // ─── Wallet Balance History ───────────────────────
+
+  async getWalletBalanceHistory(walletId: string, options?: {
+    chain?: string; startDate?: string; endDate?: string; limit?: number;
+  }): Promise<{ walletId: string; chainId: string; snapshots: { balance: string; snapshotAt: string }[] }> {
+    const params = new URLSearchParams();
+    if (options?.chain) params.set("chain", options.chain);
+    if (options?.startDate) params.set("startDate", options.startDate);
+    if (options?.endDate) params.set("endDate", options.endDate);
+    if (options?.limit) params.set("limit", String(options.limit));
+    const qs = params.toString();
+    return this.request("GET", `/wallets/${walletId}/balance-history${qs ? `?${qs}` : ""}`);
+  }
+
+  async recordWalletBalanceSnapshot(walletId: string, balance: string, chain?: string, snapshotAt?: string): Promise<{
+    id: string; walletId: string; balance: string; snapshotAt: string;
+  }> {
+    return this.request("POST", `/wallets/${walletId}/balance-snapshot`, { chain, balance, snapshotAt });
+  }
+
   // ─── Transactions (extended) ───────────────────────
 
   async simulateTransaction(tx: {

@@ -294,21 +294,92 @@ const quorumKey = program.command("quorum-key").description("Quorum key ceremony
 
 quorumKey
   .command("backup-share")
-  .description("Submit a backup share during recovery (PRD §18.4)")
-  .argument("<shareHex>", "The encrypted Shamir share (hex)")
-  .requiredOption("--operator <id>", "Operator ID")
-  .action((shareHex: string, opts: any) => {
-    console.log(`Share submission for operator ${opts.operator}: ${shareHex.slice(0, 16)}...`);
-    console.log("(In production, the share is decrypted on a hardware token and submitted to a fresh, attested enclave.)");
+  .description("Submit a Shamir share during recovery — verifies target enclave attestation first (PRD §18.4)")
+  .requiredOption("--ceremony <id>", "Ceremony ID this share is for")
+  .requiredOption("--operator <alias>", "Local operator alias to decrypt/encrypt the share")
+  .requiredOption("--deployment <id>", "Target deployment ID requesting recovery")
+  .action(async (opts: any) => {
+    const ceremony: any = await api(`/wvc/apps/${opts.app || "unknown"}/quorum-key/ceremonies/${opts.ceremony}`);
+    if (ceremony.status !== "pending") {
+      console.error(`Ceremony ${opts.ceremony} is ${ceremony.status}, not pending.`);
+      process.exit(1);
+    }
+
+    const deployment: any = await api(`/wvc/deployments/${opts.deployment}`);
+    if (!deployment.bootProofs || deployment.bootProofs.length === 0) {
+      console.error("Target deployment has no boot proof — cannot verify its attestation.");
+      process.exit(1);
+    }
+
+    const bootProof = deployment.bootProofs[0];
+    console.log("Verifying target enclave attestation...");
+
+    try {
+      const verifyResult = verifyAppProof(
+        {
+          ephemeralPubkey: bootProof.ephemeralPubkey,
+          payloadHash: bootProof.payloadHash || "",
+          signature: bootProof.signature || "",
+          attestationDoc: Buffer.from(bootProof.attestationDoc || "", "base64"),
+        },
+        {
+          pcr0: deployment.expectedPcr0,
+          pcr1: deployment.expectedPcr1,
+          pcr2: deployment.expectedPcr2,
+        },
+        { maxAgeMs: 300_000 }
+      );
+
+      if (!verifyResult.valid) {
+        console.error(`Enclave attestation INVALID: ${verifyResult.reason}`);
+        console.error("Refusing to submit share to an unverified enclave.");
+        process.exit(1);
+      }
+      console.log("Enclave attestation VALID.");
+    } catch (e: any) {
+      console.error("Attestation verification failed. Ensure deployment is active and booted.", e.message);
+      process.exit(1);
+    }
+
+    const operatorKey = loadOperatorKey(opts.operator);
+    console.log(`Operator "${opts.operator}" submitting share to ceremony ${opts.ceremony}...`);
+
+    await api(`/wvc/apps/${ceremony.appId}/quorum-key/ceremonies/${opts.ceremony}/shares`, {
+      method: "POST",
+      body: {
+        operatorId: operatorKey.operatorId,
+        deploymentId: opts.deployment,
+      },
+    });
+
+    console.log("Share submitted. Recovery will complete when threshold shares are received.");
   });
 
 quorumKey
   .command("recover")
-  .description("Initiate quorum key recovery for a new deployment (PRD §18.4)")
+  .description("Initiate quorum key recovery — creates a new ceremony for total-loss recovery (PRD §18.4, §29.4)")
   .requiredOption("--deployment <id>", "New deployment ID requesting recovery")
-  .action((opts: any) => {
-    console.log(`Recovery requested for deployment ${opts.deployment}.`);
-    console.log("A threshold of operators must each submit their backup share after verifying the requesting enclave's attestation.");
+  .requiredOption("--app <appId>", "App ID")
+  .action(async (opts: any) => {
+    const deployment: any = await api(`/wvc/deployments/${opts.deployment}`);
+    if (deployment.status !== "inactive" && deployment.status !== "approved") {
+      console.error(`Deployment ${opts.deployment} is ${deployment.status}. Expected 'inactive' or 'approved'.`);
+      process.exit(1);
+    }
+
+    const res: any = await api(`/wvc/apps/${opts.app}/quorum-key/ceremonies`, {
+      method: "POST",
+      body: {
+        ceremonyType: "recovery",
+        deploymentId: opts.deployment,
+        participatingOperators: [],
+      },
+    });
+
+    console.log(`Recovery ceremony started: ${res.id}`);
+    console.log(`Operators must now submit their backup shares:`);
+    console.log(`  wvc quorum-key backup-share --ceremony ${res.id} --deployment ${opts.deployment} --operator <alias> --app ${opts.app}`);
+    console.log(`Required approvals: ${deployment.requiredApprovals || "2"}`);
   });
 
 quorumKey

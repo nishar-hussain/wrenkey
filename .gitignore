@@ -7,4 +7,5 @@ coverage/
 .next/
 *.tsbuildinfo
 .DS_Store
-
+target/
+packages/*/target/

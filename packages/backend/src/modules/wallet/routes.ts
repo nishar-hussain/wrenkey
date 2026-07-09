@@ -512,6 +512,97 @@ export async function walletRoutes(app: FastifyInstance) {
     }
   });
 
+  app.get("/wallets/:id/balance-history", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { chain: chainName, startDate, endDate, limit: queryLimit } = request.query as {
+        chain?: string; startDate?: string; endDate?: string; limit?: string;
+      };
+
+      const wallet = await prisma.wallet.findFirst({
+        where: { id, orgId: request.orgId },
+        include: { accounts: { include: { chain: true } } },
+      });
+      if (!wallet) throw new NotFoundError("Wallet");
+
+      let chainId: string;
+      if (chainName) {
+        const account = wallet.accounts.find((a) => a.chain.name === chainName);
+        if (!account) throw new NotFoundError("Account for chain");
+        chainId = account.chain.id;
+      } else {
+        if (wallet.accounts.length === 0) throw new NotFoundError("No accounts found");
+        chainId = wallet.accounts[0].chain.id;
+      }
+
+      const where: any = { walletId: id, chainId };
+      if (startDate) where.snapshotAt = { ...((where.snapshotAt as any) || {}), gte: new Date(startDate) };
+      if (endDate) where.snapshotAt = { ...((where.snapshotAt as any) || {}), lte: new Date(endDate) };
+
+      const snapshots = await prisma.walletBalanceSnapshot.findMany({
+        where,
+        orderBy: { snapshotAt: "desc" },
+        take: queryLimit ? parseInt(queryLimit) : 30,
+      });
+
+      return sendSuccess(reply, {
+        walletId: id,
+        chainId,
+        snapshots: snapshots.map((s) => ({
+          balance: s.balance,
+          snapshotAt: s.snapshotAt.toISOString(),
+        })),
+      });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  app.post("/wallets/:id/balance-snapshot", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { chain: chainName, balance, snapshotAt } = request.body as {
+        chain?: string; balance: string; snapshotAt?: string;
+      };
+
+      if (!balance) throw new ValidationError("balance is required");
+
+      const wallet = await prisma.wallet.findFirst({
+        where: { id, orgId: request.orgId },
+        include: { accounts: { include: { chain: true } } },
+      });
+      if (!wallet) throw new NotFoundError("Wallet");
+
+      const targetAccount = chainName
+        ? wallet.accounts.find((a) => a.chain.name === chainName)
+        : wallet.accounts[0];
+
+      if (!targetAccount) throw new NotFoundError("Account");
+
+      const snapshot = await prisma.walletBalanceSnapshot.create({
+        data: {
+          walletId: id,
+          chainId: targetAccount.chain.id,
+          balance,
+          ...(snapshotAt && { snapshotAt: new Date(snapshotAt) }),
+        },
+      });
+
+      await createAuditLog(request.orgId, "WALLET_BALANCE_SNAPSHOT", {
+        walletId: id, chain: targetAccount.chain.name, balance, snapshotAt: snapshot.snapshotAt.toISOString(),
+      }, request.userId, request);
+
+      return sendSuccess(reply, {
+        id: snapshot.id,
+        walletId: id,
+        balance: snapshot.balance,
+        snapshotAt: snapshot.snapshotAt.toISOString(),
+      }, 201);
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
   app.get("/wallets/:id/gas-price", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
