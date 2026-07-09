@@ -23,6 +23,7 @@
     "@fastify/swagger-ui": "^6.0.0",
     "@prisma/client": "^6.1.0",
     "@simplewebauthn/server": "^11.0.0",
+    "@wrankey/wvc-verify": "*",
     "bcrypt": "^5.1.1",
     "dotenv": "^16.4.5",
     "ethers": "^6.13.4",

@@ -23,7 +23,14 @@
  * PRD: §16, §19, §24.
  */
 
-export { verifyAppProof, verifyBootProof } from "./verify.js";
+export {
+  verifyAppProof,
+  verifyBootProof,
+  verifyLocalAppProof,
+  verifyLocalBootProof,
+  generateLocalAttestationKey,
+  createLocalAttestation,
+} from "./verify.js";
 export { decodeCoseSign1, verifyCoseSignature, type CoseSign1 } from "./cose.js";
 export { verifyCertChain, type ChainVerificationResult } from "./cert.js";
 export { decodeCbor, encodeCbor } from "./cbor.js";
@@ -35,4 +42,5 @@ export type {
   VerificationResult,
   VerifyOptions,
   AttestationDocument,
+  LocalAttestationDoc,
 } from "./types.js";

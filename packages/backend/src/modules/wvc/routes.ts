@@ -344,7 +344,9 @@ export async function wvcRoutes(app: FastifyInstance) {
         healthyReplicas: result.healthyReplicas,
         totalReplicas: result.totalReplicas,
         bootProofs: result.bootProofs.map((proof) => ({
+          id: proof.id,
           manifestId: proof.manifestId,
+          attestationDoc: proof.attestationDoc,
           replicaIndex: proof.replicaIndex,
           proofFormatVersion: proof.proofFormatVersion,
         })),
@@ -507,6 +509,57 @@ export async function wvcRoutes(app: FastifyInstance) {
     } catch (err) { return sendError(reply, err); }
   });
 
+  // GET /wvc/deployments/:deploymentId/app-proofs — enumerate proofs per deployment
+  app.get("/wvc/deployments/:deploymentId/app-proofs", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { deploymentId } = request.params as { deploymentId: string };
+      const { limit: queryLimit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const deployment = await prisma.wvcDeployment.findFirst({
+        where: { id: deploymentId, app: { orgId: request.orgId } },
+      });
+      if (!deployment) throw new NotFoundError("Deployment");
+      const [proofs, total] = await Promise.all([
+        prisma.wvcAppProof.findMany({
+          where: { deploymentId },
+          orderBy: { issuedAt: "desc" },
+          take: queryLimit, skip: offset,
+        }),
+        prisma.wvcAppProof.count({ where: { deploymentId } }),
+      ]);
+      return sendSuccess(reply, {
+        data: proofs.map((p) => ({
+          id: p.id,
+          ephemeralPubkey: p.ephemeralPubkey,
+          payloadHash: p.payloadHash,
+          payloadType: p.payloadType,
+          proofFormatVersion: p.proofFormatVersion,
+          issuedAt: p.issuedAt,
+        })),
+        total, limit: queryLimit, offset,
+      });
+    } catch (err) { return sendError(reply, err); }
+  });
+
+  // GET /wvc/boot-proofs/:proofId — fetch a stored boot proof for offline verification
+  app.get("/wvc/boot-proofs/:proofId", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { proofId } = request.params as { proofId: string };
+      const proof = await prisma.wvcBootProof.findFirst({
+        where: { id: proofId, deployment: { app: { orgId: request.orgId } } },
+        include: { manifest: { select: { manifestHash: true } } },
+      });
+      if (!proof) throw new NotFoundError("Boot proof");
+      return sendSuccess(reply, {
+        id: proof.id,
+        deploymentId: proof.deploymentId,
+        manifestId: proof.manifestId,
+        manifestHash: proof.manifest.manifestHash,
+        attestationDoc: Buffer.from(proof.attestationDoc).toString("base64"),
+        bootedAt: proof.bootedAt,
+      });
+    } catch (err) { return sendError(reply, err); }
+  });
+
   // ─── Quorum Key Ceremonies (PRD §9.2, §18.4) ────────────────────────────
 
   // POST /wvc/apps/:appId/quorum-key/ceremonies — initiate a ceremony
@@ -550,14 +603,75 @@ export async function wvcRoutes(app: FastifyInstance) {
       return sendSuccess(reply, ceremony);
     } catch (err) { return sendError(reply, err); }
   });
+
+  // POST /wvc/apps/:appId/quorum-key/ceremonies/:ceremonyId/complete — complete a ceremony
+  app.post("/wvc/apps/:appId/quorum-key/ceremonies/:ceremonyId/complete", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { appId, ceremonyId } = request.params as { appId: string; ceremonyId: string };
+      const { quorumPublicKey } = request.body as { quorumPublicKey?: string };
+
+      const ceremony = await prisma.wvcKeyCeremony.findFirst({
+        where: { id: ceremonyId, appId, app: { orgId: request.orgId } },
+      });
+      if (!ceremony) throw new NotFoundError("Ceremony");
+      if (ceremony.status !== "pending") throw new ValidationError(`Ceremony is ${ceremony.status}, not pending`);
+
+      let quorumKeyId: string | null = ceremony.newQuorumKeyId;
+
+      if (quorumPublicKey) {
+        const existingKeys = await prisma.wvcQuorumKey.findMany({
+          where: { appId },
+          orderBy: { generation: "desc" },
+          take: 1,
+        });
+        const nextGeneration = (existingKeys[0]?.generation ?? 0) + 1;
+
+        const quorumKey = await prisma.wvcQuorumKey.create({
+          data: {
+            appId,
+            publicKey: quorumPublicKey,
+            algorithm: "P256",
+            generation: nextGeneration,
+          },
+        });
+        quorumKeyId = quorumKey.id;
+
+        await prisma.wvcApp.update({
+          where: { id: appId },
+          data: { quorumKeyId: quorumKey.id },
+        });
+      }
+
+      const updated = await prisma.wvcKeyCeremony.update({
+        where: { id: ceremonyId },
+        data: { status: "completed", completedAt: new Date(), newQuorumKeyId: quorumKeyId },
+      });
+
+      await createAuditLog(request.orgId, "WVC_CEREMONY_COMPLETE", { appId, ceremonyId, ceremonyType: ceremony.ceremonyType }, request.userId, request);
+      triggerWebhookEvents(request.orgId, "wvc.key_ceremony.completed", { appId, ceremonyId, ceremonyType: ceremony.ceremonyType });
+
+      return sendSuccess(reply, updated);
+    } catch (err) { return sendError(reply, err); }
+  });
 }
 
 function decodeProofFormatVersion(attestationDoc: Buffer | Uint8Array): string {
   try {
     const raw = Buffer.from(attestationDoc).toString("utf8");
+    // Try base64 decode first (local-dev-v1 proofs are base64 JSON)
+    try {
+      const decoded = Buffer.from(raw, "base64").toString("utf8");
+      const parsed = JSON.parse(decoded);
+      if (parsed.format === "local-dev-v1" || parsed.proof_format_version === "local-dev-v1") {
+        return "local-dev-v1";
+      }
+    } catch {
+      // Not base64 — try raw JSON
+    }
     const parsed = JSON.parse(raw);
-    return parsed.proof_format_version || "v1";
+    return parsed.proof_format_version || parsed.format || "v1";
   } catch {
+    // Not JSON at all — must be real COSE/CBOR (production Nitro proof)
     return "v1";
   }
 }

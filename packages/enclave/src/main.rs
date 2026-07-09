@@ -215,7 +215,7 @@ fn bootstrap_new_quorum_key(
         "action": "bootstrap",
         "app_id": manifest.app_id,
         "quorum_pubkey": hex::encode(&quorum_key.public_key),
-        "shares": shares.iter().map(|(idx, _threshold, share)| {
+        "shares": shares.iter().map(|(idx, share)| {
             let encrypted = ecies::ecies_encrypt(
                 &[],
                 share,

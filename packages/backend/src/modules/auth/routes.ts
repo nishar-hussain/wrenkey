@@ -382,7 +382,7 @@ export async function authRoutes(app: FastifyInstance) {
       }
 
       await prisma.authenticator.upsert({
-        where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: "EMAIL" } }))?.id || "" },
+        where: { userId_type: { userId: user.id, type: "EMAIL" } },
         update: { verified: true },
         create: { userId: user.id, type: "EMAIL", verified: true },
       });
@@ -476,7 +476,7 @@ export async function authRoutes(app: FastifyInstance) {
       if (!user) user = await prisma.user.create({ data: { orgId: org.id, phone, role: "DEVELOPER" } });
 
       await prisma.authenticator.upsert({
-        where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: "PHONE" } }))?.id || "" },
+        where: { userId_type: { userId: user.id, type: "PHONE" } },
         update: { verified: true },
         create: { userId: user.id, type: "PHONE", verified: true },
       });
@@ -613,7 +613,7 @@ export async function authRoutes(app: FastifyInstance) {
       const { user, created: isNewUser } = await findOrCreateUser(org.id, email, { name });
 
       await prisma.authenticator.upsert({
-        where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: `OAUTH_${provider.toUpperCase()}` } }))?.id || "" },
+        where: { userId_type: { userId: user.id, type: `OAUTH_${provider.toUpperCase()}` } },
         update: { verified: true },
         create: { userId: user.id, type: `OAUTH_${provider.toUpperCase()}`, verified: true },
       });
@@ -797,7 +797,7 @@ export async function authRoutes(app: FastifyInstance) {
       const { user, created: isNewUser } = await findOrCreateUser(org.id, walletEmail, { name: address.slice(0, 12) });
 
       await prisma.authenticator.upsert({
-        where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: "WALLET" } }))?.id || "" },
+        where: { userId_type: { userId: user.id, type: "WALLET" } },
         update: { verified: true },
         create: { userId: user.id, type: "WALLET", credentialId: address, verified: true },
       });
@@ -1122,10 +1122,11 @@ export async function authRoutes(app: FastifyInstance) {
       if (!userId) throw new ValidationError("Invalid or expired reset token");
 
       const passwordHash = await bcrypt.hash(newPassword, 12);
-      await prisma.authenticator.updateMany({
+      const updateResult = await prisma.authenticator.updateMany({
         where: { userId, type: "PASSWORD" },
         data: { credentialData: { hash: passwordHash } },
       });
+      if (updateResult.count === 0) throw new ValidationError("No password authenticator found — sign up with a password first");
       await redis.del(`pwd_reset:${token}`);
 
       return sendSuccess(reply, { message: "Password reset successfully" });
@@ -1312,7 +1313,7 @@ export async function authRoutes(app: FastifyInstance) {
             orgId: org.id,
             email,
             name,
-            role: "DEVELOPER",
+            role: "ORG_ADMIN",
           },
         });
 
@@ -1425,7 +1426,7 @@ export async function authRoutes(app: FastifyInstance) {
       if (!user) throw new ValidationError("User not found");
 
       await prisma.authenticator.upsert({
-        where: { id: (await prisma.authenticator.findFirst({ where: { userId: user.id, type: "EMAIL" } }))?.id || "" },
+        where: { userId_type: { userId: user.id, type: "EMAIL" } },
         update: { verified: true },
         create: { userId: user.id, type: "EMAIL", verified: true },
       });

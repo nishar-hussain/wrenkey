@@ -86,7 +86,7 @@ export async function authMiddleware(request: FastifyRequest, _reply: FastifyRep
 
       // Check session exists in DB and is not expired
       const session = await prisma.session.findFirst({
-        where: { token, expiresAt: { gt: new Date() } },
+        where: { token, userId: payload.sub, expiresAt: { gt: new Date() } },
       });
       if (!session) {
         throw new UnauthorizedError("Session expired or revoked");

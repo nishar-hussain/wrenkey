@@ -9,7 +9,7 @@
  * supplies expectedPcrs, because THEY decide which code (which release) to trust.
  */
 
-import { createVerify, createPublicKey } from "crypto";
+import { createVerify, createPublicKey, generateKeyPairSync, createSign } from "crypto";
 import { decodeCbor, mapGet, type CborValue } from "./cbor.js";
 import { decodeCoseSign1, verifyCoseSignature, type CoseSign1 } from "./cose.js";
 import { verifyCertChain } from "./cert.js";
@@ -21,9 +21,201 @@ import type {
   VerificationResult,
   VerifyOptions,
   AttestationDocument,
+  LocalAttestationDoc,
 } from "./types.js";
 
 const DEFAULT_MAX_AGE_MS = 5 * 60 * 1000;
+
+// ─── Local-dev-v1 verification ──────────────────────────────────────────────
+
+/**
+ * Verify a local-dev-v1 App Proof (PRD §16 adapted for local development).
+ *
+ * Local proofs use a self-signed JSON attestation instead of COSE_Sign1/CBOR.
+ * The cryptographic chain is:
+ *   1. Decode base64(JSON) attestation document.
+ *   2. Verify the attestation's P-256 self-signature over canonical(fields).
+ *   3. Freshness check.
+ *   4. Bind ephemeral pubkey to attested key.
+ *   5. Verify the payload ECDSA signature (ephemeral key over raw 32-byte hash).
+ *   6. Compare PCRs against caller-supplied expected values.
+ */
+export function verifyLocalAppProof(
+  proof: AppProofBundle,
+  expectedPcrs: ExpectedPcrs,
+  options?: VerifyOptions,
+): VerificationResult {
+  const maxAgeMs = options?.maxAgeMs ?? 60 * 60 * 1000;
+
+  let doc: LocalAttestationDoc;
+  try {
+    const json = Buffer.from(proof.attestationDoc, "base64").toString("utf8");
+    doc = JSON.parse(json);
+  } catch {
+    return invalid("local proof: attestation doc is not valid base64 JSON");
+  }
+
+  if (doc.format !== "local-dev-v1") {
+    return invalid(`local proof: unsupported format "${doc.format}"`);
+  }
+
+  // Step 2: verify the attestation's self-signature.
+  const attestationValid = verifyLocalAttestationSignature(doc);
+  if (!attestationValid) {
+    return invalid("local proof: attestation self-signature invalid");
+  }
+
+  // Step 3: freshness check.
+  const now = Date.now();
+  if (now - doc.timestamp > maxAgeMs) {
+    return { valid: false, reason: "local proof: attestation too old", pcrs: doc.pcrs, signedAt: doc.timestamp };
+  }
+  if (doc.timestamp - now > 60_000) {
+    return invalid("local proof: attestation timestamp is in the future");
+  }
+
+  // Step 4: bind ephemeral pubkey.
+  if (normalizePubkey(doc.ephemeralPubkey) !== normalizePubkey(proof.ephemeralPubkey)) {
+    return invalid("local proof: ephemeral pubkey does not match attested key");
+  }
+
+  // Step 5: verify payload signature (ephemeral key over raw 32-byte hash).
+  const payloadValid = verifyPayloadSignature(proof.ephemeralPubkey, proof.payloadHash, proof.signature);
+  if (!payloadValid) {
+    return invalid("local proof: payload signature invalid");
+  }
+
+  // Step 6: PCR comparison.
+  const pcrMatch = pcrsMatch(doc.pcrs, expectedPcrs);
+  if (!pcrMatch.valid) {
+    return { valid: false, reason: pcrMatch.reason, pcrs: doc.pcrs, signedAt: doc.timestamp };
+  }
+
+  return {
+    valid: true,
+    pcrs: doc.pcrs,
+    enclavePublicKey: normalizePubkey(doc.ephemeralPubkey),
+    signedAt: doc.timestamp,
+  };
+}
+
+/**
+ * Verify a local-dev-v1 Boot Proof.
+ */
+export function verifyLocalBootProof(
+  proof: BootProofBundle,
+  expectedPcrs: ExpectedPcrs,
+  options?: { maxAgeMs?: number; expectedManifestHash?: string },
+): VerificationResult {
+  const maxAgeMs = options?.maxAgeMs ?? 60 * 60 * 1000;
+
+  let doc: LocalAttestationDoc;
+  try {
+    const json = Buffer.from(proof.attestationDoc, "base64").toString("utf8");
+    doc = JSON.parse(json);
+  } catch {
+    return invalid("local boot proof: attestation doc is not valid base64 JSON");
+  }
+
+  if (doc.format !== "local-dev-v1") {
+    return invalid(`local boot proof: unsupported format "${doc.format}"`);
+  }
+
+  if (!verifyLocalAttestationSignature(doc)) {
+    return invalid("local boot proof: attestation self-signature invalid");
+  }
+
+  const now = Date.now();
+  if (now - doc.timestamp > maxAgeMs) {
+    return { valid: false, reason: "local boot proof: attestation too old", pcrs: doc.pcrs, signedAt: doc.timestamp };
+  }
+
+  const pcrMatch = pcrsMatch(doc.pcrs, expectedPcrs);
+  if (!pcrMatch.valid) {
+    return { valid: false, reason: pcrMatch.reason, pcrs: doc.pcrs, signedAt: doc.timestamp };
+  }
+
+  if (options?.expectedManifestHash) {
+    // The manifest hash is embedded in the attestation's userData for boot proofs.
+    // For local proofs, we check if it matches the proof's manifestHash field.
+    const expected = normalizeHash(options.expectedManifestHash);
+    const actual = normalizeHash(proof.manifestHash);
+    if (expected !== actual) {
+      return invalid("local boot proof: manifest hash mismatch");
+    }
+  }
+
+  return { valid: true, pcrs: doc.pcrs, signedAt: doc.timestamp };
+}
+
+/** Generate a local-dev-v1 attestation keypair (for the local runtime). */
+export function generateLocalAttestationKey(): {
+  publicKeyHex: string;
+  privateKeyPem: string;
+} {
+  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const pubDer = publicKey.export({ type: "spki", format: "der" });
+  // Extract the raw SEC1 uncompressed point (skip the SPKI header)
+  const pubHex = Buffer.from(pubDer).toString("hex").slice(-128);
+  return {
+    publicKeyHex: `04${pubHex}`,
+    privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+  };
+}
+
+/** Create a signed local-dev-v1 attestation document (for the local runtime). */
+export function createLocalAttestation(params: {
+  pcrs: { pcr0: string; pcr1: string; pcr2: string };
+  ephemeralPubkey: string;
+  attestationPrivateKeyPem: string;
+  attestationPubkeyHex: string;
+}): string {
+  const timestamp = Date.now();
+  const docWithoutSig: Omit<LocalAttestationDoc, "signature"> = {
+    format: "local-dev-v1",
+    pcrs: params.pcrs,
+    ephemeralPubkey: params.ephemeralPubkey,
+    timestamp,
+    attestationPubkey: params.attestationPubkeyHex,
+  };
+
+  const canonical = canonicalizeLocalDoc(docWithoutSig);
+  const signer = createSign("SHA256");
+  signer.update(Buffer.from(canonical, "utf8"));
+  const signature = signer.sign({
+    key: params.attestationPrivateKeyPem,
+    dsaEncoding: "ieee-p1363",
+  }).toString("hex");
+
+  const doc: LocalAttestationDoc = { ...docWithoutSig, signature };
+  return Buffer.from(JSON.stringify(doc), "utf8").toString("base64");
+}
+
+/** Verify a local-dev-v1 attestation's self-signature. */
+function verifyLocalAttestationSignature(doc: LocalAttestationDoc): boolean {
+  try {
+    const { signature, ...rest } = doc;
+    const canonical = canonicalizeLocalDoc(rest);
+    const verifier = createVerify("SHA256");
+    verifier.update(Buffer.from(canonical, "utf8"));
+    const sigBytes = Buffer.from(signature.replace(/^0x/i, ""), "hex");
+    const keyPem = pubkeyToPem(doc.attestationPubkey);
+    return verifier.verify({ key: keyPem, dsaEncoding: "ieee-p1363" }, sigBytes);
+  } catch {
+    return false;
+  }
+}
+
+/** Canonicalize a local attestation doc (without signature) for signing/verifying. */
+function canonicalizeLocalDoc(doc: Omit<LocalAttestationDoc, "signature">): string {
+  return JSON.stringify({
+    format: doc.format,
+    pcrs: doc.pcrs,
+    ephemeralPubkey: doc.ephemeralPubkey,
+    timestamp: doc.timestamp,
+    attestationPubkey: doc.attestationPubkey,
+  });
+}
 
 /**
  * Verify an App Proof (PRD §16, §19.1).
@@ -295,7 +487,16 @@ function pubkeyToPem(pubkey: string): string {
   const hex = normalizePubkey(pubkey);
   // Already PEM
   if (pubkey.includes("BEGIN")) return pubkey;
-  // Assume SEC1 uncompressed point (0x04 + X + Y) — P-256 = 65 bytes, P-384 = 97 bytes
+  // Raw SEC1 uncompressed point: 04 + X(32) + Y(32) for P-256 = 65 bytes = 130 hex chars
+  if (hex.startsWith("04") && hex.length === 130) {
+    const x = Buffer.from(hex.slice(2, 66), "hex").toString("base64url");
+    const y = Buffer.from(hex.slice(66, 130), "hex").toString("base64url");
+    return createPublicKey({
+      key: { kty: "EC", crv: "P-256", x, y } as any,
+      format: "jwk",
+    }).export({ format: "pem", type: "spki" }).toString();
+  }
+  // Try as SPKI DER
   const der = Buffer.from(hexToBytes(hex));
   return createPublicKey({
     key: der,

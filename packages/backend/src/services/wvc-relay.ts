@@ -37,6 +37,7 @@ export interface InvokeResult {
 }
 
 export interface BootProofResponse {
+  id?: string;
   manifestId: string;
   attestationDoc: string;
   replicaIndex?: number;
@@ -95,21 +96,29 @@ export async function provisionDeployment(deploymentId: string, orgId: string): 
     ? await provisionLocalDeployment(request)
     : await provisionViaHostAgent(endpoint, request);
 
+  const persistedBootProofIds: string[] = [];
   await prisma.$transaction(async (tx) => {
     for (const proof of result.bootProofs) {
-      await tx.wvcBootProof.create({
+      const created = await tx.wvcBootProof.create({
         data: {
           deploymentId,
           manifestId: proof.manifestId,
           attestationDoc: Buffer.from(proof.attestationDoc, "base64"),
         },
       });
+      persistedBootProofIds.push(created.id);
     }
     await tx.wvcDeployment.update({
       where: { id: deploymentId },
       data: { status: result.status },
     });
   });
+
+  // Attach DB IDs to the result
+  result.bootProofs = result.bootProofs.map((proof, index) => ({
+    ...proof,
+    id: persistedBootProofIds[index],
+  }));
 
   return result;
 }

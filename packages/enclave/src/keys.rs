@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use aes_gcm::aead::Aead;
 use p256::ecdsa::signature::Signer;
-use rand::Rng;
+use rand::RngCore;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct EphemeralKey {
     pub private_key: Vec<u8>,
@@ -25,10 +26,23 @@ impl EphemeralKey {
         }
     }
 
-    pub fn sign_payload(&self, payload_hash: &[u8]) -> Vec<u8> {
+    /// Sign the raw 32-byte payload hash with P-256 ECDSA (DER format).
+    /// This matches wvc-verify's `verifyPayloadSignature` which verifies
+    /// over `SHA256(raw 32 bytes of hash)`.
+    pub fn sign_payload_hash(&self, payload_hash_hex: &str) -> Vec<u8> {
+        let hash_hex = payload_hash_hex.trim_start_matches("sha256:");
+        let hash_bytes = hex::decode(hash_hex).expect("valid hex hash");
         let signing_key = p256::ecdsa::SigningKey::from_slice(&self.private_key)
             .expect("valid private key");
-        let signature: p256::ecdsa::Signature = signing_key.sign(payload_hash);
+        let signature: p256::ecdsa::Signature = signing_key.sign(&hash_bytes);
+        signature.to_der().as_bytes().to_vec()
+    }
+
+    /// Legacy: sign raw payload bytes directly (used for internal attestation signing).
+    pub fn sign_raw(&self, data: &[u8]) -> Vec<u8> {
+        let signing_key = p256::ecdsa::SigningKey::from_slice(&self.private_key)
+            .expect("valid private key");
+        let signature: p256::ecdsa::Signature = signing_key.sign(data);
         signature.to_der().as_bytes().to_vec()
     }
 
@@ -56,30 +70,50 @@ impl QuorumKey {
         }
     }
 
+    /// Encrypt seed using AES-256-GCM with a random nonce.
+    /// Key is derived from the PRIVATE key (not public) via HKDF.
     pub fn encrypt_seed(&self, seed: &[u8]) -> Vec<u8> {
-        let mut hasher = Sha256::new();
-        hasher.update(&self.public_key);
-        let key = hasher.finalize();
-
-        let cipher = Aes256Gcm::new_from_slice(&key[..32])
+        let key = derive_symmetric_key(&self.private_key);
+        let cipher = Aes256Gcm::new_from_slice(&key)
             .expect("valid key size");
-        let nonce = aes_gcm::Nonce::from_slice(&key[..12]);
 
-        cipher.encrypt(nonce, seed).expect("encryption succeeds")
+        let mut nonce_bytes = [0u8; 12];
+        rand::thread_rng().fill_bytes(&mut nonce_bytes);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let ciphertext = cipher.encrypt(nonce, seed).expect("encryption succeeds");
+
+        // Prepend nonce to ciphertext
+        let mut result = Vec::with_capacity(12 + ciphertext.len());
+        result.extend_from_slice(&nonce_bytes);
+        result.extend_from_slice(&ciphertext);
+        result
     }
 
+    /// Decrypt seed: extract nonce from first 12 bytes, decrypt rest.
     pub fn decrypt_seed(&self, ciphertext: &[u8]) -> Option<Vec<u8>> {
-        let mut hasher = Sha256::new();
-        hasher.update(&self.public_key);
-        let key = hasher.finalize();
+        if ciphertext.len() < 12 + 16 {
+            return None;
+        }
 
-        let cipher = Aes256Gcm::new_from_slice(&key[..32]).ok()?;
-        let nonce = aes_gcm::Nonce::from_slice(&key[..12]);
+        let key = derive_symmetric_key(&self.private_key);
+        let cipher = Aes256Gcm::new_from_slice(&key).ok()?;
+        let nonce = Nonce::from_slice(&ciphertext[..12]);
+        let encrypted = &ciphertext[12..];
 
-        cipher.decrypt(nonce, ciphertext).ok()
+        cipher.decrypt(nonce, encrypted).ok()
     }
 }
 
+/// Derive a 32-byte symmetric key from the quorum private key using HKDF-SHA256.
+fn derive_symmetric_key(private_key: &[u8]) -> [u8; 32] {
+    let hkdf = hkdf::Hkdf::<Sha256>::new(None, private_key);
+    let mut okm = [0u8; 32];
+    hkdf.expand(b"wvc-quorum-key-v1", &mut okm).expect("HKDF expand");
+    okm
+}
+
+/// Compute payload hash: sha256(payloadType + ":" + payloadBytes) → "sha256:<hex>"
 pub fn hash_payload(payload: &[u8], payload_type: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(payload_type.as_bytes());
@@ -100,6 +134,8 @@ pub struct AppProofBundle {
     pub issued_at: String,
 }
 
+/// Build an app proof bundle. The signature is over the raw 32-byte payload hash,
+/// matching wvc-verify's verification convention.
 pub fn build_app_proof(
     deployment_id: &str,
     ephemeral_key: &EphemeralKey,
@@ -108,7 +144,7 @@ pub fn build_app_proof(
     attestation_doc_b64: &str,
 ) -> AppProofBundle {
     let payload_hash = hash_payload(payload, payload_type);
-    let sig = ephemeral_key.sign_payload(payload);
+    let sig = ephemeral_key.sign_payload_hash(&payload_hash);
     AppProofBundle {
         proof_format_version: "v1".into(),
         deployment_id: deployment_id.into(),
@@ -117,10 +153,25 @@ pub fn build_app_proof(
         payload_type: payload_type.into(),
         signature: hex::encode(&sig),
         attestation_doc: attestation_doc_b64.into(),
-        issued_at: chrono_now(),
+        issued_at: now_iso8601(),
     }
 }
 
-fn chrono_now() -> String {
-    "2026-07-01T00:00:00Z".into()
+fn now_iso8601() -> String {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    format!("{}{}", secs * 1000 + (millis % 1000) as u64, "")
+}
+
+pub fn now_timestamp_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }

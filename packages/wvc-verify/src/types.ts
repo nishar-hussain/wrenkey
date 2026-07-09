@@ -18,7 +18,7 @@ export interface AppProofBundle {
   deploymentId: string;
   ephemeralPubkey: string;
   payloadHash: string;
-  payloadType: "signature" | "parse_summary" | "policy_decision" | "oracle_result";
+  payloadType: "signature" | "generate_seed" | "parse_summary" | "policy_decision" | "oracle_result";
   signature: string;
   /** Base64-encoded COSE_Sign1 attestation document bytes. */
   attestationDoc: string;
@@ -63,4 +63,20 @@ export interface VerifyOptions {
   maxAgeMs?: number;
   /** Override the pinned AWS Nitro root cert (PEM). If omitted, the shipped root is used. */
   rootCertPem?: string;
+}
+
+/**
+ * Local development attestation document (local-dev-v1 format).
+ *
+ * NOT a real AWS Nitro attestation — used for end-to-end testing of the WVC
+ * flow without AWS hardware. The attestation is a self-signed JSON document
+ * with P-256 ECDSA signature, binding the ephemeral key + PCRs + timestamp.
+ */
+export interface LocalAttestationDoc {
+  format: "local-dev-v1";
+  pcrs: { pcr0: string; pcr1: string; pcr2: string };
+  ephemeralPubkey: string;
+  timestamp: number;
+  attestationPubkey: string;
+  signature: string;
 }

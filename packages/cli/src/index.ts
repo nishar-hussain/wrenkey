@@ -12,7 +12,7 @@ import path from "path";
 import os from "os";
 import { api, loadConfig, saveConfig } from "./api.js";
 import { initOperatorKey, signManifestHash, recomputeManifestHash, loadOperatorKey, listOperatorKeys } from "./keys.js";
-import { verifyAppProof } from "@wrankey/wvc-verify";
+import { verifyAppProof, verifyLocalAppProof } from "@wrankey/wvc-verify";
 
 const program = new Command();
 
@@ -269,10 +269,20 @@ program
         console.error("Proof is local-dev-v1. Re-run with --allow-local only for dev/test simulated proofs.");
         process.exit(1);
       }
-      console.log("Local dev proof accepted.");
-      console.log("  Format: local-dev-v1");
-      console.log("  Warning: This is not an AWS Nitro attestation and must not be trusted in production.");
-      console.log(`  Payload: ${proof.payloadType || proof.payload_type || "unknown"}`);
+      const expectedPcrs = JSON.parse(fs.readFileSync(opts.expectedPcrs, "utf8"));
+      const result = verifyLocalAppProof(proof, expectedPcrs, { maxAgeMs: 60 * 60 * 1000 });
+      if (result.valid) {
+        console.log("Local dev proof CRYPTOGRAPHICALLY VERIFIED.");
+        console.log("  Format: local-dev-v1");
+        console.log("  Warning: This is not an AWS Nitro attestation and must not be trusted in production.");
+        console.log(`  Payload:    ${proof.payloadType || proof.payload_type || "unknown"}`);
+        console.log(`  Signed at:  ${new Date(result.signedAt!).toISOString()}`);
+        console.log(`  Enclave:    ${result.enclavePublicKey?.slice(0, 24)}...`);
+        console.log(`  PCRs:       ${JSON.stringify(result.pcrs)}`);
+      } else {
+        console.error(`Local dev proof INVALID: ${result.reason}`);
+        process.exit(1);
+      }
       return;
     }
     const expectedPcrs = JSON.parse(fs.readFileSync(opts.expectedPcrs, "utf8"));
@@ -296,10 +306,16 @@ quorumKey
   .command("rotate")
   .description("Initiate a quorum key rotation ceremony (PRD §18.4, §29.3)")
   .requiredOption("--app <appId>", "App ID")
+  .requiredOption("--operators <ids>", "Comma-separated operator IDs participating")
   .action(async (opts: any) => {
+    const participatingOperators = opts.operators.split(",").map((s: string) => s.trim()).filter(Boolean);
+    if (participatingOperators.length === 0) {
+      console.error("At least one operator ID is required.");
+      process.exit(1);
+    }
     const res: any = await api(`/wvc/apps/${opts.app}/quorum-key/ceremonies`, {
       method: "POST",
-      body: { ceremonyType: "rotation", participatingOperators: [] },
+      body: { ceremonyType: "rotation", participatingOperators },
     });
     console.log(`Rotation ceremony started: ${res.id}`);
   });

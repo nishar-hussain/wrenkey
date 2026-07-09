@@ -9,7 +9,7 @@ datasource db {
 
 model Organization {
   id          String   @id @default(uuid())
-  name        String
+  name        String   @unique
   parentOrgId String?  @map("parent_org_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -56,8 +56,8 @@ model User {
   webhooks       Webhook[]
   authenticators Authenticator[]
 
-  @@unique([orgId, email])
-  @@unique([orgId, phone])
+  @@unique([email])
+  @@unique([phone])
   @@index([email])
   @@index([phone])
   @@index([orgId, role])
@@ -75,6 +75,7 @@ model Authenticator {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, type])
   @@map("authenticators")
 }
 
