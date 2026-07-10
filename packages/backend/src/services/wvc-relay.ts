@@ -60,6 +60,8 @@ export interface ProvisionResult {
   totalReplicas: number;
   runtime: "local" | "host-agent";
   bootProofs: BootProofResponse[];
+  quorumPublicKey?: string;
+  quorumKeyGeneration?: number;
 }
 
 function isLocalRuntimeEndpoint(endpoint: string): boolean {

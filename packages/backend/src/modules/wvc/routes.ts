@@ -328,6 +328,35 @@ export async function wvcRoutes(app: FastifyInstance) {
 
       const result = await provisionDeployment(deploymentId, request.orgId);
 
+      // If the local runtime bootstrapped a Quorum Key, auto-complete the bootstrap ceremony
+      if (result.quorumPublicKey) {
+        const app = await prisma.wvcApp.findUnique({ where: { id: deployment.appId } });
+        if (app && !app.quorumKeyId) {
+          const quorumKey = await prisma.wvcQuorumKey.create({
+            data: {
+              appId: deployment.appId,
+              publicKey: result.quorumPublicKey,
+              algorithm: "P256",
+              generation: result.quorumKeyGeneration || 1,
+            },
+          });
+          await prisma.wvcApp.update({
+            where: { id: deployment.appId },
+            data: { quorumKeyId: quorumKey.id },
+          });
+          // Complete any pending bootstrap ceremony
+          const pendingCeremony = await prisma.wvcKeyCeremony.findFirst({
+            where: { appId: deployment.appId, ceremonyType: "bootstrap", status: "pending" },
+          });
+          if (pendingCeremony) {
+            await prisma.wvcKeyCeremony.update({
+              where: { id: pendingCeremony.id },
+              data: { status: "completed", newQuorumKeyId: quorumKey.id, completedAt: new Date() },
+            });
+          }
+        }
+      }
+
       await createAuditLog(request.orgId, "WVC_DEPLOYMENT_PROVISION", {
         deploymentId,
         status: result.status,
@@ -343,6 +372,8 @@ export async function wvcRoutes(app: FastifyInstance) {
         runtime: result.runtime,
         healthyReplicas: result.healthyReplicas,
         totalReplicas: result.totalReplicas,
+        quorumPublicKey: result.quorumPublicKey || null,
+        quorumKeyGeneration: result.quorumKeyGeneration || null,
         bootProofs: result.bootProofs.map((proof) => ({
           id: proof.id,
           manifestId: proof.manifestId,

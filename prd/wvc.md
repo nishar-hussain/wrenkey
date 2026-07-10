@@ -53,6 +53,105 @@
 
 ---
 
+## 0. Implementation status (live tracking)
+
+> Last updated: 2026-07-10
+> Scope: Local simulation (`local-dev-v1`) — AWS Nitro production deferred to Phase 2
+
+### 0.1 What's DONE (local simulation, end-to-end)
+
+| PRD § | Feature | Status | Notes |
+|-------|---------|--------|-------|
+| §8 | Database schema (9 WVC models) | ✅ Done | All Prisma models + migrations applied |
+| §9 | API: Create/list/get WVC apps | ✅ Done | `POST/GET /wvc/apps`, `GET /wvc/apps/:id` |
+| §9 | API: Operators (add/list/revoke) | ✅ Done | `POST/GET/DELETE /wvc/apps/:appId/operators` |
+| §9 | API: Deployments + manifests (create) | ✅ Done | Atomic DB transaction, JCS canonicalization, SHA-256 hash |
+| §9 | API: Manifest approval | ✅ Done | Server verifies P-256 ECDSA signature against stored pubkey |
+| §9 | API: Provision (local) | ✅ Done | Boots simulated replicas, produces boot proofs |
+| §9 | API: Deployment lifecycle (set-live, delete, restore) | ✅ Done | Full state machine |
+| §9 | API: Invoke | ✅ Done | `generate_seed`, `signature`, generic echo |
+| §9 | API: Proof fetch (app + boot) | ✅ Done | `GET /wvc/app-proofs/:id`, `GET /wvc/boot-proofs/:id` |
+| §9 | API: Quorum key ceremonies (initiate, status, complete) | ✅ Done | Endpoints exist; key injection simulated |
+| §9 | Webhooks (6 WVC event types) | ✅ Done | `wvc.deployment.live`, `wvc.manifest.approved`, etc. |
+| §12 | Manifest JCS canonicalization + hashing | ✅ Done | RFC 8785 compliant |
+| §13 | Operator P-256 key generation + signing | ✅ Done | CLI generates keys locally, never sends private keys |
+| §16 | Verification library (local-dev-v1) | ✅ Done | `verifyLocalAppProof()`, `verifyLocalBootProof()` — 6-step verification, real P-256 ECDSA |
+| §16 | Verification library (production Nitro) | 🔨 Stub | COSE/CBOR parsing, X.509 chain, AWS root cert — deferred to Phase 2 |
+| §19 | App Proof format (local-dev-v1) | ✅ Done | Ephemeral key, payload hash, attestation doc, signature |
+| §19 | Boot Proof format (local-dev-v1) | ✅ Done | Attestation doc binding PCRs + ephemeral key |
+| §22 | CLI: login, operator init/list | ✅ Done | |
+| §22 | CLI: app create/list | ✅ Done | |
+| §22 | CLI: deploy create/provision/status/set-live/delete/restore | ✅ Done | |
+| §22 | CLI: deploy invoke | ✅ Done | |
+| §22 | CLI: manifest show/approve | ✅ Done | Recomputes hash locally before signing |
+| §22 | CLI: proof verify (--allow-local) | ✅ Done | Calls `verifyLocalAppProof()` with real crypto |
+| §22 | CLI: quorum-key rotate | ✅ Done | Initiates rotation ceremony |
+| §22 | CLI: ceremony status | ✅ Done | |
+| §23 | Dashboard: `/verifiable-cloud` (apps list) | ✅ Done | Create app, list with pagination |
+| §23 | Dashboard: `/verifiable-cloud/apps/:id` | ✅ Done | Overview, deployments, operators tabs |
+| §23 | Dashboard: Create deployment form | ✅ Done | Image, digest, PCRs, ports, resources |
+| §23 | Dashboard: Manifest view modal | ✅ Done | Shows hash, JSON, approval progress |
+| §23 | Dashboard: Add/revoke operator | ✅ Done | |
+| §27 | E2E test (wvc-e2e-verify.test.ts) | ✅ Done | 12/12 tests pass, full lifecycle with crypto verification |
+| — | Rust enclave crypto (JCS, AES-GCM, Shamir GF(256)) | ✅ Done | 3/3 Shamir tests pass |
+
+### 0.2 What's MISSING (for local simulation completeness)
+
+| PRD § | Feature | Priority | Effort | Notes |
+|-------|---------|----------|--------|-------|
+| §23 | **Dashboard: Invoke deployment** | High | 2h | No invoke UI — users can't call live deployments from dashboard |
+| §23 | **Dashboard: View app proofs** | High | 2h | No proof list/viewer — can't see proof history |
+| §23 | **Dashboard: View boot proofs** | High | 1h | No boot proof detail |
+| §23 | **Dashboard: Key ceremonies tab** | High | 2h | No ceremony history/status UI |
+| §23 | **Dashboard: Client-side proof verification** | Medium | 3h | Should let users verify proofs in-browser using `@wrankey/wvc-verify` |
+| §17-18 | **Quorum Key bootstrapping (local)** | High | 3h | Local runtime should generate + persist Quorum Key on first boot, use it for state encryption |
+| §18 | **Key forwarding simulation (local)** | Medium | 3h | New replica should get Quorum Key from existing replica (simulated) |
+| §22 | **CLI: quorum-key backup-share** | Medium | 2h | Shamir share extraction for operators |
+| §22 | **CLI: quorum-key recover** | Medium | 2h | Recovery ceremony CLI command |
+| §25 | **SDK: Wallet module → WVC integration** | High | 4h | `createWallet()` should call WVC invoke for seed generation |
+| §25 | **SDK: Transaction module → WVC integration** | High | 4h | `signAndBroadcast()` should route signing through WVC |
+| §28 | **WVC-specific audit events** | Low | 1h | Already partially done via `createAuditLog` |
+
+### 0.3 What's DEFERRED (AWS Nitro production — Phase 2)
+
+| PRD § | Feature | Notes |
+|-------|---------|-------|
+| §5 | AWS Nitro Enclave setup | Parent EC2, Nitro CLI, EIF build |
+| §10 | Reproduducible build pipeline | StageX, Dockerfile, CI double-build-diff, SBOM |
+| §14 | Enclave harness (QOS-lite) | Binary digest check, NSM calls, key forwarding |
+| §16 | Production attestation verification | COSE_Sign1, CBOR, X.509 chain, AWS root cert |
+| §18 | Real key forwarding protocol | ECIES, cross-enclave attestation verification |
+| §20 | Host Agent | vsock proxy, egress lockdown, manifest delivery |
+| §20 | Networking | TLS termination, vsock, security groups |
+| §26 | Wallet migration plan | Migration enclave, re-derivation approach |
+| §29 | Production runbooks | Rolling upgrades, disaster recovery drills |
+| §30 | Incident response plan | SEV-1/2/3, tabletop exercises |
+| §32 | Compliance & audit checklist | SOC 2, external security audit |
+
+### 0.4 Current end-to-end flow (local simulation)
+
+```
+User creates app → adds operators → creates deployment + manifest
+  → operator approves manifest (CLI signs manifest hash with P-256)
+  → deployment auto-transitions to "approved"
+  → user provisions (local runtime boots replicas, produces boot proofs)
+  → user sets deployment live
+  → user invokes (local runtime produces result + app proof with real P-256 ECDSA)
+  → proof stored in DB
+  → proof fetchable via API
+  → proof cryptographically verifiable via @wrankey/wvc-verify or CLI
+```
+
+### 0.5 Next implementation priorities
+
+1. **Dashboard: Invoke + Proof viewing** — users need to interact with live deployments and see proofs
+2. **Quorum Key bootstrapping in local runtime** — complete the key model
+3. **Dashboard: Key ceremonies tab** — audit visibility
+4. **SDK integration** — wire WVC into wallet/transaction modules
+5. **CLI: backup-share + recover** — complete the Shamir ceremony tooling
+
+---
+
 ## 1. Executive summary
 
 WranKey Verifiable Compute (WVC) lets WranKey run code — most importantly, wallet key generation and transaction signing — inside hardware-isolated environments (AWS Nitro Enclaves), and afterward produce cryptographic proof of exactly what code ran, without anyone, including WranKey itself, having to be trusted on their word.

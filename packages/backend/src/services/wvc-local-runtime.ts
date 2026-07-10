@@ -16,7 +16,7 @@
  * tested end-to-end without AWS Nitro hardware.
  */
 
-import { createHash, generateKeyPairSync, createSign } from "crypto";
+import { createHash, generateKeyPairSync, createSign, randomBytes } from "crypto";
 import { ForbiddenError, ValidationError } from "../utils/errors.js";
 import { config } from "../config.js";
 import type { InvokeRequest, InvokeResult, ProvisionRequest, ProvisionResult } from "./wvc-relay.js";
@@ -46,10 +46,80 @@ const LOCAL_PCRS = {
   pcr2: "0000000000000000000000000000000000000000000000000000000000000002",
 };
 
+// ─── Quorum Key store (simulates enclave-internal key state) ────────────────
+// In production, the Quorum Key is injected at boot via the key-forwarding
+// protocol (§18). Here we simulate it with an in-process map keyed by appId.
+
+interface QuorumKeyState {
+  publicKeyHex: string;
+  privateKeyPem: string;
+  generation: number;
+  bootstrappedAt: number;
+}
+
+const _quorumKeyStore = new Map<string, QuorumKeyState>();
+
+/** Generate a Quorum Key (simulates NSM GetRandom → P-256 keypair inside enclave). */
+function generateQuorumKey(): QuorumKeyState {
+  const { publicKey, privateKey } = generateKeyPairSync("ec", {
+    namedCurve: "prime256v1",
+    publicKeyEncoding: { type: "spki", format: "der" },
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+  });
+  const pubDerHex = Buffer.from(publicKey).toString("hex");
+  return {
+    publicKeyHex: `04${pubDerHex.slice(-128)}`,
+    privateKeyPem: privateKey as string,
+    generation: 1,
+    bootstrappedAt: Date.now(),
+  };
+}
+
+/** Get or bootstrap the Quorum Key for an app (simulates enclave boot key injection). */
+function getOrBootstrapQuorumKey(appId: string): QuorumKeyState {
+  let keyState = _quorumKeyStore.get(appId);
+  if (!keyState) {
+    keyState = generateQuorumKey();
+    _quorumKeyStore.set(appId, keyState);
+    console.log(`[WVC-LOCAL] Bootstrapped Quorum Key for app ${appId} (generation ${keyState.generation})`);
+  }
+  return keyState;
+}
+
+/** Simulate key forwarding: a new replica gets the Quorum Key from an existing one. */
+function forwardQuorumKey(appId: string): QuorumKeyState {
+  const existing = _quorumKeyStore.get(appId);
+  if (!existing) {
+    return getOrBootstrapQuorumKey(appId);
+  }
+  console.log(`[WVC-LOCAL] Forwarded Quorum Key to new replica for app ${appId}`);
+  return existing;
+}
+
+/** Get the Quorum Key public key for an app (for API responses). */
+export function getLocalQuorumPublicKey(appId: string): string | null {
+  const state = _quorumKeyStore.get(appId);
+  return state ? state.publicKeyHex : null;
+}
+
+/** Rotate the Quorum Key for an app (simulates a rotation ceremony). */
+export function rotateLocalQuorumKey(appId: string): QuorumKeyState {
+  const old = _quorumKeyStore.get(appId);
+  const newKey = generateQuorumKey();
+  if (old) {
+    newKey.generation = old.generation + 1;
+  }
+  _quorumKeyStore.set(appId, newKey);
+  console.log(`[WVC-LOCAL] Rotated Quorum Key for app ${appId} (generation ${newKey.generation})`);
+  return newKey;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function localProofsAllowed(): boolean {
-  return config.wvc.allowLocalProofs || process.env.WVC_ALLOW_LOCAL_PROOFS === "true";
+  const envFlag = process.env.WVC_ALLOW_LOCAL_PROOFS;
+  if (envFlag === "false") return false;
+  return config.wvc.allowLocalProofs || envFlag === "true";
 }
 
 function assertLocalProofsAllowed() {
@@ -129,6 +199,9 @@ function buildLocalAttestation(params: {
 export async function provisionLocalDeployment(request: ProvisionRequest): Promise<ProvisionResult> {
   assertLocalProofsAllowed();
 
+  // Bootstrap or forward the Quorum Key (simulates §17-18 key model)
+  const quorumKey = forwardQuorumKey(request.appId);
+
   const proofs = Array.from({ length: Math.max(1, request.replicaCount) }).map((_, index) => {
     const key = makeEphemeralKey();
     return {
@@ -148,6 +221,8 @@ export async function provisionLocalDeployment(request: ProvisionRequest): Promi
     totalReplicas: request.replicaCount,
     runtime: "local",
     bootProofs: proofs,
+    quorumPublicKey: quorumKey.publicKeyHex,
+    quorumKeyGeneration: quorumKey.generation,
   };
 }
 

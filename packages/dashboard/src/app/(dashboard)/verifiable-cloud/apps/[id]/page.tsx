@@ -12,7 +12,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, Play, FileCheck, Key } from "lucide-react";
 
 interface AppDetail {
   id: string;
@@ -37,7 +37,7 @@ export default function WvcAppDetailPage() {
   const { addToast } = useToast();
   const [app, setApp] = useState<AppDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"overview" | "deployments" | "operators">("overview");
+  const [tab, setTab] = useState<"overview" | "deployments" | "operators" | "proofs" | "ceremonies">("overview");
 
   // Deployment creation state
   const [showCreateDeploy, setShowCreateDeploy] = useState(false);
@@ -55,6 +55,23 @@ export default function WvcAppDetailPage() {
   const [showAddOperator, setShowAddOperator] = useState(false);
   const [operatorForm, setOperatorForm] = useState({ alias: "", publicKey: "" });
   const [operatorLoading, setOperatorLoading] = useState(false);
+
+  // Invoke state
+  const [showInvoke, setShowInvoke] = useState(false);
+  const [invokeDeploymentId, setInvokeDeploymentId] = useState("");
+  const [invokeForm, setInvokeForm] = useState({ payloadType: "generate_seed", unsignedTx: "" });
+  const [invokeLoading, setInvokeLoading] = useState(false);
+  const [invokeResult, setInvokeResult] = useState<any>(null);
+
+  // Proof viewing state
+  const [viewingProof, setViewingProof] = useState<any>(null);
+  const [proofLoading, setProofLoading] = useState(false);
+  const [appProofs, setAppProofs] = useState<any[]>([]);
+
+  // Ceremony state
+  const [showInitCeremony, setShowInitCeremony] = useState(false);
+  const [ceremonyForm, setCeremonyForm] = useState({ ceremonyType: "bootstrap", participatingOperators: "" });
+  const [ceremonyLoading, setCeremonyLoading] = useState(false);
 
   const fetchApp = useCallback(async () => {
     if (!token) return;
@@ -139,6 +156,71 @@ export default function WvcAppDetailPage() {
     } catch (err: any) { addToast(err.message || "Failed to revoke", "error"); }
   };
 
+  const invokeDeployment = async () => {
+    setInvokeLoading(true);
+    setInvokeResult(null);
+    try {
+      const body: any = { payloadType: invokeForm.payloadType };
+      if (invokeForm.payloadType === "signature" && invokeForm.unsignedTx) {
+        body.unsignedTx = invokeForm.unsignedTx;
+      }
+      const res: any = await apiFetch(`/wvc/deployments/${invokeDeploymentId}/invoke`, {
+        method: "POST",
+        body: JSON.stringify(body),
+        token: token!,
+      });
+      setInvokeResult(res);
+      addToast("Invocation successful — proof generated", "success");
+    } catch (err: any) {
+      addToast(err.message || "Invocation failed", "error");
+    } finally { setInvokeLoading(false); }
+  };
+
+  const openInvokeModal = (deploymentId: string) => {
+    setInvokeDeploymentId(deploymentId);
+    setInvokeResult(null);
+    setInvokeForm({ payloadType: "generate_seed", unsignedTx: "" });
+    setShowInvoke(true);
+  };
+
+  const loadAppProofs = async (deploymentId: string) => {
+    setProofLoading(true);
+    try {
+      const res: any = await apiFetch(`/wvc/deployments/${deploymentId}/app-proofs?limit=20`, { token: token! });
+      setAppProofs(res.data || []);
+    } catch (err: any) {
+      addToast(err.message || "Failed to load proofs", "error");
+    } finally { setProofLoading(false); }
+  };
+
+  const viewProofDetail = async (proofId: string) => {
+    try {
+      const res: any = await apiFetch(`/wvc/app-proofs/${proofId}`, { token: token! });
+      setViewingProof(res);
+    } catch (err: any) {
+      addToast(err.message || "Failed to load proof", "error");
+    }
+  };
+
+  const initCeremony = async () => {
+    setCeremonyLoading(true);
+    try {
+      const operators = ceremonyForm.participatingOperators
+        .split(",").map((s) => s.trim()).filter(Boolean);
+      await apiFetch(`/wvc/apps/${appId}/quorum-key/ceremonies`, {
+        method: "POST",
+        body: JSON.stringify({ ceremonyType: ceremonyForm.ceremonyType, participatingOperators: operators }),
+        token: token!,
+      });
+      addToast("Ceremony initiated", "success");
+      setShowInitCeremony(false);
+      setCeremonyForm({ ceremonyType: "bootstrap", participatingOperators: "" });
+      fetchApp();
+    } catch (err: any) {
+      addToast(err.message || "Failed to initiate ceremony", "error");
+    } finally { setCeremonyLoading(false); }
+  };
+
   if (loading) {
     return <div className="space-y-3"><Skeleton className="h-8 w-64" /><Skeleton className="h-64 w-full" /></div>;
   }
@@ -148,6 +230,8 @@ export default function WvcAppDetailPage() {
     { key: "overview", label: "Overview" },
     { key: "deployments", label: `Deployments (${app.deployments?.length ?? 0})` },
     { key: "operators", label: `Operators (${app.operators?.length ?? 0})` },
+    { key: "proofs", label: "Proofs" },
+    { key: "ceremonies", label: `Ceremonies (${app.keyCeremonies?.length ?? 0})` },
   ] as const;
 
   return (
@@ -215,6 +299,8 @@ export default function WvcAppDetailPage() {
                       <Button size="sm" variant="secondary" onClick={() => viewManifest(d.manifestId)}>Manifest</Button>
                       {d.status === "approved" && <Button size="sm" onClick={() => provisionDeployment(d.id)}>Provision</Button>}
                       {d.status === "inactive" && <Button size="sm" onClick={() => setDeploymentLive(d.id)}>Set Live</Button>}
+                      {d.status === "live" && <Button size="sm" variant="secondary" onClick={() => openInvokeModal(d.id)}><Play className="h-3 w-3 mr-1" />Invoke</Button>}
+                      {d._count?.appProofs > 0 && <Button size="sm" variant="secondary" onClick={() => loadAppProofs(d.id)}>Proofs ({d._count.appProofs})</Button>}
                     </div>
                   ),
                 },
@@ -250,6 +336,58 @@ export default function WvcAppDetailPage() {
             />
           </CardContent></Card>
           <p className="text-xs text-slate-400 mt-2">Operators generate P256 keys locally via <code className="bg-slate-100 px-1 rounded">wvc operator init</code> and approve manifests via the CLI. Private keys never touch the browser.</p>
+        </div>
+      )}
+
+      {tab === "proofs" && (
+        <div>
+          <Card><CardContent className="p-0">
+            {proofLoading ? (
+              <div className="p-6"><Skeleton className="h-8 w-full" /></div>
+            ) : appProofs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <FileCheck className="w-10 h-10 text-slate-300 mb-3" />
+                <p className="text-sm text-slate-500">No proofs loaded. Click "Proofs" on a deployment above to view its app proof history.</p>
+              </div>
+            ) : (
+              <Table
+                columns={[
+                  { key: "id", header: "Proof ID", render: (p: any) => <button className="font-mono text-xs text-brand-600 hover:underline" onClick={() => viewProofDetail(p.id)}>{p.id.slice(0, 12)}…</button> },
+                  { key: "type", header: "Payload Type", render: (p: any) => <span className="text-xs font-mono">{p.payloadType}</span> },
+                  { key: "format", header: "Format", render: (p: any) => <span className="text-xs font-mono">{p.proofFormatVersion}</span> },
+                  { key: "ephemeralKey", header: "Ephemeral Key", render: (p: any) => <span className="font-mono text-xs">{p.ephemeralPubkey?.slice(0, 24)}…</span> },
+                  { key: "issuedAt", header: "Issued", render: (p: any) => new Date(p.issuedAt).toLocaleString() },
+                  { key: "actions", header: "", render: (p: any) => <Button size="sm" variant="secondary" onClick={() => viewProofDetail(p.id)}>View</Button> },
+                ]}
+                data={appProofs}
+                loading={false}
+                emptyMessage="No proofs found."
+              />
+            )}
+          </CardContent></Card>
+        </div>
+      )}
+
+      {tab === "ceremonies" && (
+        <div>
+          <div className="flex justify-end mb-3">
+            <Button onClick={() => setShowInitCeremony(true)}><Key className="h-4 w-4 mr-1" /> New Ceremony</Button>
+          </div>
+          <Card><CardContent className="p-0">
+            <Table
+              columns={[
+                { key: "id", header: "Ceremony ID", render: (c: any) => <span className="font-mono text-xs">{c.id.slice(0, 12)}…</span> },
+                { key: "type", header: "Type", render: (c: any) => <span className="text-xs font-mono">{c.ceremonyType}</span> },
+                { key: "status", header: "Status", render: (c: any) => <StatusBadge status={c.status} /> },
+                { key: "initiatedBy", header: "Initiated By", render: (c: any) => <span className="font-mono text-xs">{c.initiatedBy?.slice(0, 12) ?? "—"}…</span> },
+                { key: "startedAt", header: "Started", render: (c: any) => new Date(c.startedAt).toLocaleString() },
+                { key: "completedAt", header: "Completed", render: (c: any) => c.completedAt ? new Date(c.completedAt).toLocaleString() : "—" },
+              ]}
+              data={app.keyCeremonies || []}
+              loading={false}
+              emptyMessage="No ceremonies yet."
+            />
+          </CardContent></Card>
         </div>
       )}
 
@@ -328,6 +466,96 @@ export default function WvcAppDetailPage() {
               className="w-full text-xs font-mono border rounded-md p-2 h-32 resize-none bg-background" />
           </div>
           <Button onClick={addOperator} disabled={operatorLoading} className="w-full">{operatorLoading ? "Adding…" : "Add Operator"}</Button>
+        </div>
+      </Modal>
+
+      {/* Invoke Modal */}
+      <Modal open={showInvoke} onClose={() => setShowInvoke(false)} title="Invoke Deployment">
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+          <p className="text-xs text-slate-400">Deployment: <span className="font-mono">{invokeDeploymentId.slice(0, 12)}…</span></p>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Payload Type</label>
+            <select value={invokeForm.payloadType} onChange={(e) => setInvokeForm({ ...invokeForm, payloadType: e.target.value })}
+              className="w-full h-10 border rounded-md px-3 bg-background text-sm">
+              <option value="generate_seed">generate_seed</option>
+              <option value="signature">signature</option>
+              <option value="echo">echo</option>
+            </select>
+          </div>
+          {invokeForm.payloadType === "signature" && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Unsigned Transaction (hex)</label>
+              <Input value={invokeForm.unsignedTx} onChange={(e) => setInvokeForm({ ...invokeForm, unsignedTx: e.target.value })} placeholder="0x02f8..." className="font-mono text-xs" />
+            </div>
+          )}
+          <Button onClick={invokeDeployment} disabled={invokeLoading} className="w-full">
+            {invokeLoading ? "Invoking…" : "Invoke & Generate Proof"}
+          </Button>
+
+          {invokeResult && (
+            <div className="space-y-3 mt-4 border-t pt-4">
+              <div>
+                <p className="text-sm font-medium mb-1">Result</p>
+                <pre className="font-mono text-xs bg-slate-50 dark:bg-slate-800 p-3 rounded max-h-40 overflow-y-auto">{JSON.stringify(invokeResult.result, null, 2)}</pre>
+              </div>
+              <div>
+                <p className="text-sm font-medium mb-1">App Proof</p>
+                <pre className="font-mono text-xs bg-slate-50 dark:bg-slate-800 p-3 rounded max-h-40 overflow-y-auto">{JSON.stringify(invokeResult.appProof, null, 2)}</pre>
+              </div>
+              <p className="text-xs text-slate-400">Verify with: <code className="bg-slate-100 px-1 rounded">wvc proof &lt;file&gt; --expected-pcrs &lt;file&gt; --allow-local</code></p>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Proof Detail Modal */}
+      {viewingProof && (
+        <Modal open={!!viewingProof} onClose={() => setViewingProof(null)} title="App Proof Detail">
+          <div className="space-y-3 max-h-[70vh] overflow-y-auto">
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div><span className="text-slate-400">Proof ID:</span> <span className="font-mono text-xs">{viewingProof.id}</span></div>
+              <div><span className="text-slate-400">Format:</span> <span className="font-mono text-xs">{viewingProof.proofFormatVersion}</span></div>
+              <div><span className="text-slate-400">Type:</span> <span className="font-mono text-xs">{viewingProof.payloadType}</span></div>
+              <div><span className="text-slate-400">Issued:</span> {new Date(viewingProof.issuedAt).toLocaleString()}</div>
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-1">Ephemeral Public Key</p>
+              <p className="font-mono text-xs bg-slate-50 dark:bg-slate-800 p-2 rounded break-all">{viewingProof.ephemeralPubkey}</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-1">Payload Hash</p>
+              <p className="font-mono text-xs bg-slate-50 dark:bg-slate-800 p-2 rounded break-all">{viewingProof.payloadHash}</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-1">Signature (P-256 ECDSA)</p>
+              <p className="font-mono text-xs bg-slate-50 dark:bg-slate-800 p-2 rounded break-all">{viewingProof.signature}</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-1">Attestation Document (base64)</p>
+              <p className="font-mono text-xs bg-slate-50 dark:bg-slate-800 p-2 rounded break-all max-h-32 overflow-y-auto">{viewingProof.attestationDoc}</p>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Init Ceremony Modal */}
+      <Modal open={showInitCeremony} onClose={() => setShowInitCeremony(false)} title="Initiate Key Ceremony">
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Ceremony Type</label>
+            <select value={ceremonyForm.ceremonyType} onChange={(e) => setCeremonyForm({ ...ceremonyForm, ceremonyType: e.target.value })}
+              className="w-full h-10 border rounded-md px-3 bg-background text-sm">
+              <option value="bootstrap">Bootstrap (first key)</option>
+              <option value="rotation">Rotation (replace key)</option>
+              <option value="recovery">Recovery (restore from shares)</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Participating Operators (comma-separated IDs)</label>
+            <Input value={ceremonyForm.participatingOperators} onChange={(e) => setCeremonyForm({ ...ceremonyForm, participatingOperators: e.target.value })}
+              placeholder="uuid1, uuid2, uuid3" className="font-mono text-xs" />
+          </div>
+          <Button onClick={initCeremony} disabled={ceremonyLoading} className="w-full">{ceremonyLoading ? "Initiating…" : "Initiate Ceremony"}</Button>
         </div>
       </Modal>
     </div>

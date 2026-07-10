@@ -7,6 +7,7 @@ afterEach(() => {
 
 describe("WVC local runtime", () => {
   it("rejects local proofs unless explicitly enabled", async () => {
+    process.env.WVC_ALLOW_LOCAL_PROOFS = "false";
     await expect(provisionLocalDeployment({
       deploymentId: "dep-1",
       appId: "app-1",

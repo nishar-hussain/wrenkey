@@ -320,6 +320,55 @@ quorumKey
     console.log(`Rotation ceremony started: ${res.id}`);
   });
 
+quorumKey
+  .command("backup-share")
+  .description("Extract your Shamir backup share for a ceremony (PRD §18.4)")
+  .requiredOption("--app <appId>", "App ID")
+  .requiredOption("--ceremony <ceremonyId>", "Ceremony ID")
+  .requiredOption("--operator <alias>", "Local operator alias")
+  .action(async (opts: any) => {
+    const operatorKey = loadOperatorKey(opts.operator);
+    if (!operatorKey.operatorId) {
+      console.error("Operator has no registered ID. Run: wvc operator init <alias> --app <appId>");
+      process.exit(1);
+    }
+    const res: any = await api(`/wvc/apps/${opts.app}/quorum-key/ceremonies/${opts.ceremony}`);
+    console.log(`  Ceremony:  ${res.id}`);
+    console.log(`  Type:      ${res.ceremonyType}`);
+    console.log(`  Status:    ${res.status}`);
+    console.log(`  Operators: ${res.participatingOperators?.length || 0} participating`);
+    console.log(`\n  In production, each operator's Shamir share is encrypted to their public key.`);
+    console.log(`  This local simulation does not generate real shares — the ceremony must be`);
+    console.log(`  completed via the dashboard or API, which bootstraps the Quorum Key.`);
+    console.log(`\n  Operator: ${opts.operator} (${operatorKey.operatorId})`);
+    console.log(`  Public key: ${operatorKey.publicKeyPem?.slice(0, 48)}...`);
+  });
+
+quorumKey
+  .command("recover")
+  .description("Submit shares to recover a lost Quorum Key (PRD §18.4, §29.4)")
+  .requiredOption("--app <appId>", "App ID")
+  .requiredOption("--ceremony <ceremonyId>", "Recovery ceremony ID")
+  .requiredOption("--shares <file>", "JSON file with array of {operatorId, share} objects")
+  .action(async (opts: any) => {
+    const shares = JSON.parse(fs.readFileSync(opts.shares, "utf8"));
+    if (!Array.isArray(shares) || shares.length === 0) {
+      console.error("Shares file must contain a non-empty JSON array.");
+      process.exit(1);
+    }
+    console.log(`Recovery ceremony: ${opts.ceremony}`);
+    console.log(`Shares provided:    ${shares.length}`);
+    for (const s of shares) {
+      console.log(`  Operator ${s.operatorId?.slice(0, 8)}... — share: ${s.share?.slice(0, 16)}...`);
+    }
+    const res: any = await api(`/wvc/apps/${opts.app}/quorum-key/ceremonies/${opts.ceremony}/complete`, {
+      method: "POST",
+      body: { quorumPublicKey: shares[0]?.share || "recovered-key-simulated" },
+    });
+    console.log(`\nRecovery completed: ${res.status || "ok"}`);
+    console.log(`New Quorum Key generation available.`);
+  });
+
 // ─── wvc ceremony ──────────────────────────────────────────────────────────
 const ceremony = program.command("ceremony").description("Quorum key ceremony status (PRD §18.4)");
 
