@@ -1,6 +1,6 @@
-import { createTransport } from "nodemailer";
 import prisma from "../db.js";
 import { config } from "../config.js";
+import { sendEmail } from "../utils/email.js";
 
 async function getBranding(orgId: string) {
   try {
@@ -20,33 +20,16 @@ async function getOrgAdmins(orgId: string): Promise<string[]> {
   return admins.map((u) => u.email).filter(Boolean) as string[];
 }
 
-async function sendEmail(to: string, subject: string, html: string, orgId: string) {
+async function sendOrgEmail(to: string, subject: string, html: string, orgId: string) {
   if (!config.smtp.host || !config.smtp.user || !config.smtp.pass) return;
 
   try {
     const branding = await getBranding(orgId);
-    const isSecure = config.smtp.port === 465;
-    const transporter = createTransport({
-      host: config.smtp.host,
-      port: config.smtp.port,
-      secure: isSecure,
-      auth: { user: config.smtp.user, pass: config.smtp.pass },
-      tls: { rejectUnauthorized: !config.isDev },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-    });
-
-    const fromAddress = config.smtp.from.includes("@")
-      ? `"${branding.appName}" <${config.smtp.from}>`
-      : `"${branding.appName}" <${config.smtp.user}>`;
-
     const logoHtml = branding.appLogo
       ? `<img src="${branding.appLogo}" alt="${branding.appName}" style="max-height:40px;margin-bottom:16px;" />`
       : "";
 
-    await transporter.sendMail({
-      from: fromAddress,
+    await sendEmail({
       to,
       subject,
       html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
@@ -56,6 +39,7 @@ async function sendEmail(to: string, subject: string, html: string, orgId: strin
         <hr style="border:0;border-top:1px solid #e2e8f0;margin:24px 0;" />
         <p style="color:#64748b;font-size:12px;">This is an automated notification from ${branding.appName}. You received this because you are an organization admin.</p>
       </div>`,
+      appName: branding.appName,
     });
   } catch (err: any) {
     console.error("[Notifications] Failed to send email:", err.message);
@@ -81,7 +65,7 @@ export async function notifyLargeTransaction(
       <tr><td style="padding:8px 12px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc;">To</td><td style="padding:8px 12px;border:1px solid #e2e8f0;font-family:monospace;font-size:12px;">${to}</td></tr>
     </table>`;
 
-  await Promise.all(admins.map((email) => sendEmail(email, subject, html, orgId)));
+  await Promise.all(admins.map((email) => sendOrgEmail(email, subject, html, orgId)));
 }
 
 export async function notifyTransactionFailed(
@@ -100,7 +84,7 @@ export async function notifyTransactionFailed(
       <tr><td style="padding:8px 12px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc;">Reason</td><td style="padding:8px 12px;border:1px solid #e2e8f0;color:#dc2626;">${reason}</td></tr>
     </table>`;
 
-  await Promise.all(admins.map((email) => sendEmail(email, subject, html, orgId)));
+  await Promise.all(admins.map((email) => sendOrgEmail(email, subject, html, orgId)));
 }
 
 export async function notifyPolicyDenial(
@@ -122,7 +106,7 @@ export async function notifyPolicyDenial(
       <tr><td style="padding:8px 12px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc;">Chain</td><td style="padding:8px 12px;border:1px solid #e2e8f0;">${chain}</td></tr>
     </table>`;
 
-  await Promise.all(admins.map((email) => sendEmail(email, subject, html, orgId)));
+  await Promise.all(admins.map((email) => sendOrgEmail(email, subject, html, orgId)));
 }
 
 export async function notifyAgentCreated(
@@ -140,7 +124,7 @@ export async function notifyAgentCreated(
       <tr><td style="padding:8px 12px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc;">ID</td><td style="padding:8px 12px;border:1px solid #e2e8f0;font-family:monospace;font-size:12px;">${agentId}</td></tr>
     </table>`;
 
-  await Promise.all(admins.map((email) => sendEmail(email, subject, html, orgId)));
+  await Promise.all(admins.map((email) => sendOrgEmail(email, subject, html, orgId)));
 }
 
 export async function notifyWalletCreated(
@@ -158,7 +142,7 @@ export async function notifyWalletCreated(
       <tr><td style="padding:8px 12px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc;">ID</td><td style="padding:8px 12px;border:1px solid #e2e8f0;font-family:monospace;font-size:12px;">${walletId}</td></tr>
     </table>`;
 
-  await Promise.all(admins.map((email) => sendEmail(email, subject, html, orgId)));
+  await Promise.all(admins.map((email) => sendOrgEmail(email, subject, html, orgId)));
 }
 
 export async function notifySpendingLimitExceeded(
@@ -179,5 +163,5 @@ export async function notifySpendingLimitExceeded(
       <tr><td style="padding:8px 12px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc;">Max Limit</td><td style="padding:8px 12px;border:1px solid #e2e8f0;">${maxLimit}</td></tr>
     </table>`;
 
-  await Promise.all(admins.map((email) => sendEmail(email, subject, html, orgId)));
+  await Promise.all(admins.map((email) => sendOrgEmail(email, subject, html, orgId)));
 }

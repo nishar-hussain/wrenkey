@@ -40,6 +40,7 @@ async function main() {
   await prisma.apiKey.deleteMany();
   await prisma.session.deleteMany();
   await prisma.authenticator.deleteMany();
+  await prisma.orgConfig.deleteMany();
   await prisma.user.deleteMany();
   await prisma.organization.deleteMany();
 

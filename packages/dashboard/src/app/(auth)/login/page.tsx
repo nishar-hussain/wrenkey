@@ -82,7 +82,7 @@ export default function LoginPage() {
 
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || loading) return;
+    if (!email || !fullName || !orgName || loading) return;
     setLoading(true);
     setError("");
     try {
@@ -111,7 +111,10 @@ export default function LoginPage() {
         setStep("otp-verify");
         if (sendRes.devOtp) setDevOtp(sendRes.devOtp);
         if (sendRes.emailSent === false) {
-          setError(sendRes.message || "Email could not be sent.");
+          // Email failed but we still have the dev OTP — show warning, not blocking error
+          if (!sendRes.devOtp) {
+            setError(sendRes.message || "Email could not be sent.");
+          }
         }
       }
     } catch (err: any) {
@@ -133,7 +136,9 @@ export default function LoginPage() {
       setStep("otp-verify");
       if (sendRes.devOtp) setDevOtp(sendRes.devOtp);
       if (sendRes.emailSent === false) {
-        setError(sendRes.message || "Email could not be sent.");
+        if (!sendRes.devOtp) {
+          setError(sendRes.message || "Email could not be sent.");
+        }
       }
     } catch (err: any) {
       setError(err.message || "Something went wrong.");

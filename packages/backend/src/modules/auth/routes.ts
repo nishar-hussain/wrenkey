@@ -1,6 +1,5 @@
 import { FastifyInstance } from "fastify";
 import bcrypt from "bcrypt";
-import { createTransport } from "nodemailer";
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -277,60 +276,25 @@ export async function authRoutes(app: FastifyInstance) {
       // Attempt to send email if SMTP is configured
       let emailSent = false;
       let smtpError = "";
+      const { sendEmail } = await import("../../utils/email.js");
       if (config.smtp.host && config.smtp.user && config.smtp.pass) {
-        try {
-          const isSecure = config.smtp.port === 465;
-          const transporter = createTransport({
-            host: config.smtp.host,
-            port: config.smtp.port,
-            secure: isSecure,
-            auth: {
-              user: config.smtp.user,
-              pass: config.smtp.pass,
-            },
-            tls: {
-              rejectUnauthorized: !config.isDev,
-            },
-            connectionTimeout: 10000,
-            greetingTimeout: 10000,
-            socketTimeout: 15000,
-          });
-
-          await transporter.verify();
-          console.log(`[EMAIL] SMTP connection verified for ${config.smtp.host}:${config.smtp.port}`);
-
-          const fromAddress = config.smtp.from.includes("@")
-            ? `"${branding.appName}" <${config.smtp.from}>`
-            : `"${branding.appName}" <${config.smtp.user}>`;
-
-          const logoHtml = branding.appLogo ? `<img src="${branding.appLogo}" alt="${branding.appName}" style="max-height:40px;margin-bottom:16px;" />` : "";
-
-          const info = await transporter.sendMail({
-            from: fromAddress,
-            to: email,
-            subject: `${branding.appName} - Login Code`,
-            text: `Your code: ${otp}\n\nExpires in ${Math.floor(config.otpExpirySeconds / 60)} minutes.`,
-            html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-              ${logoHtml}
-              <h2 style="color:#1e3a8a;">${branding.appName}</h2>
-              <p>Your verification code is:</p>
-              <h1 style="font-size:32px;letter-spacing:4px;color:#2563eb;margin:16px 0;">${otp}</h1>
-              <p style="color:#64748b;font-size:14px;">This code expires in ${Math.floor(config.otpExpirySeconds / 60)} minutes.</p>
-              <p style="color:#94a3b8;font-size:12px;">If you didn't request this, ignore this email.</p>
-            </div>`,
-          });
-          emailSent = true;
-          console.log(`[EMAIL] Sent OTP to ${email}, messageId: ${info.messageId}, response: ${info.response}`);
-        } catch (smtpErr: any) {
-          smtpError = smtpErr.message || "Unknown SMTP error";
-          console.error(`[EMAIL] Failed to send OTP to ${email}:`, {
-            message: smtpErr.message,
-            code: smtpErr.code,
-            responseCode: smtpErr.responseCode,
-            response: smtpErr.response,
-            command: smtpErr.command,
-          });
-        }
+        const logoHtml = branding.appLogo ? `<img src="${branding.appLogo}" alt="${branding.appName}" style="max-height:40px;margin-bottom:16px;" />` : "";
+        const result = await sendEmail({
+          to: email,
+          subject: `${branding.appName} - Login Code`,
+          text: `Your code: ${otp}\n\nExpires in ${Math.floor(config.otpExpirySeconds / 60)} minutes.`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+            ${logoHtml}
+            <h2 style="color:#1e3a8a;">${branding.appName}</h2>
+            <p>Your verification code is:</p>
+            <h1 style="font-size:32px;letter-spacing:4px;color:#2563eb;margin:16px 0;">${otp}</h1>
+            <p style="color:#64748b;font-size:14px;">This code expires in ${Math.floor(config.otpExpirySeconds / 60)} minutes.</p>
+            <p style="color:#94a3b8;font-size:12px;">If you didn't request this, ignore this email.</p>
+          </div>`,
+          appName: branding.appName,
+        });
+        emailSent = result.sent;
+        if (!emailSent) smtpError = result.error || "Unknown SMTP error";
       } else {
         console.warn(`[EMAIL] SMTP not fully configured. host=${config.smtp.host}, user=${config.smtp.user ? "set" : "missing"}, pass=${config.smtp.pass ? "set" : "missing"}`);
       }
@@ -1068,23 +1032,11 @@ export async function authRoutes(app: FastifyInstance) {
 
       if (config.smtp.host && config.smtp.user && config.smtp.pass) {
         try {
-          const { createTransport } = await import("nodemailer");
+          const { sendEmail } = await import("../../utils/email.js");
           const branding = await getOrgBranding(user.orgId);
-          const isSecure = config.smtp.port === 465;
-          const transporter = createTransport({
-            host: config.smtp.host,
-            port: config.smtp.port,
-            secure: isSecure,
-            auth: { user: config.smtp.user, pass: config.smtp.pass },
-            tls: { rejectUnauthorized: !config.isDev },
-          });
-          const fromAddress = config.smtp.from.includes("@")
-            ? `"${branding.appName}" <${config.smtp.from}>`
-            : `"${branding.appName}" <${config.smtp.user}>`;
           const resetUrl = `${Array.isArray(config.corsOrigin) ? config.corsOrigin[0] : config.corsOrigin}/reset-password?token=${resetToken}`;
           const logoHtml = branding.appLogo ? `<img src="${branding.appLogo}" alt="${branding.appName}" style="max-height:40px;margin-bottom:16px;" />` : "";
-          await transporter.sendMail({
-            from: fromAddress,
+          await sendEmail({
             to: email,
             subject: `${branding.appName} - Reset Your Password`,
             text: `Reset your password: ${resetUrl}\n\nExpires in 15 minutes.`,
@@ -1096,6 +1048,7 @@ export async function authRoutes(app: FastifyInstance) {
               <p style="color:#64748b;font-size:14px;">This link expires in 15 minutes.</p>
               <p style="color:#94a3b8;font-size:12px;">If you didn't request this, ignore this email.</p>
             </div>`,
+            appName: branding.appName,
           });
           console.log(`[EMAIL] Sent password reset email to ${email}`);
         } catch (resetEmailErr: any) {
@@ -1165,21 +1118,9 @@ export async function authRoutes(app: FastifyInstance) {
 
       if (config.smtp.host && config.smtp.user && config.smtp.pass) {
         try {
-          const { createTransport } = await import("nodemailer");
-          const isSecure = config.smtp.port === 465;
-          const transporter = createTransport({
-            host: config.smtp.host,
-            port: config.smtp.port,
-            secure: isSecure,
-            auth: { user: config.smtp.user, pass: config.smtp.pass },
-            tls: { rejectUnauthorized: !config.isDev },
-          });
-          const fromAddress = config.smtp.from.includes("@")
-            ? `"WranKey" <${config.smtp.from}>`
-            : `"WranKey" <${config.smtp.user}>`;
+          const { sendEmail } = await import("../../utils/email.js");
           const verifyUrl = `${Array.isArray(config.corsOrigin) ? config.corsOrigin[0] : config.corsOrigin}/signup/verify?token=${token}`;
-          await transporter.sendMail({
-            from: fromAddress,
+          await sendEmail({
             to: email,
             subject: "WranKey - Verify Your Email",
             text: `Verify your email to continue creating your account: ${verifyUrl}\n\nThis link expires in 24 hours.`,
@@ -1190,6 +1131,7 @@ export async function authRoutes(app: FastifyInstance) {
               <p style="color:#64748b;font-size:14px;">This link expires in 24 hours.</p>
               <p style="color:#94a3b8;font-size:12px;">If you didn't request this, ignore this email.</p>
             </div>`,
+            appName: "WranKey",
           });
           console.log(`[EMAIL] Sent signup verification email to ${email}`);
         } catch (emailErr: any) {

@@ -18,18 +18,25 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}/api/v1${path}`, {
-    ...fetchOpts,
-    headers,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/v1${path}`, {
+      ...fetchOpts,
+      headers,
+    });
+  } catch (err: any) {
+    throw new Error(`Cannot reach server at ${API_BASE}. Is the backend running?`);
+  }
 
   if (!res.ok) {
     if (res.status === 401) {
-      if (typeof window !== "undefined") {
+      // Don't redirect if we're already on a public/auth page
+      const isAuthPath = path.startsWith("/auth/");
+      const isOnLoginPage = typeof window !== "undefined" && window.location.pathname.startsWith("/login");
+      if (typeof window !== "undefined" && !isAuthPath && !isOnLoginPage) {
         localStorage.removeItem("wrankey_token");
         localStorage.removeItem("wrankey_user");
         localStorage.removeItem("wrankey_org");
-        // Redirecting to login
         if (process.env.NODE_ENV !== "test") {
           window.location.href = "/login";
         }
