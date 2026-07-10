@@ -86,7 +86,6 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      // 1. Check if user already exists
       const res: any = await apiFetch("/auth/email/lookup", {
         method: "POST",
         body: JSON.stringify({ email }),
@@ -94,28 +93,22 @@ export default function LoginPage() {
       setLookupResult(res);
 
       if (res.exists) {
-        // If user exists, redirect to Welcome Back screen
         setRememberedUser({
           email: res.email,
           orgName: res.org?.name || "My Organization",
         });
-        setStep("welcome-back");
-      } else {
-        // 2. If new user, send OTP
-        const body: any = { email };
-        if (orgName) body.orgName = orgName;
-        const sendRes: any = await apiFetch("/auth/email/send", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
-        setStep("otp-verify");
-        if (sendRes.devOtp) setDevOtp(sendRes.devOtp);
-        if (sendRes.emailSent === false) {
-          // Email failed but we still have the dev OTP — show warning, not blocking error
-          if (!sendRes.devOtp) {
-            setError(sendRes.message || "Email could not be sent.");
-          }
-        }
+      }
+
+      const body: any = { email };
+      if (orgName) body.orgName = orgName;
+      const sendRes: any = await apiFetch("/auth/email/send", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      setStep("otp-verify");
+      if (sendRes.devOtp) setDevOtp(sendRes.devOtp);
+      if (sendRes.emailSent === false && !sendRes.devOtp) {
+        setError(sendRes.message || "Email could not be sent.");
       }
     } catch (err: any) {
       setError(err.message || "Something went wrong.");
@@ -177,11 +170,9 @@ export default function LoginPage() {
       const body: any = { email, otp };
       const isExisting = lookupResult?.exists || (rememberedUser?.email === email);
 
-      if (isExisting) {
-        if (lookupResult?.org?.id) {
-          body.orgId = lookupResult.org.id;
-        }
-      } else {
+      if (isExisting && lookupResult?.org?.id) {
+        body.orgId = lookupResult.org.id;
+      } else if (!isExisting) {
         if (orgName) body.orgName = orgName;
         if (fullName) body.name = fullName;
         if (source) body.tags = [`source:${source}`];
@@ -191,8 +182,7 @@ export default function LoginPage() {
         method: "POST",
         body: JSON.stringify(body),
       });
-      // Pass whether the user already named their org so we can skip onboarding
-      doLogin(res, !!(orgName || isExisting));
+      doLogin(res, !!isExisting);
     } catch (err: any) {
       setError(err.message || "Invalid OTP code.");
     } finally {

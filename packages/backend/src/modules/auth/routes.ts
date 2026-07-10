@@ -311,7 +311,7 @@ export async function authRoutes(app: FastifyInstance) {
             : "OTP generated (check server logs - SMTP not configured)",
         emailSent,
         expiresIn: config.otpExpirySeconds,
-        ...(config.isDev && !emailSent ? { devOtp: otp } : {}),
+        ...(config.isDev ? { devOtp: otp } : {}),
       });
     } catch (err) {
       return sendError(reply, err);
