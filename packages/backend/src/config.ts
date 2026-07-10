@@ -70,5 +70,8 @@ export const config = {
     enclaveEndpoint: process.env.WVC_ENCLAVE_ENDPOINT || "",
     allowLocalProofs: process.env.WVC_ALLOW_LOCAL_PROOFS === "true",
     invokeTimeoutMs: parseInt(process.env.WVC_INVOKE_TIMEOUT_MS || "30000", 10),
+    // When set, wallet creation and transaction signing route through this WVC
+    // deployment instead of the in-process ethers.js signer (PRD §25).
+    walletSignerDeploymentId: process.env.WVC_WALLET_SIGNER_DEPLOYMENT_ID || "",
   },
 };

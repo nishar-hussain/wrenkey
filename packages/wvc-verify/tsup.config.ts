@@ -1,13 +1,22 @@
 import { defineConfig } from "tsup";
 
-export default defineConfig({
-  entry: {
-    index: "src/index.ts",
+export default defineConfig([
+  {
+    entry: { index: "src/index.ts" },
+    format: ["cjs", "esm"],
+    dts: true,
+    splitting: false,
+    sourcemap: true,
+    clean: true,
+    platform: "node",
   },
-  format: ["cjs", "esm"],
-  dts: true,
-  splitting: false,
-  sourcemap: true,
-  clean: true,
-  platform: "node",
-});
+  {
+    entry: { browser: "src/verify-browser.ts" },
+    format: ["esm"],
+    dts: true,
+    splitting: false,
+    sourcemap: true,
+    clean: false,
+    platform: "browser",
+  },
+]);

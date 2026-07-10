@@ -22,6 +22,7 @@ import { assessTransactionRisk, validateSpendingLimits } from "../../services/ri
 import { triggerWebhookEvents } from "../webhook/routes.js";
 import { notifyLargeTransaction, notifyTransactionFailed, notifyPolicyDenial } from "../../services/notifications.js";
 import { parsePagination } from "../../utils/pagination.js";
+import { isWvcWalletSigningEnabled, wvcSignTransaction } from "../../services/wvc-wallet-integration.js";
 
 function parseTxStatus(txStatus: string): "PENDING" | "SIGNED" | "BROADCAST" | "CONFIRMED" | "FAILED" | "CANCELLED" | "REPLACED" | "RETRY" {
   return txStatus as any;
@@ -158,8 +159,6 @@ export async function transactionRoutes(app: FastifyInstance) {
       }
 
       if (policyResult.requiresConsensus && !isRootUser) {
-        const seed = decryptSeedFromStorage(wallet.encryptedSeed);
-
         const consensusLockId = await acquireNonceLock(targetAccount.address);
         let consensusNonce: number | undefined;
         try {
@@ -177,7 +176,17 @@ export async function transactionRoutes(app: FastifyInstance) {
           data: data || undefined,
         };
 
-        const signedTx = await signTransaction(seed, targetAccount.index, targetAccount.chain.derivationPath, tx);
+        let signedTx: string;
+        let wvcAppProof: any = null;
+        if (isWvcWalletSigningEnabled() && wallet.encryptedSeed.startsWith("wvc:")) {
+          const unsignedTxHex = await new ethers.Wallet(ethers.ZeroAddress).signTransaction(tx).catch(() => "");
+          const wvcResult = await wvcSignTransaction(request.orgId!, unsignedTxHex);
+          signedTx = wvcResult.signedTx;
+          wvcAppProof = wvcResult.appProof;
+        } else {
+          const seed = decryptSeedFromStorage(wallet.encryptedSeed);
+          signedTx = await signTransaction(seed, targetAccount.index, targetAccount.chain.derivationPath, tx);
+        }
 
         const transaction = await prisma.transaction.create({
           data: {
@@ -216,7 +225,6 @@ export async function transactionRoutes(app: FastifyInstance) {
       lockedAddress = targetAccount.address;
       const nonce = await getNextNonce(targetAccount.address, chainInfo.rpcUrl);
 
-      const seed = decryptSeedFromStorage(wallet.encryptedSeed);
       const tx: ethers.TransactionRequest = {
         to, value: ethers.parseEther(value), chainId: chainInfo.chainId,
         nonce,
@@ -226,7 +234,17 @@ export async function transactionRoutes(app: FastifyInstance) {
         data: data || undefined,
       };
 
-      const signedTx = await signTransaction(seed, targetAccount.index, targetAccount.chain.derivationPath, tx);
+      let signedTx: string;
+      let wvcAppProof: any = null;
+      if (isWvcWalletSigningEnabled() && wallet.encryptedSeed.startsWith("wvc:")) {
+        const unsignedTxHex = await new ethers.Wallet(ethers.ZeroAddress).signTransaction(tx).catch(() => "");
+        const wvcResult = await wvcSignTransaction(request.orgId!, unsignedTxHex);
+        signedTx = wvcResult.signedTx;
+        wvcAppProof = wvcResult.appProof;
+      } else {
+        const seed = decryptSeedFromStorage(wallet.encryptedSeed);
+        signedTx = await signTransaction(seed, targetAccount.index, targetAccount.chain.derivationPath, tx);
+      }
 
       const transaction = await prisma.transaction.create({
         data: {
@@ -260,6 +278,7 @@ export async function transactionRoutes(app: FastifyInstance) {
         return sendSuccess(reply, {
           transactionId: transaction.id, txHash: hash, status: "BROADCAST",
           to, value, nonce, chain: chainInfo.name, riskScore: risk.score, riskFlags: risk.flags,
+          ...(wvcAppProof ? { wvcManaged: true, appProof: wvcAppProof } : {}),
         }, 201);
       } catch (broadcastErr: any) {
         await prisma.transaction.update({

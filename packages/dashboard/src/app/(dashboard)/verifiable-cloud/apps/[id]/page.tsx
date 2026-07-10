@@ -13,6 +13,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { ArrowLeft, Plus, Play, FileCheck, Key } from "lucide-react";
+import { ProofVerifyButton } from "@/components/wvc/ProofVerifyButton";
 
 interface AppDetail {
   id: string;
@@ -534,6 +535,9 @@ export default function WvcAppDetailPage() {
               <p className="text-sm font-medium mb-1">Attestation Document (base64)</p>
               <p className="font-mono text-xs bg-slate-50 dark:bg-slate-800 p-2 rounded break-all max-h-32 overflow-y-auto">{viewingProof.attestationDoc}</p>
             </div>
+            {viewingProof.proofFormatVersion === "local-dev-v1" && (
+              <ProofVerifyButton proof={viewingProof} />
+            )}
           </div>
         </Modal>
       )}

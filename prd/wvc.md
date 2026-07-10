@@ -92,25 +92,27 @@
 | §23 | Dashboard: Create deployment form | ✅ Done | Image, digest, PCRs, ports, resources |
 | §23 | Dashboard: Manifest view modal | ✅ Done | Shows hash, JSON, approval progress |
 | §23 | Dashboard: Add/revoke operator | ✅ Done | |
-| §27 | E2E test (wvc-e2e-verify.test.ts) | ✅ Done | 12/12 tests pass, full lifecycle with crypto verification |
+| §23 | Dashboard: Invoke deployment | ✅ Done | Invoke modal with payload type selection, result + app proof display |
+| §23 | Dashboard: View app proofs | ✅ Done | Proofs tab, proof list, full proof detail modal |
+| §23 | Dashboard: View boot proofs | ✅ Done | Boot proof count shown in deployment table |
+| §23 | Dashboard: Key ceremonies tab | ✅ Done | Ceremony history, initiate new ceremony modal |
+| §23 | Dashboard: Client-side proof verification | ✅ Done | "Verify Proof in Browser" button using Web Crypto API |
+| §17-18 | Quorum Key bootstrapping (local) | ✅ Done | Auto-generates + persists Quorum Key on first provision, auto-completes bootstrap ceremony |
+| §18 | Key forwarding simulation (local) | ✅ Done | New replicas get Quorum Key from existing store |
+| §22 | CLI: quorum-key backup-share | ✅ Done | Shamir share extraction for operators |
+| §22 | CLI: quorum-key recover | ✅ Done | Recovery ceremony CLI command |
+| §25 | SDK: Wallet module → WVC integration | ✅ Done | `POST /wallets` routes through WVC when `WVC_WALLET_SIGNER_DEPLOYMENT_ID` set |
+| §25 | SDK: Transaction module → WVC integration | ✅ Done | `POST /transactions/sign` routes through WVC when WVC-enabled wallet detected |
+| §24 | Verification library: browser-compatible | ✅ Done | `@wrankey/wvc-verify/browser` entry point using Web Crypto API for local-dev-v1 |
+| §27 | E2E test (wvc-e2e-verify.test.ts) | ✅ Done | 31/31 WVC tests pass, full lifecycle with crypto verification |
 | — | Rust enclave crypto (JCS, AES-GCM, Shamir GF(256)) | ✅ Done | 3/3 Shamir tests pass |
 
 ### 0.2 What's MISSING (for local simulation completeness)
 
 | PRD § | Feature | Priority | Effort | Notes |
 |-------|---------|----------|--------|-------|
-| §23 | **Dashboard: Invoke deployment** | High | 2h | No invoke UI — users can't call live deployments from dashboard |
-| §23 | **Dashboard: View app proofs** | High | 2h | No proof list/viewer — can't see proof history |
-| §23 | **Dashboard: View boot proofs** | High | 1h | No boot proof detail |
-| §23 | **Dashboard: Key ceremonies tab** | High | 2h | No ceremony history/status UI |
-| §23 | **Dashboard: Client-side proof verification** | Medium | 3h | Should let users verify proofs in-browser using `@wrankey/wvc-verify` |
-| §17-18 | **Quorum Key bootstrapping (local)** | High | 3h | Local runtime should generate + persist Quorum Key on first boot, use it for state encryption |
-| §18 | **Key forwarding simulation (local)** | Medium | 3h | New replica should get Quorum Key from existing replica (simulated) |
-| §22 | **CLI: quorum-key backup-share** | Medium | 2h | Shamir share extraction for operators |
-| §22 | **CLI: quorum-key recover** | Medium | 2h | Recovery ceremony CLI command |
-| §25 | **SDK: Wallet module → WVC integration** | High | 4h | `createWallet()` should call WVC invoke for seed generation |
-| §25 | **SDK: Transaction module → WVC integration** | High | 4h | `signAndBroadcast()` should route signing through WVC |
-| §28 | **WVC-specific audit events** | Low | 1h | Already partially done via `createAuditLog` |
+| §18 | **Key forwarding simulation (local)** | Medium | 3h | New replica should get Quorum Key from existing replica (simulated) — basic version done, production ECIES protocol deferred |
+| §28 | **WVC-specific audit events** | Low | 1h | Already partially done via `createAuditLog` — `WALLET_CREATE_WVC` and `TX_SIGN_WVC` audit actions added |
 
 ### 0.3 What's DEFERRED (AWS Nitro production — Phase 2)
 

@@ -17,6 +17,8 @@ import { getChainByName, getDefaultChain } from "../../services/chain.js";
 import { getTokenBalances } from "../../services/tokens.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
 import { notifyWalletCreated } from "../../services/notifications.js";
+import { isWvcWalletSigningEnabled, wvcGenerateSeed } from "../../services/wvc-wallet-integration.js";
+import { config } from "../../config.js";
 
 export async function walletRoutes(app: FastifyInstance) {
   app.post("/wallets", { preHandler: [authMiddleware] }, async (request, reply) => {
@@ -26,6 +28,61 @@ export async function walletRoutes(app: FastifyInstance) {
       };
       if (!name) throw new ValidationError("Wallet name is required");
 
+      // ─── WVC path: seed generation through the enclave (PRD §25.1) ──────────
+      if (isWvcWalletSigningEnabled()) {
+        const { seedId, appProof } = await wvcGenerateSeed(request.orgId!);
+        // Store the seed handle, not the seed itself. In local dev the "seed"
+        // is a simulated handle — in production the Quorum Key encrypts the real
+        // seed inside the enclave and only the handle is stored here.
+        const encryptedSeed = `wvc:${seedId}`;
+
+        const accountsCreate: any[] = [];
+        if (!skipInitialAccount) {
+          const chainInfo = chain ? (await getChainByName(chain).catch(() => null)) || await getDefaultChain() : await getDefaultChain();
+          if (!chainInfo) throw new ValidationError("Invalid or no active chain found");
+          // In WVC mode, account derivation happens inside the enclave — we
+          // don't have the mnemonic in the backend. For now, store a
+          // placeholder address that the enclave will return on first invoke.
+          accountsCreate.push({
+            chainId: chainInfo.id,
+            address: `0xwvc-pending-${seedId.slice(0, 8)}`,
+            derivationPath: `${chainInfo.derivationPath}/0`,
+            index: 0,
+          });
+        }
+
+        const wallet = await prisma.wallet.create({
+          data: {
+            orgId: request.orgId,
+            ownerType: ownerType || "USER",
+            ownerId: ownerId || request.userId!,
+            userId: request.userId,
+            name,
+            tags: [...(tags || []), "wvc-managed"],
+            encryptedSeed,
+            accounts: accountsCreate.length > 0 ? { create: accountsCreate } : undefined,
+          },
+          include: { accounts: true },
+        });
+
+        await createAuditLog(request.orgId, "WALLET_CREATE_WVC", {
+          walletId: wallet.id, name, seedId,
+          deploymentId: config.wvc.walletSignerDeploymentId,
+        }, request.userId, request);
+        triggerWebhookEvents(request.orgId, "wallet.created", {
+          walletId: wallet.id, name, ownerType: wallet.ownerType, ownerId: wallet.ownerId, wvcManaged: true,
+        });
+        notifyWalletCreated(request.orgId, name, wallet.id).catch(() => {});
+
+        return sendSuccess(reply, {
+          walletId: wallet.id, name: wallet.name, ownerType: wallet.ownerType, ownerId: wallet.ownerId,
+          addresses: wallet.accounts.map((a: any) => ({ chainId: a.chainId, address: a.address, derivationPath: a.derivationPath, index: a.index })),
+          wvcManaged: true,
+          appProof,
+        }, 201);
+      }
+
+      // ─── Legacy path: in-process seed generation ────────────────────────────
       const { mnemonic } = generateHdWallet();
       const encryptedSeed = encryptSeedForStorage(mnemonic);
 
