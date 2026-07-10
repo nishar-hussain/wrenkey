@@ -42,7 +42,6 @@ export default function LoginPage() {
   const [orgName, setOrgName] = useState("");
   const [source, setSource] = useState("");
   const [otp, setOtp] = useState("");
-  const [devOtp, setDevOtp] = useState("");
 
   const [rememberedUser, setRememberedUser] = useState<RememberedUser | null>(null);
   const [lookupResult, setLookupResult] = useState<LookupResult | null>(null);
@@ -106,8 +105,7 @@ export default function LoginPage() {
         body: JSON.stringify(body),
       });
       setStep("otp-verify");
-      if (sendRes.devOtp) setDevOtp(sendRes.devOtp);
-      if (sendRes.emailSent === false && !sendRes.devOtp) {
+      if (sendRes.emailSent === false) {
         setError(sendRes.message || "Email could not be sent.");
       }
     } catch (err: any) {
@@ -127,11 +125,8 @@ export default function LoginPage() {
         body: JSON.stringify({ email }),
       });
       setStep("otp-verify");
-      if (sendRes.devOtp) setDevOtp(sendRes.devOtp);
       if (sendRes.emailSent === false) {
-        if (!sendRes.devOtp) {
-          setError(sendRes.message || "Email could not be sent.");
-        }
+        setError(sendRes.message || "Email could not be sent.");
       }
     } catch (err: any) {
       setError(err.message || "Something went wrong.");
@@ -351,13 +346,6 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              {devOtp && (
-                <div className="p-4 bg-warning/10 border border-warning/20 rounded-xl text-center">
-                  <p className="text-xs font-semibold text-warning tracking-wider uppercase">Dev Mode Code</p>
-                  <p className="text-2xl font-mono font-bold text-warning tracking-widest mt-1">{devOtp}</p>
-                </div>
-              )}
-
               <div className="space-y-1.5">
                 <Input
                   value={otp}
@@ -383,7 +371,6 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => {
                     setOtp("");
-                    setDevOtp("");
                     if (rememberedUser && rememberedUser.email === email) {
                       setStep("welcome-back");
                     } else {
