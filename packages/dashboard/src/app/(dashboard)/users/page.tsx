@@ -166,7 +166,7 @@ export default function UsersPage() {
             <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
             <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm">
               <option value="DEVELOPER">Developer</option>
-              <option value="ORG_ADMIN">Org Admin</option>
+              <option value="ORG_ADMIN">Root User</option>
               <option value="AGENT">Agent</option>
               <option value="AUDITOR">Auditor</option>
             </select>
@@ -185,7 +185,7 @@ export default function UsersPage() {
             <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
             <select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm">
               <option value="DEVELOPER">Developer</option>
-              <option value="ORG_ADMIN">Org Admin</option>
+              <option value="ORG_ADMIN">Root User</option>
               <option value="AUDITOR">Auditor</option>
             </select>
           </div>

@@ -218,7 +218,7 @@ export default function SubOrgDetailPage() {
                 <Table
                   columns={[
                     { key: "name", header: "User", render: (u: any) => <div><p className="text-sm font-medium">{u.email || u.name || "—"}</p></div> },
-                    { key: "role", header: "Role", render: (u: any) => <span className="text-xs capitalize text-slate-500">{u.role?.replace(/_/g, " ").toLowerCase()}</span> },
+                    { key: "role", header: "Role", render: (u: any) => <span className="text-xs capitalize text-slate-500">{u.role === "ORG_ADMIN" ? "Root User" : u.role?.replace(/_/g, " ").toLowerCase()}</span> },
                     { key: "status", header: "Status", render: (u: any) => <span className={`inline-flex text-[11px] font-medium px-2 py-0.5 rounded-full border ${(u._count?.sessions || 0) > 0 ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-amber-50 text-amber-700 border-amber-100"}`}>{(u._count?.sessions || 0) > 0 ? "Active" : "Invited"}</span> },
                     { key: "createdAt", header: "Created", render: (u: any) => <span className="text-xs text-slate-500">{new Date(u.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span> },
                   ]}

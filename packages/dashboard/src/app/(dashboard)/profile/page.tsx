@@ -63,7 +63,7 @@ export default function ProfilePage() {
             </div>
             <div>
               <h2 className="text-lg font-semibold">{user?.email || "—"}</h2>
-              <p className="text-sm text-muted-foreground capitalize">{user?.role?.replace(/_/g, " ").toLowerCase()}</p>
+              <p className="text-sm text-muted-foreground capitalize">{user?.role === "ORG_ADMIN" ? "Root User" : user?.role?.replace(/_/g, " ").toLowerCase()}</p>
             </div>
           </div>
         </CardHeader>
@@ -80,7 +80,7 @@ export default function ProfilePage() {
               <Shield className="h-5 w-5 text-muted-foreground shrink-0" />
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">Role</p>
-                <p className="text-sm font-medium capitalize">{user?.role?.replace(/_/g, " ").toLowerCase() || "—"}</p>
+                <p className="text-sm font-medium capitalize">{user?.role === "ORG_ADMIN" ? "Root User" : user?.role?.replace(/_/g, " ").toLowerCase() || "—"}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">

@@ -231,7 +231,7 @@ export function Header() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{user?.email || "User"}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{user?.role?.replace("_", " ").toLowerCase() || "Member"}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{user?.role === "ORG_ADMIN" ? "Root User" : user?.role?.replace("_", " ").toLowerCase() || "Member"}</p>
                   </div>
                 </div>
                 <div className="pt-1.5 border-t border-border">

@@ -114,7 +114,7 @@ export function Sidebar() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-foreground truncate">{user?.email || "User"}</p>
-            <p className="text-xs text-muted-foreground truncate capitalize">{user?.role?.replace("_", " ").toLowerCase() || "Member"}</p>
+            <p className="text-xs text-muted-foreground truncate capitalize">{user?.role === "ORG_ADMIN" ? "Root User" : user?.role?.replace("_", " ").toLowerCase() || "Member"}</p>
             <p className="text-xs text-muted-foreground truncate">{org?.name}</p>
           </div>
         </div>
