@@ -56,6 +56,39 @@ export default function WvcAppDetailPage() {
   const [showAddOperator, setShowAddOperator] = useState(false);
   const [operatorForm, setOperatorForm] = useState({ alias: "", publicKey: "" });
   const [operatorLoading, setOperatorLoading] = useState(false);
+  const [generatedPrivateKey, setGeneratedPrivateKey] = useState("");
+
+  const generateKeyInBrowser = async () => {
+    try {
+      const keyPair = await crypto.subtle.generateKey(
+        { name: "ECDSA", namedCurve: "P-256" },
+        true,
+        ["sign", "verify"],
+      );
+      const pubExported = await crypto.subtle.exportKey("spki", keyPair.publicKey);
+      const pubBase64 = btoa(String.fromCharCode(...new Uint8Array(pubExported)));
+      const pubPem = `-----BEGIN PUBLIC KEY-----\n${pubBase64}\n-----END PUBLIC KEY-----`;
+      setOperatorForm({ ...operatorForm, publicKey: pubPem });
+
+      const privExported = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+      const privBase64 = btoa(String.fromCharCode(...new Uint8Array(privExported)));
+      const privPem = `-----BEGIN PRIVATE KEY-----\n${privBase64}\n-----END PRIVATE KEY-----`;
+      setGeneratedPrivateKey(privPem);
+    } catch {
+      addToast("Failed to generate key. Is your browser secure (HTTPS/localhost)?", "error");
+    }
+  };
+
+  const downloadPrivateKey = () => {
+    if (!generatedPrivateKey) return;
+    const blob = new Blob([generatedPrivateKey], { type: "application/x-pem-file" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `operator-${operatorForm.alias || "key"}.pem`;
+    a.click(); URL.revokeObjectURL(url);
+    addToast("Private key downloaded. Save it securely — it cannot be recovered.", "success");
+    setGeneratedPrivateKey("");
+  };
 
   // Invoke state
   const [showInvoke, setShowInvoke] = useState(false);
@@ -466,6 +499,19 @@ export default function WvcAppDetailPage() {
               placeholder="-----BEGIN PUBLIC KEY-----&#10;…&#10;-----END PUBLIC KEY-----"
               className="w-full text-xs font-mono border rounded-md p-2 h-32 resize-none bg-background" />
           </div>
+          <Button type="button" variant="secondary" onClick={generateKeyInBrowser} className="w-full">
+            Generate Key in Browser (Web Crypto)
+          </Button>
+          {generatedPrivateKey && (
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs space-y-2">
+              <p className="font-semibold text-amber-700 dark:text-amber-400">Private key generated — download it NOW</p>
+              <p className="text-amber-600 dark:text-amber-300">The private key is shown only once. If you lose it, you cannot sign approvals.</p>
+              <Button type="button" size="sm" onClick={downloadPrivateKey} className="w-full">
+                Download Private Key
+              </Button>
+            </div>
+          )}
+          <p className="text-xs text-slate-400">The private key is generated in your browser and never leaves your machine. WranKey only stores the public key.</p>
           <Button onClick={addOperator} disabled={operatorLoading} className="w-full">{operatorLoading ? "Adding…" : "Add Operator"}</Button>
         </div>
       </Modal>
