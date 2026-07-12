@@ -19,7 +19,7 @@ export function ProblemSection() {
             </span>
           </div>
           <h2 className="text-balance text-5xl font-normal tracking-tight text-white md:text-6xl lg:text-5xl">
-            {"The Perimeter Has Dissolved".split(" ").map((word, i) => (
+            {"Your Keys Are Your Problem".split(" ").map((word, i) => (
               <motion.span
                 key={i}
                 initial={{ filter: "blur(10px)", opacity: 0 }}
@@ -34,15 +34,15 @@ export function ProblemSection() {
           </h2>
           
           <p className="text-balance text-lg leading-relaxed text-gray-300 md:text-xl">
-            Traditional firewalls were built for a static world. Today, your data lives in the shadow IT, the remote endpoints, and the cloud. Attackers are using AI to generate noise, hiding their signals within the chaos of your daily traffic. You don&apos;t need a higher wall; you need better vision.
+            You generate a private key, store it somewhere, and hope nobody else gets it. One lost laptop, one compromised server, one disgruntled employee — and the keys are gone or stolen. Shamir recovery sounds great until you realize you never set it up. Most teams are one incident away from a total key loss.
           </p>
           
           <div className="flex flex-col gap-4 pt-8 sm:flex-row sm:justify-center">
             <button className="bg-white px-8 py-3 font-semibold text-slate-900 transition-all hover:bg-gray-100 active:scale-95">
-              Analyze Your Vulnerabilities
+              See How We Solve This
             </button>
             <button className="border border-white/30 px-8 py-3 font-semibold text-white transition-all hover:bg-white/10 active:scale-95">
-              View Threat Map
+              How Key Recovery Works
             </button>
           </div>
         </div>

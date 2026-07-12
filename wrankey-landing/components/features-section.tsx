@@ -3,7 +3,7 @@
 import React from "react"
 
 import { motion } from "framer-motion";
-import { Brain, Shield, Globe } from "lucide-react";
+import { FileCheck, Wallet, PenTool, Key, Users, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -17,45 +17,45 @@ interface FeatureItem {
 const DEFAULT_FEATURES: FeatureItem[] = [
   {
     id: "1",
-    icon: <Brain className="w-5 h-5 text-white" />,
-    title: "Predictive Heuristics",
+    icon: <Wallet className="w-5 h-5 text-white" />,
+    title: "Wallet Creation & Management",
     description:
-      "We don't just react. Our AI models attack vectors 10,000 times a second to predict where the next breach will attempt to strike.",
+      "Create wallets with HD key derivation, tag them by purpose, and query balances and transaction history. Each wallet is bound to your org and fully auditable.",
   },
   {
     id: "2",
-    icon: <Shield className="w-5 h-5 text-white" />,
-    title: "Autonomous Patching",
+    icon: <PenTool className="w-5 h-5 text-white" />,
+    title: "Transaction Signing",
     description:
-      "When a vulnerability is detected, Aegis rewrites the security protocol in real-time, closing the door before it can be opened.",
+      "Submit transactions and get them signed inside the enclave with P-256 ECDSA keys. Every signature produces a timestamped attestation document.",
   },
   {
     id: "3",
-    icon: <Globe className="w-5 h-5 text-white" />,
-    title: "Deep Web Reconnaissance",
+    icon: <Key className="w-5 h-5 text-white" />,
+    title: "Shamir Key Recovery",
     description:
-      "We scan the dark web for your credentials, alerting you to leaks before they become breaches.",
+      "Split signing keys across team members with threshold recovery. Lose a laptop? Reconstruct the key from the remaining shares. No single point of failure.",
   },
   {
     id: "4",
-    icon: <Brain className="w-5 h-5 text-white" />,
-    title: "Behavioral Analytics",
+    icon: <Users className="w-5 h-5 text-white" />,
+    title: "Multi-Party Quorum",
     description:
-      "Advanced machine learning tracks user behavior patterns to detect anomalies and insider threats before damage occurs.",
+      "Operator key ceremonies require multi-signature approval. No single engineer can push changes to production wallets — it takes consensus from the quorum.",
   },
   {
     id: "5",
-    icon: <Shield className="w-5 h-5 text-white" />,
-    title: "Zero-Trust Architecture",
+    icon: <FileCheck className="w-5 h-5 text-white" />,
+    title: "Verifiable Proofs",
     description:
-      "Every request is verified, every session authenticated. Trust nothing, verify everything, protect all endpoints.",
+      "Every wallet operation and transaction produces a P-256 ECDSA attestation. Verify proofs in-browser with Web Crypto — no server or node required.",
   },
   {
     id: "6",
-    icon: <Globe className="w-5 h-5 text-white" />,
-    title: "Real-Time Threat Intelligence",
+    icon: <Shield className="w-5 h-5 text-white" />,
+    title: "Organization RBAC",
     description:
-      "Continuously updated threat feeds from global sources ensure you're protected against the latest attack methods.",
+      "Role-based access control with sub-organizations, team management, and granular permissions. Control who can create wallets, sign transactions, and manage keys.",
   },
 ];
 
@@ -81,7 +81,7 @@ const itemVariants = {
     y: 0,
     transition: {
       duration: 0.5,
-      ease: "easeOut",
+      ease: "easeOut" as const,
     },
   },
 };
@@ -95,12 +95,13 @@ interface FeaturesSectionProps {
 
 export function FeaturesSection({
   preHeading = "Key Capabilities",
-  headline = "Built for the Post-Perimeter Era",
+  headline = "Everything Your Wallet Infrastructure Needs",
   features = DEFAULT_FEATURES,
   className,
 }: FeaturesSectionProps) {
   return (
     <section
+      id="features"
       className={cn(
         "w-full bg-zinc-900 py-24 border-b border-zinc-700/30",
         className
@@ -183,14 +184,14 @@ export function FeaturesSection({
             size="lg"
             className="bg-white text-zinc-900 hover:bg-zinc-200 px-8"
           >
-            Explore Full Features
+            Explore Full Platform
           </Button>
           <Button
             size="lg"
             variant="outline"
             className="border-zinc-600 text-white hover:bg-zinc-800 bg-transparent px-8"
           >
-            Compare vs. Legacy
+            View API Docs
           </Button>
         </motion.div>
       </div>

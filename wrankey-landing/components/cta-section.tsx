@@ -20,7 +20,7 @@ export function CtaSection() {
       <div className="relative mx-auto max-w-7xl px-6 md:px-12 lg:px-16 py-24 md:py-32 lg:py-40">
         <div className="max-w-2xl">
           <h2 className="text-balance text-4xl font-normal tracking-tight text-white md:text-5xl lg:text-6xl">
-            {"Step into the future, guided by AI clarity".split(" ").map((word, i) => (
+            {"Stop Managing Keys, Start Shipping Wallets".split(" ").map((word, i) => (
               <motion.span
                 key={i}
                 initial={{ filter: "blur(10px)", opacity: 0 }}
@@ -34,14 +34,15 @@ export function CtaSection() {
             ))}
           </h2>
           <p className="text-balance mt-6 max-w-xl text-base leading-relaxed text-white/80 md:text-lg">
-            Experience autonomous threat detection now. Deploy the Sentinel and
-            see how AI protects your gateway.
+            Create your first wallet, sign a transaction, and verify the
+            proof — all in under five minutes. No key management infrastructure
+            to build.
           </p>
           <Button
             size="lg"
             className="mt-8 bg-white px-8 text-black hover:bg-white/90"
           >
-            Deploy the Sentinel
+            Create Your First Wallet
           </Button>
         </div>
       </div>

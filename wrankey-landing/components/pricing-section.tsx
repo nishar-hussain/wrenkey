@@ -19,36 +19,39 @@ interface PricingPlan {
 
 const plans: PricingPlan[] = [
   {
-    id: "sentinel",
-    name: "Sentinel",
-    priceMonthly: 299,
-    priceYearly: 239,
+    id: "starter",
+    name: "Starter",
+    priceMonthly: 49,
+    priceYearly: 39,
     description:
-      "Essential threat detection for growing teams and small infrastructure.",
+      "For solo developers and side projects. One wallet namespace, basic signing, and a single operator key.",
     features: [
-      "Up to 100 endpoints",
-      "Real-time threat monitoring",
-      "Email & chat support",
-      "Weekly threat reports",
+      "1 operator key",
+      "Up to 10 wallets",
+      "1,000 signed transactions / month",
+      "Basic transaction history",
+      "Community support",
     ],
-    cta: "Start Free Trial",
+    cta: "Start Free",
     type: "subscription",
   },
   {
-    id: "aegis",
-    name: "Aegis Pro",
-    priceMonthly: 799,
-    priceYearly: 639,
+    id: "team",
+    name: "Team",
+    priceMonthly: 199,
+    priceYearly: 159,
     description:
-      "Advanced AI-powered protection with autonomous patching for mid-size organizations.",
+      "For growing teams. Multiple operators, Shamir key recovery, and full audit trails on every signature.",
     features: [
-      "Up to 500 endpoints",
-      "Autonomous threat neutralization",
-      "Dark web reconnaissance",
-      "24/7 priority support",
-      "Daily threat intelligence",
+      "Up to 5 operator keys",
+      "Unlimited wallets",
+      "10,000 signed transactions / month",
+      "Shamir key recovery",
+      "Multi-party quorum",
+      "Organization RBAC",
+      "Priority support",
     ],
-    cta: "Deploy Aegis Pro",
+    cta: "Start 14-Day Trial",
     popular: true,
     type: "subscription",
   },
@@ -58,13 +61,15 @@ const plans: PricingPlan[] = [
     priceMonthly: "Custom",
     priceYearly: "Custom",
     description:
-      "Full Aegis Core deployment with dedicated security team and custom integrations.",
+      "For teams that need dedicated infrastructure, custom signing policies, and SLA guarantees.",
     features: [
-      "Unlimited endpoints",
-      "Dedicated security analyst",
-      "Custom threat modeling",
-      "On-premise deployment option",
-      "SLA guarantee & compliance",
+      "Unlimited operators",
+      "Unlimited wallets & transactions",
+      "Custom enclave deployment",
+      "Dedicated infrastructure",
+      "SSO & SAML",
+      "SLA guarantee",
+      "Dedicated support engineer",
     ],
     cta: "Contact Sales",
     type: "custom",
@@ -102,7 +107,7 @@ export function PricingSection() {
               ))}
             </span>
             <span className="block text-zinc-500">
-              {"that matches your ambition".split(" ").map((word, i) => (
+              {"for your team".split(" ").map((word, i) => (
                 <motion.span
                   key={i + 3}
                   initial={{ filter: "blur(10px)", opacity: 0 }}

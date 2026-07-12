@@ -1,4 +1,4 @@
-import { Shield } from "lucide-react";
+import { Key } from "lucide-react";
 import Link from "next/link";
 
 export function Footer() {
@@ -7,8 +7,8 @@ export function Footer() {
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-8 md:px-12">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
-          <Shield className="h-6 w-6 text-amber-500" />
-          <span className="text-lg font-medium text-white">Skydda</span>
+          <Key className="h-6 w-6 text-amber-500" />
+          <span className="text-lg font-medium text-white">WranKey</span>
         </Link>
 
         {/* Social Links */}

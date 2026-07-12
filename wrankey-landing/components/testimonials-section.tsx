@@ -8,49 +8,49 @@ const testimonials = [
   {
     id: 1,
     quote:
-      "Skydda's AI sentinel detected a zero-day vulnerability in our infrastructure before any traditional security tool even flagged it. The autonomous patching feature saved us from what could have been a catastrophic breach.",
+      "We needed a way to manage wallets across our team without one person holding all the keys. WranKey's Shamir recovery let us split signing authority across three offices. Now no single compromise can drain our accounts.",
     author: "Sarah Chen",
-    role: "CHIEF INFORMATION SECURITY OFFICER AT TECHCORP",
+    role: "HEAD OF OPERATIONS AT NEXUS PROTOCOL",
     avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah&backgroundColor=6B5B95",
   },
   {
     id: 2,
     quote:
-      "We were drowning in false positives from our legacy firewall. Skydda cut through the noise with surgical precision, reducing our alert fatigue by 90% while actually improving our threat detection rate.",
+      "One of our engineers lost their laptop with the production signing key. With WranKey, we reconstructed the key from Shamir shares in five minutes. Zero downtime, zero lost funds. That's when I knew this was the right choice.",
     author: "Marcus Rodriguez",
-    role: "VP OF SECURITY OPERATIONS AT FINTECH GLOBAL",
+    role: "CTO AT CHAINBRIDGE",
     avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Marcus&backgroundColor=88498F",
   },
   {
     id: 3,
     quote:
-      "The dark web reconnaissance feature alerted us to leaked credentials from a third-party vendor breach hours before it hit the news. That early warning gave us time to rotate everything and avoid compromise.",
+      "Transaction signing used to be our biggest audit headache. Now every signature comes with a P-256 attestation document. Our compliance team can verify proofs in a spreadsheet. Audit prep went from two weeks to an afternoon.",
     author: "Emily Thompson",
-    role: "DIRECTOR OF CYBERSECURITY AT HEALTHCARE UNITED",
+    role: "VP ENGINEERING AT VERIFIED LEDGER",
     avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Emily&backgroundColor=C55A7B",
   },
   {
     id: 4,
     quote:
-      "Implementing Skydda was the easiest security upgrade we've ever done. The system learned our network patterns in days, not months. Now it operates like an extension of our team, catching threats we didn't even know existed.",
+      "The wallet API is exactly what we needed — clean HD derivation, tagged namespaces, and transaction history that actually makes sense. We went from zero to production wallet infra in a week.",
     author: "David Kim",
-    role: "CHIEF TECHNOLOGY OFFICER AT CLOUDSCALE",
+    role: "FOUNDING ENGINEER AT KEYSTONE VAULT",
     avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=David&backgroundColor=4A5899",
   },
   {
     id: 5,
     quote:
-      "After a ransomware attack nearly crippled our operations, we needed a solution that could predict and prevent, not just react. Skydda's predictive heuristics have stopped three major attack attempts in six months.",
+      "Multi-party quorum changed how we handle wallet operations. No single person can sign off on a large transfer — it requires consensus. That's the governance bar our investors demanded.",
     author: "Jennifer Walsh",
-    role: "HEAD OF INFRASTRUCTURE SECURITY AT RETAIL CORP",
+    role: "PLATFORM LEAD AT SENTINEL OPS",
     avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Jennifer&backgroundColor=6B7280",
   },
   {
     id: 6,
     quote:
-      "Compliance audits used to be our nightmare. Skydda automatically documents every threat detection and response action, making our SOC 2 and ISO certifications straightforward. The ROI was immediate.",
+      "We evaluated three wallet infrastructure providers. WranKey was the only one where I could verify a transaction signature in the browser with ten lines of JavaScript. That sealed it for our team.",
     author: "Robert Martinez",
-    role: "SECURITY COMPLIANCE LEAD AT DATASTREAM",
+    role: "VP ENGINEERING AT PROOF SYSTEMS",
     avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Robert&backgroundColor=7C3AED",
   },
 ];
@@ -81,7 +81,7 @@ export function TestimonialsSection() {
           </div>
           <div className="flex items-center justify-between gap-8">
             <h2 className="text-balance text-4xl md:text-5xl font-normal text-white">
-              {"What Security Leaders Say About Skydda.".split(" ").map((word, i) => (
+              {"What Teams Say About WranKey.".split(" ").map((word, i) => (
                 <motion.span
                   key={i}
                   initial={{ filter: "blur(10px)", opacity: 0 }}
@@ -131,7 +131,7 @@ export function TestimonialsSection() {
                 }`}
               >
                 {/* Quote Icon */}
-                <div className="text-amber-500 text-4xl font-bold mb-6">"</div>
+                <div className="text-amber-500 text-4xl font-bold mb-6">&ldquo;</div>
 
                 {/* Testimonial Text */}
                 <p className="text-white text-base leading-relaxed mb-8 min-h-[200px]">

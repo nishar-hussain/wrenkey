@@ -7,8 +7,8 @@ import './globals.css'
 const hostGrotesk = Host_Grotesk({ subsets: ["latin"], variable: "--font-host-grotesk" });
 
 export const metadata: Metadata = {
-  title: 'Skydda | Illuminate the Unknown',
-  description: 'Autonomous AI sentinel that cuts through the digital fog to detect and neutralize zero-day threats before they reach your gateway.',
+  title: 'WranKey | Wallet Infrastructure You Can Trust',
+  description: 'Create wallets, sign transactions, split keys with Shamir recovery, and verify every operation with P-256 ECDSA proofs. Wallet infrastructure for teams.',
   generator: 'v0.app',
   icons: {
     icon: [

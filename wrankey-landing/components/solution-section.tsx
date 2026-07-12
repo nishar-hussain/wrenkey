@@ -4,7 +4,7 @@ import React from "react"
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Brain, Shield, Zap, ChevronRight } from "lucide-react";
+import { Wallet, PenTool, FileCheck, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Feature {
@@ -18,26 +18,26 @@ interface Feature {
 const features: Feature[] = [
   {
     id: 1,
-    title: "1 – Learn",
+    title: "1 – Create",
     description:
-      "Aegis Core observes and learns the unique heartbeat of your organization's digital ecosystem.",
-    icon: <Brain className="w-5 h-5" />,
+      "Spin up wallets with HD key derivation. Each wallet gets a unique address, a tagged namespace, and is bound to your organization. No seed phrases to manage — the enclave holds the keys.",
+    icon: <Wallet className="w-5 h-5" />,
     image: "/images/solution-learn.png",
   },
   {
     id: 2,
-    title: "2 – Detect",
+    title: "2 – Sign",
     description:
-      "Autonomously distinguishes between harmless anomalies and genuine attacks in real-time.",
-    icon: <Shield className="w-5 h-5" />,
+      "Submit transactions and get them signed inside the enclave with real P-256 ECDSA keys. Every signature produces a cryptographic proof — an attestation document you can verify independently.",
+    icon: <PenTool className="w-5 h-5" />,
     image: "/images/solution-detect.png",
   },
   {
     id: 3,
-    title: "3 – Neutralize",
+    title: "3 – Prove",
     description:
-      "Incinerates threats instantly while allowing legitimate business traffic to flow seamlessly.",
-    icon: <Zap className="w-5 h-5" />,
+      "Every result ships with a verifiable proof. Check it in-browser with the Web Crypto API, or use our SDK. No server trust required — the math checks out or it doesn't.",
+    icon: <FileCheck className="w-5 h-5" />,
     image: "/images/solution-neutralize.png",
   },
 ];
@@ -53,18 +53,18 @@ export function SolutionSection() {
   }, []);
 
   return (
-    <section className="w-full bg-zinc-900 text-white py-24 flex flex-col items-center overflow-hidden border-b border-zinc-700/30">
+    <section id="platform" className="w-full bg-zinc-900 text-white py-24 flex flex-col items-center overflow-hidden border-b border-zinc-700/30">
       <div className="max-w-7xl w-full px-6 md:px-12 lg:px-16 space-y-12">
         {/* Header Section */}
         <div className="flex flex-col gap-4 max-w-[560px]">
           <div className="flex items-center gap-3 px-4 py-2 border border-zinc-700 w-fit">
             <div className="w-2.5 h-2.5 bg-amber-500" />
             <span className="text-sm font-medium text-zinc-400 tracking-wide">
-              The Solution
+              The Platform
             </span>
           </div>
           <h2 className="text-balance text-4xl md:text-5xl font-normal leading-[1.1] tracking-tight text-white">
-            {"Introducing Aegis Core™".split(" ").map((word, i) => (
+            {"Wallets, Signing, and Proof — in One Flow".split(" ").map((word, i) => (
               <motion.span
                 key={i}
                 initial={{ filter: "blur(10px)", opacity: 0 }}
@@ -78,11 +78,10 @@ export function SolutionSection() {
             ))}
           </h2>
           <p className="text-balance text-zinc-400 text-base leading-relaxed">
-            The world's first generative defense engine. Unlike static rule
-            sets, Aegis learns the "heartbeat" of your organization. It
-            autonomously distinguishes between an anomaly and an attack,
-            creating a secure gateway that allows business to flow while
-            incinerating threats instantly.
+            WranKey handles the entire wallet lifecycle. Create wallets with
+            HD key derivation, sign transactions inside a cryptographically
+            isolated enclave, and get a P-256 ECDSA proof with every
+            operation — verifiable in-browser, no trust required.
           </p>
         </div>
 
@@ -205,7 +204,7 @@ export function SolutionSection() {
             whileTap={{ scale: 0.95 }}
             className="px-8 py-4 bg-white text-black font-medium flex items-center gap-2"
           >
-            Explore Aegis Core
+            Explore the Platform
             <ChevronRight className="w-4 h-4" />
           </motion.button>
         </div>

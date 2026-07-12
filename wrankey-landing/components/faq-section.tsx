@@ -14,33 +14,33 @@ interface FAQItem {
 const faqs: FAQItem[] = [
   {
     id: "1",
-    question: "How does Aegis Core differ from traditional firewalls?",
+    question: "How does wallet key management work?",
     answer:
-      "Traditional firewalls rely on static rules and signature-based detection, which can't keep pace with modern AI-driven attacks. Aegis Core uses autonomous machine learning to predict and neutralize zero-day threats in real-time, learning your network's unique patterns and adapting without manual updates or human intervention.",
+      "WranKey uses HD (hierarchical deterministic) key derivation to create wallets. Your private keys never leave the cryptographic enclave. You can create wallets programmatically via the API, tag them by purpose, and query balances and transaction history. The enclave holds the keys — you never have to store seed phrases or raw private keys.",
   },
   {
     id: "2",
-    question: "What is the typical deployment timeline?",
+    question: "What happens if someone loses their key?",
     answer:
-      "Most organizations can deploy Skydda in under 48 hours. Our autonomous system learns your network baseline within 3-5 days and reaches full operational capacity within two weeks. Unlike legacy solutions that take months to configure, Aegis Core self-optimizes as it learns your environment.",
+      "WranKey supports Shamir Secret Sharing for key recovery. When you create a signing key, you can split it into N shares where any T shares can reconstruct the original key. If one team member loses their share, the key is still recoverable from the remaining shares. No single person is a point of failure.",
   },
   {
     id: "3",
-    question: "Does Skydda integrate with existing security infrastructure?",
+    question: "How does multi-party signing work?",
     answer:
-      "Yes. Skydda seamlessly integrates with your existing SIEM, SOC tools, and security stack. Our API-first architecture allows bidirectional data flow with platforms like Splunk, CrowdStrike, and Palo Alto Networks, enhancing your current investments rather than replacing them.",
+      "For high-value operations, WranKey supports multi-party quorum approval. Operator key ceremonies require multiple signatures before a transaction is signed or a deployment is approved. No single engineer can push changes to production wallets — it takes consensus from the quorum.",
   },
   {
     id: "4",
-    question: "What kind of threats can Aegis Core detect?",
+    question: "Can I verify transaction signatures independently?",
     answer:
-      "Aegis Core detects and neutralizes zero-day exploits, advanced persistent threats (APTs), ransomware, credential stuffing, DDoS attacks, and insider threats. Our predictive heuristics analyze 10,000+ attack vectors per second to identify threats before they breach your perimeter.",
+      "Yes. Every transaction signed by WranKey produces a P-256 ECDSA attestation document. You can verify the signature in-browser using our `@wrankey/wvc-verify/browser` library with the Web Crypto API — no server or node required. The math checks out or it doesn't.",
   },
   {
     id: "5",
-    question: "Do you offer compliance support and reporting?",
+    question: "What audit and compliance features are included?",
     answer:
-      "Absolutely. Skydda automatically generates compliance reports for SOC 2, ISO 27001, GDPR, HIPAA, and PCI DSS. Every threat detection and response is documented with full audit trails, making compliance audits straightforward and reducing your team's workload significantly.",
+      "Every wallet creation, transaction signature, key ceremony, and deployment approval is logged with a cryptographic proof. The attestation documents serve as compliance artifacts — they prove the operation happened correctly, when it happened, and who authorized it. Audit prep goes from weeks to an afternoon.",
   },
 ];
 
@@ -83,9 +83,10 @@ export function FaqSection() {
             </h2>
 
             <p className="text-balance text-base md:text-lg text-zinc-400 leading-relaxed max-w-md">
-              Get quick answers about Skydda's AI-powered security platform and
-              how autonomous threat detection protects your organization. Can't
-              find what you're looking for? Reach out below.
+              Get quick answers about WranKey&apos;s wallet infrastructure —
+              key management, transaction signing, Shamir recovery, and
+              cryptographic proofs. Can&apos;t find what you need? Reach out
+              to our team.
             </p>
           </div>
 
