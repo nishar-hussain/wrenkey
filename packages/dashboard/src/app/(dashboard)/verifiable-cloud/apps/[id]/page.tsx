@@ -107,6 +107,38 @@ export default function WvcAppDetailPage() {
   const [ceremonyForm, setCeremonyForm] = useState({ ceremonyType: "bootstrap", participatingOperators: "" });
   const [ceremonyLoading, setCeremonyLoading] = useState(false);
 
+  // Manifest approval state
+  const [approveKey, setApproveKey] = useState<CryptoKey | null>(null);
+  const [approveOperatorId, setApproveOperatorId] = useState("");
+  const [approveLoading, setApproveLoading] = useState(false);
+
+  const approveManifestInBrowser = async () => {
+    if (!approveKey || !approveOperatorId || !viewingManifest) return;
+    setApproveLoading(true);
+    try {
+      const hashHex = viewingManifest.manifestHash.replace(/^sha256:/i, "");
+      const hashBytes = hexToUint8(hashHex);
+      const sig = await crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        approveKey,
+        hashBytes.buffer as ArrayBuffer,
+      );
+      const sigHex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
+      const res: any = await apiFetch(`/wvc/manifests/${viewingManifest.id}/approve`, {
+        method: "POST",
+        body: JSON.stringify({ operatorId: approveOperatorId, signature: sigHex }),
+        token: token!,
+      });
+      addToast(`Approved — ${res.approvalsCount}/${res.requiredApprovals} approvals`, "success");
+      if (res.status === "approved") {
+        addToast("Manifest fully approved — ready to provision", "success");
+      }
+      fetchApp();
+    } catch (err: any) {
+      addToast(err.message || "Approval failed", "error");
+    } finally { setApproveLoading(false); }
+  };
+
   const fetchApp = useCallback(async () => {
     if (!token) return;
     setLoading(true);
@@ -467,7 +499,7 @@ export default function WvcAppDetailPage() {
 
       {/* Manifest View Modal */}
       {viewingManifest && (
-        <Modal open={!!viewingManifest} onClose={() => setViewingManifest(null)} title="Manifest">
+        <Modal open={!!viewingManifest} onClose={() => { setViewingManifest(null); setApproveKey(null); }} title="Manifest">
           <div className="space-y-3 max-h-[70vh] overflow-y-auto">
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div><span className="text-slate-400">Approvals:</span> {viewingManifest.approvalsCount}/{viewingManifest.requiredApprovals}</div>
@@ -481,7 +513,48 @@ export default function WvcAppDetailPage() {
               <p className="text-sm font-medium mb-1">Manifest JSON</p>
               <pre className="font-mono text-xs bg-slate-50 dark:bg-slate-800 p-3 rounded max-h-64 overflow-y-auto">{JSON.stringify(viewingManifest.manifestJson, null, 2)}</pre>
             </div>
-            <p className="text-xs text-slate-400">Approvals are signed via the CLI: <code className="bg-slate-100 px-1 rounded">wvc manifest approve {viewingManifest.id} --operator &lt;alias&gt;</code></p>
+
+            {/* Browser-based approval */}
+            <div className="border-t pt-3 space-y-3">
+              <p className="text-sm font-medium">Approve in Browser</p>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Upload Operator Private Key (.pem)</label>
+                <input type="file" accept=".pem" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = async (ev) => {
+                    const pem = ev.target?.result as string;
+                    try {
+                      const base64 = pem.replace(/-----[^-]+-----/g, "").replace(/\s/g, "");
+                      const raw = atob(base64);
+                      const buf = new ArrayBuffer(raw.length);
+                      const der = new Uint8Array(buf);
+                      for (let i = 0; i < raw.length; i++) der[i] = raw.charCodeAt(i);
+                      const key = await crypto.subtle.importKey("pkcs8", buf, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+                      setApproveKey(key);
+                      addToast("Private key loaded. Ready to sign.", "success");
+                    } catch { addToast("Invalid private key file", "error"); }
+                  };
+                  reader.readAsText(file);
+                }} className="block w-full text-xs" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Operator</label>
+                <select value={approveOperatorId} onChange={(e) => setApproveOperatorId(e.target.value)}
+                  className="w-full h-10 border rounded-md px-3 bg-background text-sm">
+                  <option value="">Select operator...</option>
+                  {(app.operators || []).map((o: any) => (
+                    <option key={o.id} value={o.id}>{o.alias} ({o.id.slice(0, 8)}…)</option>
+                  ))}
+                </select>
+              </div>
+              <Button onClick={approveManifestInBrowser} disabled={!approveKey || !approveOperatorId || approveLoading} className="w-full">
+                {approveLoading ? "Signing & Approving…" : "Sign & Approve"}
+              </Button>
+            </div>
+
+            <p className="text-xs text-slate-400">Or via CLI: <code className="bg-slate-100 px-1 rounded">wvc manifest approve {viewingManifest.id} --operator &lt;alias&gt;</code></p>
           </div>
         </Modal>
       )}
@@ -620,4 +693,12 @@ function decodeProofFormat(attestationDoc?: string): string {
   } catch {
     return "v1";
   }
+}
+
+function hexToUint8(hex: string): Uint8Array {
+  const clean = hex.replace(/^0x/i, "");
+  const buf = new ArrayBuffer(clean.length / 2);
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  return bytes;
 }
