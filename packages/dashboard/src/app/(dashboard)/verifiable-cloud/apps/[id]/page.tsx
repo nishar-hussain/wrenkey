@@ -12,7 +12,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { ArrowLeft, Plus, Play, FileCheck, Key } from "lucide-react";
+import { ArrowLeft, Plus, Play, FileCheck, Key, Copy } from "lucide-react";
 import { ProofVerifyButton } from "@/components/wvc/ProofVerifyButton";
 
 interface AppDetail {
@@ -388,7 +388,16 @@ export default function WvcAppDetailPage() {
             <Table
               columns={[
                 { key: "alias", header: "Alias" },
-                { key: "publicKey", header: "Public Key", render: (o: any) => <span className="font-mono text-xs truncate max-w-[300px] block">{o.publicKey.slice(0, 48)}…</span> },
+                { key: "id", header: "Operator ID", render: (o: any) => (
+                  <span className="flex items-center gap-1 font-mono text-xs">
+                    <span className="truncate max-w-[120px]">{o.id}</span>
+                    <button onClick={() => { navigator.clipboard.writeText(o.id); addToast("Copied operator ID", "success"); }}
+                      className="shrink-0 p-0.5 hover:bg-accent rounded text-muted-foreground hover:text-foreground" title="Copy ID">
+                      <Copy className="h-3 w-3" />
+                    </button>
+                  </span>
+                ) },
+                { key: "publicKey", header: "Public Key", render: (o: any) => <span className="font-mono text-xs truncate max-w-[250px] block">{o.publicKey.slice(0, 48)}…</span> },
                 { key: "status", header: "Status", render: (o: any) => <StatusBadge status={o.status} /> },
                 { key: "createdAt", header: "Added", render: (o: any) => new Date(o.createdAt).toLocaleDateString() },
                 {
@@ -674,9 +683,24 @@ export default function WvcAppDetailPage() {
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">Participating Operators (comma-separated IDs)</label>
+            <label className="text-sm font-medium">Participating Operators</label>
+            <div className="space-y-1 mb-2">
+              {(app.operators || []).map((o: any) => (
+                <label key={o.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-accent rounded p-1">
+                  <input type="checkbox" checked={ceremonyForm.participatingOperators.split(",").map(s => s.trim()).includes(o.id)}
+                    onChange={(e) => {
+                      const ids = ceremonyForm.participatingOperators.split(",").map(s => s.trim()).filter(Boolean);
+                      if (e.target.checked && !ids.includes(o.id)) ids.push(o.id);
+                      else if (!e.target.checked) ids.splice(ids.indexOf(o.id), 1);
+                      setCeremonyForm({ ...ceremonyForm, participatingOperators: ids.join(", ") });
+                    }} />
+                  <span className="font-mono">{o.id.slice(0, 12)}…</span>
+                  <span className="text-slate-400">({o.alias})</span>
+                </label>
+              ))}
+            </div>
             <Input value={ceremonyForm.participatingOperators} onChange={(e) => setCeremonyForm({ ...ceremonyForm, participatingOperators: e.target.value })}
-              placeholder="Paste operator IDs from the Operators tab, e.g. f45546b8-…, 77295d35-…" className="font-mono text-xs" />
+              placeholder="Or paste comma-separated IDs" className="font-mono text-xs" />
           </div>
           <Button onClick={initCeremony} disabled={ceremonyLoading} className="w-full">{ceremonyLoading ? "Initiating…" : "Initiate Ceremony"}</Button>
         </div>
