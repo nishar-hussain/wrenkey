@@ -68,7 +68,7 @@ export default function WvcAppDetailPage() {
       const pubExported = await crypto.subtle.exportKey("spki", keyPair.publicKey);
       const pubBase64 = btoa(String.fromCharCode(...new Uint8Array(pubExported)));
       const pubPem = `-----BEGIN PUBLIC KEY-----\n${pubBase64}\n-----END PUBLIC KEY-----`;
-      setOperatorForm({ ...operatorForm, publicKey: pubPem });
+      setOperatorForm({ ...operatorForm, publicKey: pubBase64 });
 
       const privExported = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
       const privBase64 = btoa(String.fromCharCode(...new Uint8Array(privExported)));
@@ -496,7 +496,7 @@ export default function WvcAppDetailPage() {
           <div className="space-y-1">
             <label className="text-sm font-medium">Public Key (PEM)</label>
             <textarea value={operatorForm.publicKey} onChange={(e) => setOperatorForm({ ...operatorForm, publicKey: e.target.value })}
-              placeholder="-----BEGIN PUBLIC KEY-----&#10;…&#10;-----END PUBLIC KEY-----"
+              placeholder="MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE…"
               className="w-full text-xs font-mono border rounded-md p-2 h-32 resize-none bg-background" />
           </div>
           <Button type="button" variant="secondary" onClick={generateKeyInBrowser} className="w-full">
