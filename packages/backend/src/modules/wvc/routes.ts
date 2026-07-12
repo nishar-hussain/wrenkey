@@ -640,7 +640,6 @@ export async function wvcRoutes(app: FastifyInstance) {
           ceremonyType,
           participatingOperators,
           status: "pending",
-          initiatedBy: request.userId,
         },
       });
 

@@ -603,7 +603,7 @@ export default function WvcAppDetailPage() {
           <div className="space-y-1">
             <label className="text-sm font-medium">Participating Operators (comma-separated IDs)</label>
             <Input value={ceremonyForm.participatingOperators} onChange={(e) => setCeremonyForm({ ...ceremonyForm, participatingOperators: e.target.value })}
-              placeholder="uuid1, uuid2, uuid3" className="font-mono text-xs" />
+              placeholder="Paste operator IDs from the Operators tab, e.g. f45546b8-…, 77295d35-…" className="font-mono text-xs" />
           </div>
           <Button onClick={initCeremony} disabled={ceremonyLoading} className="w-full">{ceremonyLoading ? "Initiating…" : "Initiate Ceremony"}</Button>
         </div>
