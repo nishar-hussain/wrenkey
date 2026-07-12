@@ -63,7 +63,7 @@ export async function wvcRoutes(app: FastifyInstance) {
 
       await createAuditLog(request.orgId, "WVC_APP_DELETE", { appId, name: app.name }, request.userId, request);
 
-      // Delete all child records in dependency order
+      // Delete all child records in dependency order (respect FKs)
       for (const dep of app.deployments) {
         await prisma.wvcAppProof.deleteMany({ where: { deploymentId: dep.id } });
         await prisma.wvcBootProof.deleteMany({ where: { deploymentId: dep.id } });
@@ -71,8 +71,8 @@ export async function wvcRoutes(app: FastifyInstance) {
       await prisma.wvcManifestApproval.deleteMany({ where: { manifest: { appId } } });
       await prisma.wvcKeyCeremony.deleteMany({ where: { appId } });
       await prisma.wvcQuorumKey.deleteMany({ where: { appId } });
-      await prisma.wvcManifest.deleteMany({ where: { appId } });
       await prisma.wvcDeployment.deleteMany({ where: { appId } });
+      await prisma.wvcManifest.deleteMany({ where: { appId } });
       await prisma.wvcOperator.deleteMany({ where: { appId } });
       await prisma.wvcApp.delete({ where: { id: appId } });
 
