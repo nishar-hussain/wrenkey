@@ -51,6 +51,35 @@ export async function wvcRoutes(app: FastifyInstance) {
     } catch (err) { return sendError(reply, err); }
   });
 
+  // DELETE /wvc/apps/:appId — delete an app and all its deployments/proofs
+  app.delete("/wvc/apps/:appId", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { appId } = request.params as { appId: string };
+      const app = await prisma.wvcApp.findFirst({
+        where: { id: appId, orgId: request.orgId },
+        include: { deployments: true },
+      });
+      if (!app) throw new NotFoundError("WVC app");
+
+      await createAuditLog(request.orgId, "WVC_APP_DELETE", { appId, name: app.name }, request.userId, request);
+
+      // Delete all child records in dependency order
+      for (const dep of app.deployments) {
+        await prisma.wvcAppProof.deleteMany({ where: { deploymentId: dep.id } });
+        await prisma.wvcBootProof.deleteMany({ where: { deploymentId: dep.id } });
+      }
+      await prisma.wvcManifestApproval.deleteMany({ where: { manifest: { appId } } });
+      await prisma.wvcKeyCeremony.deleteMany({ where: { appId } });
+      await prisma.wvcQuorumKey.deleteMany({ where: { appId } });
+      await prisma.wvcManifest.deleteMany({ where: { appId } });
+      await prisma.wvcDeployment.deleteMany({ where: { appId } });
+      await prisma.wvcOperator.deleteMany({ where: { appId } });
+      await prisma.wvcApp.delete({ where: { id: appId } });
+
+      return sendSuccess(reply, { deleted: true, appId });
+    } catch (err) { return sendError(reply, err); }
+  });
+
   // GET /wvc/apps — list apps (paginated)
   app.get("/wvc/apps", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {

@@ -12,7 +12,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { Cloud } from "lucide-react";
+import { Cloud, Trash2 } from "lucide-react";
 
 interface WvcApp {
   id: string;
@@ -74,6 +74,17 @@ export default function VerifiableCloudPage() {
     } finally { setCreateLoading(false); }
   };
 
+  const deleteApp = async (appId: string) => {
+    if (!confirm("Delete this app and all its deployments, proofs, and operators? This cannot be undone.")) return;
+    try {
+      await apiFetch(`/wvc/apps/${appId}`, { method: "DELETE", token: token! });
+      addToast("App deleted", "success");
+      fetchData();
+    } catch (err: any) {
+      addToast(err.message || "Failed to delete app", "error");
+    }
+  };
+
   if (!isAuthenticated) return null;
 
   const columns = [
@@ -86,6 +97,11 @@ export default function VerifiableCloudPage() {
     { key: "operators", header: "Operators", render: (a: WvcApp) => a._count?.operators ?? 0 },
     { key: "live", header: "Live Deployment", render: (a: WvcApp) => a.liveDeploymentId ? <span className="font-mono text-xs text-green-600">{a.liveDeploymentId.slice(0, 8)}…</span> : <span className="text-slate-400">—</span> },
     { key: "createdAt", header: "Created", render: (a: WvcApp) => new Date(a.createdAt).toLocaleDateString() },
+    { key: "actions", header: "", render: (a: WvcApp) => (
+      <button onClick={() => deleteApp(a.id)} className="p-1.5 hover:bg-destructive/10 rounded-lg text-muted-foreground hover:text-destructive transition-colors" title="Delete App">
+        <Trash2 className="h-4 w-4" />
+      </button>
+    ) },
   ];
 
   return (
