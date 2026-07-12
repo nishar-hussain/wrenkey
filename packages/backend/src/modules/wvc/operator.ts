@@ -56,14 +56,19 @@ export function verifyOperatorSignature(
  */
 export function normalizePublicKey(key: string): string {
   if (key.includes("BEGIN") || key.includes("-----")) return key;
-  const hex = key.replace(/^0x/i, "").trim();
+  const trimmed = key.replace(/^0x/i, "").replace(/\s/g, "").trim();
+  // Bare base64 SPKI DER body (no PEM headers) — wrap with PEM markers
+  if (/^[A-Za-z0-9+/=]+$/.test(trimmed) && trimmed.length > 20) {
+    const der = Buffer.from(trimmed, "base64");
+    return createPublicKey({ key: der, format: "der", type: "spki" }).export({ format: "pem", type: "spki" }).toString();
+  }
   // Heuristic: SEC1 uncompressed point for P-256 is 65 bytes (130 hex chars).
-  if (hex.length === 130 && hex.startsWith("04")) {
-    const der = Buffer.from(hex, "hex");
+  if (trimmed.length === 130 && trimmed.startsWith("04")) {
+    const der = Buffer.from(trimmed, "hex");
     return createPublicKey({ key: der, format: "der", type: "spki" }).export({ format: "pem", type: "spki" }).toString();
   }
   // Assume SPKI DER hex otherwise.
-  const der = Buffer.from(hex, "hex");
+  const der = Buffer.from(trimmed, "hex");
   return createPublicKey({ key: der, format: "der", type: "spki" }).export({ format: "pem", type: "spki" }).toString();
 }
 
