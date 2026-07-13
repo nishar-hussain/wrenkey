@@ -215,6 +215,8 @@ export async function wvcRoutes(app: FastifyInstance) {
         requiredApprovals: app.requiredApprovals,
         approvers,
         allowedUpgradeFrom: body.allowedUpgradeFrom || [],
+        stagedxDigest: body.stagedxDigest,
+        stagedxVersion: body.stagedxVersion,
       };
       const manifestObj = buildManifestObject(manifestInput);
       const manifestHash = computeManifestHash(manifestObj);
@@ -247,6 +249,8 @@ export async function wvcRoutes(app: FastifyInstance) {
             status: STATUS.PENDING_MANIFEST,
             manifestId: manifest.id,
             allowedUpgradeFrom: body.allowedUpgradeFrom || [],
+            stagedxDigest: body.stagedxDigest || null,
+            stagedxVersion: body.stagedxVersion || null,
           },
         });
         return { manifest, deployment };
@@ -553,6 +557,7 @@ export async function wvcRoutes(app: FastifyInstance) {
       const { proofId } = request.params as { proofId: string };
       const proof = await prisma.wvcAppProof.findFirst({
         where: { id: proofId, deployment: { app: { orgId: request.orgId } } },
+        include: { deployment: { select: { stagedxDigest: true, stagedxVersion: true } } },
       });
       if (!proof) throw new NotFoundError("App proof");
       return sendSuccess(reply, {
@@ -565,6 +570,8 @@ export async function wvcRoutes(app: FastifyInstance) {
         attestationDoc: Buffer.from(proof.attestationDoc).toString("base64"),
         proofFormatVersion: proof.proofFormatVersion,
         issuedAt: proof.issuedAt,
+        stagedxDigest: proof.deployment.stagedxDigest,
+        stagedxVersion: proof.deployment.stagedxVersion,
       });
     } catch (err) { return sendError(reply, err); }
   });

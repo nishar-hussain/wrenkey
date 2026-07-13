@@ -124,8 +124,10 @@ export function buildManifestObject(input: {
   requiredApprovals: number;
   approvers: string[];
   allowedUpgradeFrom: string[];
+  stagedxDigest?: string;
+  stagedxVersion?: string;
 }): ManifestValue {
-  return {
+  const manifest: Record<string, ManifestValue> = {
     version: "1",
     app_id: input.appId,
     image_url: input.imageUrl,
@@ -146,4 +148,9 @@ export function buildManifestObject(input: {
     allowed_upgrade_from: input.allowedUpgradeFrom,
     created_at: new Date().toISOString(),
   };
+
+  if (input.stagedxDigest) manifest.stagedx_digest = input.stagedxDigest;
+  if (input.stagedxVersion) manifest.stagedx_version = input.stagedxVersion;
+
+  return manifest as ManifestValue;
 }

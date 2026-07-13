@@ -487,6 +487,8 @@ model WvcDeployment {
   status             String   @default("pending_manifest")
   manifestId         String   @unique @map("manifest_id")
   allowedUpgradeFrom String[] @default([]) @map("allowed_upgrade_from")
+  stagedxDigest      String?  @map("stagedx_digest")
+  stagedxVersion     String?  @map("stagedx_version")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 

@@ -51,6 +51,8 @@ export interface ProvisionRequest {
   manifestHash: string;
   manifestJson: unknown;
   replicaCount: number;
+  stagedxDigest?: string;
+  stagedxVersion?: string;
 }
 
 export interface ProvisionResult {
@@ -91,6 +93,8 @@ export async function provisionDeployment(deploymentId: string, orgId: string): 
     manifestHash: deployment.manifest.manifestHash,
     manifestJson: deployment.manifest.manifestJson,
     replicaCount: deployment.replicaCount,
+    stagedxDigest: deployment.stagedxDigest ?? undefined,
+    stagedxVersion: deployment.stagedxVersion ?? undefined,
   };
 
   const endpoint = config.wvc.enclaveEndpoint;
@@ -180,7 +184,13 @@ export async function invokeDeployment(
   const endpoint = config.wvc.enclaveEndpoint;
 
   if (isLocalRuntimeEndpoint(endpoint) || endpointConfiguredForLocalDev(endpoint)) {
-    const data = await invokeLocalDeployment(deploymentId, deployment.manifest.manifestHash, request);
+    const data = await invokeLocalDeployment(
+      deploymentId,
+      deployment.manifest.manifestHash,
+      request,
+      deployment.stagedxDigest ?? undefined,
+      deployment.stagedxVersion ?? undefined,
+    );
     return persistAppProof(deploymentId, data);
   }
 

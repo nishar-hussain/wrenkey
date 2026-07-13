@@ -119,6 +119,8 @@ deploy
   .option("--replicas <n>", "Replica count", "3")
   .option("--args <json>", "Executable args as JSON array", "[]")
   .option("--upgrade-from <ids>", "Comma-separated deployment IDs this may upgrade from")
+  .option("--stagedx-digest <sha256>", "StageX reproducible build digest (OCI image SHA-256)")
+  .option("--stagedx-version <version>", "StageX release version (e.g. 2026.05.0)")
   .action(async (opts: any) => {
     const pcrs = JSON.parse(fs.readFileSync(opts.pcrs, "utf8"));
     const res: any = await api(`/wvc/apps/${opts.app}/deployments`, {
@@ -137,6 +139,8 @@ deploy
         memoryMib: parseInt(opts.memory, 10),
         replicaCount: parseInt(opts.replicas, 10),
         allowedUpgradeFrom: opts.upgradeFrom ? opts.upgradeFrom.split(",") : [],
+        stagedxDigest: opts.stagedxDigest || undefined,
+        stagedxVersion: opts.stagedxVersion || undefined,
       },
     });
     console.log(`Created deployment ${res.deploymentId}`);

@@ -46,6 +46,7 @@ export default function WvcAppDetailPage() {
     imageUrl: "", executablePath: "/app/wvc-app", executableDigest: "",
     expectedPcr0: "", expectedPcr1: "", expectedPcr2: "",
     ingressPort: 3000, healthPort: 3000, cpuCount: 2, memoryMib: 1024, replicaCount: 3,
+    stagedxDigest: "", stagedxVersion: "",
   });
   const [deployLoading, setDeployLoading] = useState(false);
 
@@ -502,6 +503,11 @@ export default function WvcAppDetailPage() {
             <div className="space-y-1"><label className="text-sm font-medium">Mem (MiB)</label><Input type="number" value={deployForm.memoryMib} onChange={(e) => setDeployForm({ ...deployForm, memoryMib: parseInt(e.target.value) || 1024 })} /></div>
           </div>
           <div className="space-y-1"><label className="text-sm font-medium">Replicas</label><Input type="number" value={deployForm.replicaCount} onChange={(e) => setDeployForm({ ...deployForm, replicaCount: parseInt(e.target.value) || 3 })} /></div>
+          <div className="border-t border-zinc-700/30 pt-4 space-y-3">
+            <p className="text-sm font-medium text-zinc-400">StageX (Reproducible Build)</p>
+            <div className="space-y-1"><label className="text-sm font-medium">StageX Digest</label><Input value={deployForm.stagedxDigest} onChange={(e) => setDeployForm({ ...deployForm, stagedxDigest: e.target.value })} placeholder="sha256:abc123… (OCI image digest from StageX)" className="font-mono text-xs" /></div>
+            <div className="space-y-1"><label className="text-sm font-medium">StageX Version</label><Input value={deployForm.stagedxVersion} onChange={(e) => setDeployForm({ ...deployForm, stagedxVersion: e.target.value })} placeholder="2026.05.0" className="font-mono text-xs" /></div>
+          </div>
           <Button onClick={createDeployment} disabled={deployLoading} className="w-full">{deployLoading ? "Creating…" : "Create Deployment"}</Button>
         </div>
       </Modal>
@@ -664,7 +670,7 @@ export default function WvcAppDetailPage() {
               <p className="font-mono text-xs bg-slate-50 dark:bg-slate-800 p-2 rounded break-all max-h-32 overflow-y-auto">{viewingProof.attestationDoc}</p>
             </div>
             {viewingProof.proofFormatVersion === "local-dev-v1" && (
-              <ProofVerifyButton proof={viewingProof} />
+              <ProofVerifyButton proof={viewingProof} expectedStagexDigest={viewingProof.stagedxDigest || undefined} />
             )}
           </div>
         </Modal>

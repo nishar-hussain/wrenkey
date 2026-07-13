@@ -63,6 +63,9 @@ export interface VerifyOptions {
   maxAgeMs?: number;
   /** Override the pinned AWS Nitro root cert (PEM). If omitted, the shipped root is used. */
   rootCertPem?: string;
+  /** Expected StageX reproducible build digest. If set, the attestation document's
+   *  stagedxDigest field must match this value. StageX proves build-time integrity. */
+  expectedStagexDigest?: string;
 }
 
 /**
@@ -79,4 +82,8 @@ export interface LocalAttestationDoc {
   timestamp: number;
   attestationPubkey: string;
   signature: string;
+  /** Optional StageX reproducible build digest (OCI image SHA-256). */
+  stagedxDigest?: string;
+  /** Optional StageX release version. */
+  stagedxVersion?: string;
 }

@@ -164,11 +164,13 @@ function signPayloadHash(privateKeyPem: string, payloadHash: string): string {
 function buildLocalAttestation(params: {
   ephemeralPubkeyHex: string;
   pcrs?: { pcr0: string; pcr1: string; pcr2: string };
+  stagedxDigest?: string;
+  stagedxVersion?: string;
 }): string {
   const pcrs = params.pcrs ?? LOCAL_PCRS;
   const timestamp = Date.now();
 
-  const docWithoutSig = {
+  const docWithoutSig: Record<string, unknown> = {
     format: "local-dev-v1" as const,
     pcrs,
     ephemeralPubkey: params.ephemeralPubkeyHex,
@@ -176,12 +178,17 @@ function buildLocalAttestation(params: {
     attestationPubkey: _attestationKey.publicKeyHex,
   };
 
+  if (params.stagedxDigest) docWithoutSig.stagedxDigest = params.stagedxDigest;
+  if (params.stagedxVersion) docWithoutSig.stagedxVersion = params.stagedxVersion;
+
   const canonical = JSON.stringify({
     format: docWithoutSig.format,
     pcrs: docWithoutSig.pcrs,
     ephemeralPubkey: docWithoutSig.ephemeralPubkey,
     timestamp: docWithoutSig.timestamp,
     attestationPubkey: docWithoutSig.attestationPubkey,
+    ...(params.stagedxDigest ? { stagedxDigest: params.stagedxDigest } : {}),
+    ...(params.stagedxVersion ? { stagedxVersion: params.stagedxVersion } : {}),
   });
 
   const signer = createSign("SHA256");
@@ -208,6 +215,8 @@ export async function provisionLocalDeployment(request: ProvisionRequest): Promi
       manifestId: request.manifestId,
       attestationDoc: buildLocalAttestation({
         ephemeralPubkeyHex: key.publicKeyHex,
+        stagedxDigest: request.stagedxDigest,
+        stagedxVersion: request.stagedxVersion,
       }),
       replicaIndex: index,
       proofFormatVersion: LOCAL_PROOF_FORMAT,
@@ -230,6 +239,8 @@ export async function invokeLocalDeployment(
   deploymentId: string,
   _manifestHash: string,
   request: InvokeRequest,
+  stagedxDigest?: string,
+  stagedxVersion?: string,
 ): Promise<InvokeResult> {
   assertLocalProofsAllowed();
 
@@ -241,6 +252,8 @@ export async function invokeLocalDeployment(
   const signature = signPayloadHash(key.privateKeyPem, payloadHash);
   const attestationDoc = buildLocalAttestation({
     ephemeralPubkeyHex: key.publicKeyHex,
+    stagedxDigest,
+    stagedxVersion,
   });
 
   return {

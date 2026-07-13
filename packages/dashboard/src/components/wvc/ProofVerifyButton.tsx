@@ -19,9 +19,11 @@ interface ProofData {
   attestationDoc: string;
   proofFormatVersion?: string;
   issuedAt: string;
+  stagedxDigest?: string;
+  stagedxVersion?: string;
 }
 
-export function ProofVerifyButton({ proof }: { proof: ProofData }) {
+export function ProofVerifyButton({ proof, expectedStagexDigest }: { proof: ProofData; expectedStagexDigest?: string }) {
   const [verifying, setVerifying] = useState(false);
   const [result, setResult] = useState<any>(null);
 
@@ -41,6 +43,7 @@ export function ProofVerifyButton({ proof }: { proof: ProofData }) {
       };
       const res = await verifyLocalAppProofBrowser(bundle, EXPECTED_PCRS, {
         maxAgeMs: 60 * 60 * 1000,
+        expectedStagexDigest,
       });
       setResult(res);
     } catch (err: any) {
@@ -86,6 +89,11 @@ export function ProofVerifyButton({ proof }: { proof: ProofData }) {
               {result.pcrs && (
                 <p className="text-xs text-slate-500">
                   PCRs: {JSON.stringify(result.pcrs)}
+                </p>
+              )}
+              {expectedStagexDigest && (
+                <p className="text-xs text-slate-500">
+                  StageX digest: &#10003; {expectedStagexDigest.slice(0, 24)}...
                 </p>
               )}
               <p className="text-xs text-slate-400 mt-2">

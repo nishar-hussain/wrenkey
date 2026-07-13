@@ -73,5 +73,9 @@ export const config = {
     // When set, wallet creation and transaction signing route through this WVC
     // deployment instead of the in-process ethers.js signer (PRD §25).
     walletSignerDeploymentId: process.env.WVC_WALLET_SIGNER_DEPLOYMENT_ID || "",
+    // StageX reproducible build integration — tracks the OCI image digest and
+    // version produced by StageX so the verifier can confirm build-time integrity.
+    stagedxEndpoint: process.env.WVC_STAGEX_ENDPOINT || "",
+    stagedxRequired: process.env.WVC_STAGEX_REQUIRED === "true",
   },
 };

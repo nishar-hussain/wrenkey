@@ -91,6 +91,16 @@ export function verifyLocalAppProof(
     return { valid: false, reason: pcrMatch.reason, pcrs: doc.pcrs, signedAt: doc.timestamp };
   }
 
+  // Step 7: StageX digest verification (build-time integrity).
+  if (options?.expectedStagexDigest) {
+    if (!doc.stagedxDigest) {
+      return invalid("local proof: StageX digest expected but not present in attestation");
+    }
+    if (doc.stagedxDigest !== options.expectedStagexDigest) {
+      return invalid(`local proof: StageX digest mismatch (expected ${options.expectedStagexDigest}, got ${doc.stagedxDigest})`);
+    }
+  }
+
   return {
     valid: true,
     pcrs: doc.pcrs,
@@ -105,7 +115,7 @@ export function verifyLocalAppProof(
 export function verifyLocalBootProof(
   proof: BootProofBundle,
   expectedPcrs: ExpectedPcrs,
-  options?: { maxAgeMs?: number; expectedManifestHash?: string },
+  options?: { maxAgeMs?: number; expectedManifestHash?: string; expectedStagexDigest?: string },
 ): VerificationResult {
   const maxAgeMs = options?.maxAgeMs ?? 60 * 60 * 1000;
 
@@ -142,6 +152,16 @@ export function verifyLocalBootProof(
     const actual = normalizeHash(proof.manifestHash);
     if (expected !== actual) {
       return invalid("local boot proof: manifest hash mismatch");
+    }
+  }
+
+  // StageX digest verification (build-time integrity).
+  if (options?.expectedStagexDigest) {
+    if (!doc.stagedxDigest) {
+      return invalid("local boot proof: StageX digest expected but not present in attestation");
+    }
+    if (doc.stagedxDigest !== options.expectedStagexDigest) {
+      return invalid(`local boot proof: StageX digest mismatch (expected ${options.expectedStagexDigest}, got ${doc.stagedxDigest})`);
     }
   }
 
@@ -208,13 +228,16 @@ function verifyLocalAttestationSignature(doc: LocalAttestationDoc): boolean {
 
 /** Canonicalize a local attestation doc (without signature) for signing/verifying. */
 function canonicalizeLocalDoc(doc: Omit<LocalAttestationDoc, "signature">): string {
-  return JSON.stringify({
+  const base: Record<string, unknown> = {
     format: doc.format,
     pcrs: doc.pcrs,
     ephemeralPubkey: doc.ephemeralPubkey,
     timestamp: doc.timestamp,
     attestationPubkey: doc.attestationPubkey,
-  });
+  };
+  if (doc.stagedxDigest) base.stagedxDigest = doc.stagedxDigest;
+  if (doc.stagedxVersion) base.stagedxVersion = doc.stagedxVersion;
+  return JSON.stringify(base);
 }
 
 /**
