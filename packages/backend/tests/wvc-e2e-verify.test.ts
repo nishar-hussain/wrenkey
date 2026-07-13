@@ -63,7 +63,7 @@ beforeAll(async () => {
   await prisma.$connect();
 
   // Test-scoped: create a fresh org instead of wiping all data
-  const org = await prisma.organization.create({ data: { name: "E2E Verify Test Org" } });
+  const org = await prisma.organization.create({ data: { name: `E2E Verify Test Org ${Date.now()}` } });
   orgId = org.id;
 
   const user = await prisma.user.create({

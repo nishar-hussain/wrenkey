@@ -103,7 +103,8 @@ export function Sidebar() {
           <SectionHeader label="Embedded Wallets" icon={Wallet} open={embeddedOpen} onClick={() => setEmbeddedOpen(!embeddedOpen)} />
           {embeddedOpen && embeddedChildren.map(item => <NavItem key={item.href} {...item} indent />)}
 
-          <NavItem href="/verifiable-cloud" label="Verifiable Cloud" icon={Cloud} />
+          <NavItem href="/verifiable-compute" label="Verifiable Compute" icon={Cloud} />
+          <NavItem href="/verifiable-compute/operators" label="Operators" icon={Key} />
         </div>
       </div>
 

@@ -1,0 +1,84 @@
+name: WVC Tests
+
+on:
+  pull_request:
+    paths:
+      - "packages/backend/src/modules/wvc/**"
+      - "packages/backend/src/services/wvc*"
+      - "packages/backend/tests/wvc*"
+      - "packages/wvc-verify/**"
+      - "packages/cli/**"
+      - "packages/enclave/**"
+  push:
+    branches: [main]
+    paths:
+      - "packages/backend/src/modules/wvc/**"
+      - "packages/backend/src/services/wvc*"
+      - "packages/backend/tests/wvc*"
+      - "packages/wvc-verify/**"
+      - "packages/cli/**"
+      - "packages/enclave/**"
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wrankey_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wrankey_test
+      JWT_SECRET: test-jwt-secret-32chars-long-for-dev-only
+      ENCRYPTION_KEY: test-encryption-key-must-be-32chars!!
+      WEBHOOK_HMAC_SECRET: test-webhook-hmac-secret
+      WVC_ALLOW_LOCAL_PROOFS: "true"
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx prisma db push --schema packages/backend/prisma/schema.prisma
+
+      - run: npx vitest run packages/backend/tests/wvc*.test.ts
+        working-directory: packages/backend
+
+  verify-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run
+        working-directory: packages/wvc-verify
+
+  enclave-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - run: cargo test
+        working-directory: packages/enclave

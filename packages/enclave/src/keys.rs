@@ -26,24 +26,26 @@ impl EphemeralKey {
         }
     }
 
-    /// Sign the raw 32-byte payload hash with P-256 ECDSA (DER format).
-    /// This matches wvc-verify's `verifyPayloadSignature` which verifies
-    /// over `SHA256(raw 32 bytes of hash)`.
+    /// Sign the raw 32-byte payload hash with P-256 ECDSA (IEEE-P1363 format: raw r‖s).
+    /// This matches wvc-verify's `verifyPayloadSignature` which uses
+    /// `dsaEncoding: "ieee-p1363"` (raw r‖s, NOT DER).
     pub fn sign_payload_hash(&self, payload_hash_hex: &str) -> Vec<u8> {
         let hash_hex = payload_hash_hex.trim_start_matches("sha256:");
         let hash_bytes = hex::decode(hash_hex).expect("valid hex hash");
         let signing_key = p256::ecdsa::SigningKey::from_slice(&self.private_key)
             .expect("valid private key");
         let signature: p256::ecdsa::Signature = signing_key.sign(&hash_bytes);
-        signature.to_der().as_bytes().to_vec()
+        // to_bytes() returns raw r‖s (P1363), not DER
+        signature.to_bytes().to_vec()
     }
 
     /// Legacy: sign raw payload bytes directly (used for internal attestation signing).
+    /// Returns IEEE-P1363 format (raw r‖s) to match wvc-verify expectations.
     pub fn sign_raw(&self, data: &[u8]) -> Vec<u8> {
         let signing_key = p256::ecdsa::SigningKey::from_slice(&self.private_key)
             .expect("valid private key");
         let signature: p256::ecdsa::Signature = signing_key.sign(data);
-        signature.to_der().as_bytes().to_vec()
+        signature.to_bytes().to_vec()
     }
 
     pub fn to_hex_pubkey(&self) -> String {

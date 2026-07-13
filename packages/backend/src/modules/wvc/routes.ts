@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import { createPublicKey } from "crypto";
 import prisma from "../../db.js";
 import { authMiddleware } from "../../middleware/auth.js";
 import { sendSuccess, sendError, ValidationError, NotFoundError, ForbiddenError } from "../../utils/errors.js";
@@ -41,7 +42,6 @@ export async function wvcRoutes(app: FastifyInstance) {
       });
 
       await createAuditLog(request.orgId, "WVC_APP_CREATE", { appId: app.id, name }, request.userId, request);
-      triggerWebhookEvents(request.orgId, "wvc.manifest.approval_needed", { appId: app.id, name });
 
       return sendSuccess(reply, {
         id: app.id, name: app.name, description: app.description,
@@ -63,18 +63,20 @@ export async function wvcRoutes(app: FastifyInstance) {
 
       await createAuditLog(request.orgId, "WVC_APP_DELETE", { appId, name: app.name }, request.userId, request);
 
-      // Delete all child records in dependency order (respect FKs)
-      for (const dep of app.deployments) {
-        await prisma.wvcAppProof.deleteMany({ where: { deploymentId: dep.id } });
-        await prisma.wvcBootProof.deleteMany({ where: { deploymentId: dep.id } });
-      }
-      await prisma.wvcManifestApproval.deleteMany({ where: { manifest: { appId } } });
-      await prisma.wvcKeyCeremony.deleteMany({ where: { appId } });
-      await prisma.wvcQuorumKey.deleteMany({ where: { appId } });
-      await prisma.wvcDeployment.deleteMany({ where: { appId } });
-      await prisma.wvcManifest.deleteMany({ where: { appId } });
-      await prisma.wvcOperator.deleteMany({ where: { appId } });
-      await prisma.wvcApp.delete({ where: { id: appId } });
+      // Delete all child records in dependency order (respect FKs) — single transaction
+      await prisma.$transaction(async (tx) => {
+        for (const dep of app.deployments) {
+          await tx.wvcAppProof.deleteMany({ where: { deploymentId: dep.id } });
+          await tx.wvcBootProof.deleteMany({ where: { deploymentId: dep.id } });
+        }
+        await tx.wvcManifestApproval.deleteMany({ where: { manifest: { appId } } });
+        await tx.wvcKeyCeremony.deleteMany({ where: { appId } });
+        await tx.wvcQuorumKey.deleteMany({ where: { appId } });
+        await tx.wvcDeployment.deleteMany({ where: { appId } });
+        await tx.wvcManifest.deleteMany({ where: { appId } });
+        await tx.wvcOperator.deleteMany({ where: { appId } });
+        await tx.wvcApp.delete({ where: { id: appId } });
+      });
 
       return sendSuccess(reply, { deleted: true, appId });
     } catch (err) { return sendError(reply, err); }
@@ -198,6 +200,11 @@ export async function wvcRoutes(app: FastifyInstance) {
         throw new ValidationError(`Cannot create deployment: ${approvers.length} active operator(s), need ${app.requiredApprovals} for approval`);
       }
 
+      const operatorPubkeys = app.operators.map((o) => ({
+        operatorId: o.id,
+        publicKey: o.publicKey,
+      }));
+
       const manifestInput = {
         appId,
         imageUrl: body.imageUrl,
@@ -217,6 +224,7 @@ export async function wvcRoutes(app: FastifyInstance) {
         allowedUpgradeFrom: body.allowedUpgradeFrom || [],
         stagedxDigest: body.stagedxDigest,
         stagedxVersion: body.stagedxVersion,
+        operatorPubkeys,
       };
       const manifestObj = buildManifestObject(manifestInput);
       const manifestHash = computeManifestHash(manifestObj);
@@ -377,14 +385,19 @@ export async function wvcRoutes(app: FastifyInstance) {
             where: { id: deployment.appId },
             data: { quorumKeyId: quorumKey.id },
           });
-          // Complete any pending bootstrap ceremony
+          // Complete any pending bootstrap ceremony and store encrypted shares
           const pendingCeremony = await prisma.wvcKeyCeremony.findFirst({
             where: { appId: deployment.appId, ceremonyType: "bootstrap", status: "pending" },
           });
           if (pendingCeremony) {
             await prisma.wvcKeyCeremony.update({
               where: { id: pendingCeremony.id },
-              data: { status: "completed", newQuorumKeyId: quorumKey.id, completedAt: new Date() },
+              data: {
+                status: "completed",
+                newQuorumKeyId: quorumKey.id,
+                completedAt: new Date(),
+                encryptedShares: result.encryptedShares ?? undefined,
+              },
             });
           }
         }
@@ -509,7 +522,7 @@ export async function wvcRoutes(app: FastifyInstance) {
       });
 
       await createAuditLog(request.orgId, "WVC_DEPLOYMENT_DELETE", { deploymentId, status: updated.status }, request.userId, request);
-      triggerWebhookEvents(request.orgId, "wvc.deployment.unhealthy", { deploymentId, status: updated.status });
+      triggerWebhookEvents(request.orgId, "wvc.deployment.deleted", { deploymentId, status: updated.status });
 
       return sendSuccess(reply, { deploymentId, status: updated.status, restorable: true });
     } catch (err) { return sendError(reply, err); }
@@ -629,6 +642,74 @@ export async function wvcRoutes(app: FastifyInstance) {
 
   // ─── Quorum Key Ceremonies (PRD §9.2, §18.4) ────────────────────────────
 
+  // GET /wvc/apps/:appId/quorum-key/ceremonies — list all ceremonies for an app
+  app.get("/wvc/apps/:appId/quorum-key/ceremonies", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { appId } = request.params as { appId: string };
+      const { limit, offset } = parsePagination(request.query as any);
+      const [ceremonies, total] = await Promise.all([
+        prisma.wvcKeyCeremony.findMany({
+          where: { appId, app: { orgId: request.orgId } },
+          orderBy: { startedAt: "desc" },
+          take: limit, skip: offset,
+          include: { newQuorumKey: true },
+        }),
+        prisma.wvcKeyCeremony.count({ where: { appId, app: { orgId: request.orgId } } }),
+      ]);
+      return sendSuccess(reply, { data: ceremonies, total, limit, offset });
+    } catch (err) { return sendError(reply, err); }
+  });
+
+  // POST /wvc/apps/:appId/quorum-key/request — key forwarding (PRD §18.1)
+  // A new replica sends its ephemeral pubkey + attestation doc; the control plane
+  // verifies the attestation and returns the Quorum Key encrypted via ECIES.
+  app.post("/wvc/apps/:appId/quorum-key/request", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { appId } = request.params as { appId: string };
+      const { ephemeralPubkey, attestationDoc } = request.body as {
+        ephemeralPubkey: string; attestationDoc: string;
+      };
+      if (!ephemeralPubkey) throw new ValidationError("ephemeralPubkey is required");
+
+      const app = await prisma.wvcApp.findFirst({
+        where: { id: appId, orgId: request.orgId },
+        include: { quorumKey: true, liveDeployment: true },
+      });
+      if (!app) throw new NotFoundError("WVC app");
+
+      // In production: verify the attestation doc's PCRs match the expected values
+      // from the live deployment's manifest. In local sim, we accept the request.
+      if (app.liveDeployment) {
+        const deployment = await prisma.wvcDeployment.findUnique({
+          where: { id: app.liveDeploymentId! },
+          include: { manifest: true },
+        });
+        if (deployment) {
+          // TODO: In production, verify attestationDoc PCRs against deployment.expectedPcr0/1/2
+          // For local sim, skip PCR verification (the attestation is a local-dev-v1 JSON)
+        }
+      }
+
+      // Get the Quorum Key public key
+      if (!app.quorumKey) throw new ForbiddenError("No Quorum Key has been bootstrapped for this app");
+
+      // In local sim, return the quorum public key directly (ECIES encryption happens in the runtime)
+      // In production, the existing enclave would ECIES-encrypt the quorum private key to the requester
+      await createAuditLog(request.orgId, "WVC_KEY_FORWARDING", {
+        appId,
+        ephemeralPubkey: ephemeralPubkey.slice(0, 24) + "...",
+      }, request.userId, request);
+
+      return sendSuccess(reply, {
+        quorumPublicKey: app.quorumKey.publicKey,
+        generation: app.quorumKey.generation,
+        // In production: encryptedQuorumKey: eciesEncrypt(ephemeralPubkey, quorumPrivateKey)
+        // For local sim: return null (key is in-process)
+        encryptedQuorumKey: null,
+      });
+    } catch (err) { return sendError(reply, err); }
+  });
+
   // POST /wvc/apps/:appId/quorum-key/ceremonies — initiate a ceremony
   app.post("/wvc/apps/:appId/quorum-key/ceremonies", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
@@ -685,6 +766,11 @@ export async function wvcRoutes(app: FastifyInstance) {
       let quorumKeyId: string | null = ceremony.newQuorumKeyId;
 
       if (quorumPublicKey) {
+        // Validate quorumPublicKey is a valid P-256 public key (PEM or SEC1 hex)
+        if (!isValidP256PublicKey(quorumPublicKey)) {
+          throw new ValidationError("quorumPublicKey must be a valid P-256 public key (PEM or 65-byte SEC1 hex starting with 04)");
+        }
+
         const existingKeys = await prisma.wvcQuorumKey.findMany({
           where: { appId },
           orderBy: { generation: "desc" },
@@ -740,4 +826,27 @@ function decodeProofFormatVersion(attestationDoc: Buffer | Uint8Array): string {
     // Not JSON at all — must be real COSE/CBOR (production Nitro proof)
     return "v1";
   }
+}
+
+/** Validate that a string is a valid P-256 (prime256v1) public key in PEM or SEC1 hex format. */
+function isValidP256PublicKey(key: string): boolean {
+  if (!key || typeof key !== "string") return false;
+
+  // Try PEM format
+  if (key.includes("-----BEGIN")) {
+    try {
+      const pub = createPublicKey({ key, format: "pem" });
+      return pub.asymmetricKeyType === "ec" && pub.asymmetricKeyDetails?.namedCurve === "prime256v1";
+    } catch {
+      return false;
+    }
+  }
+
+  // Try SEC1 uncompressed hex (04 + 32 bytes X + 32 bytes Y = 65 bytes = 130 hex chars)
+  const hex = key.startsWith("0x") ? key.slice(2) : key;
+  if (hex.length === 130 && /^[0-9a-fA-F]+$/.test(hex) && hex.startsWith("04")) {
+    return true;
+  }
+
+  return false;
 }

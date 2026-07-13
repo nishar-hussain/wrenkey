@@ -615,6 +615,7 @@ model WvcKeyCeremony {
   initiatedBy            String?   @map("initiated_by")
   participatingOperators String[]  @default([]) @map("participating_operators")
   newQuorumKeyId         String?   @map("new_quorum_key_id")
+  encryptedShares        Json?     @map("encrypted_shares")
   status                 String    @default("pending")
   startedAt              DateTime  @default(now()) @map("started_at")
   completedAt            DateTime? @map("completed_at")

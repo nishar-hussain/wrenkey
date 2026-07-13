@@ -21,3 +21,9 @@ hkdf = "0.12"
 hmac = "0.12"
 zeroize = { version = "1", features = ["derive"] }
 base64 = "0.22"
+ciborium = "0.2"
+# For production: real ECDSA secp256k1 transaction signing
+# k256 = { version = "0.13", features = ["ecdsa", "keccak256"] }
+# For production Nitro: nsm-io provides the NSM API for attestation documents
+# nsm-io = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api.git" }
+# vsock = "0.5"

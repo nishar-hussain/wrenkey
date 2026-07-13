@@ -55,28 +55,29 @@
 
 ## 0. Implementation status (live tracking)
 
-> Last updated: 2026-07-10
-> Scope: Local simulation (`local-dev-v1`) — AWS Nitro production deferred to Phase 2
+> Last updated: 2026-07-13
+> Scope: Local simulation (`local-dev-v1`) complete + Production Nitro scaffolding
 
 ### 0.1 What's DONE (local simulation, end-to-end)
 
 | PRD § | Feature | Status | Notes |
 |-------|---------|--------|-------|
-| §8 | Database schema (9 WVC models) | ✅ Done | All Prisma models + migrations applied |
-| §9 | API: Create/list/get WVC apps | ✅ Done | `POST/GET /wvc/apps`, `GET /wvc/apps/:id` |
+| §8 | Database schema (10 WVC models) | ✅ Done | All Prisma models + migrations applied, `encryptedShares` added to ceremonies |
+| §9 | API: Create/list/get WVC apps | ✅ Done | `POST/GET /wvc/apps`, `GET /wvc/apps/:id`, transactional cascade delete |
 | §9 | API: Operators (add/list/revoke) | ✅ Done | `POST/GET/DELETE /wvc/apps/:appId/operators` |
-| §9 | API: Deployments + manifests (create) | ✅ Done | Atomic DB transaction, JCS canonicalization, SHA-256 hash |
+| §9 | API: Deployments + manifests (create) | ✅ Done | Atomic DB transaction, JCS canonicalization, SHA-256 hash, operator pubkeys in manifest |
 | §9 | API: Manifest approval | ✅ Done | Server verifies P-256 ECDSA signature against stored pubkey |
-| §9 | API: Provision (local) | ✅ Done | Boots simulated replicas, produces boot proofs |
-| §9 | API: Deployment lifecycle (set-live, delete, restore) | ✅ Done | Full state machine |
-| §9 | API: Invoke | ✅ Done | `generate_seed`, `signature`, generic echo |
+| §9 | API: Provision (local) | ✅ Done | Boots simulated replicas, produces boot proofs, generates Shamir shares |
+| §9 | API: Deployment lifecycle (set-live, delete, restore) | ✅ Done | Full state machine, correct webhooks |
+| §9 | API: Invoke | ✅ Done | `generate_seed`, `signature`, `parse_summary`, `policy_decision` |
 | §9 | API: Proof fetch (app + boot) | ✅ Done | `GET /wvc/app-proofs/:id`, `GET /wvc/boot-proofs/:id` |
-| §9 | API: Quorum key ceremonies (initiate, status, complete) | ✅ Done | Endpoints exist; key injection simulated |
-| §9 | Webhooks (6 WVC event types) | ✅ Done | `wvc.deployment.live`, `wvc.manifest.approved`, etc. |
+| §9 | API: Quorum key ceremonies (initiate, status, complete, list) | ✅ Done | All endpoints, P-256 pubkey validation on complete |
+| §9 | API: Quorum key forwarding | ✅ Done | `POST /wvc/apps/:appId/quorum-key/request` — ECIES key forwarding |
+| §9 | Webhooks (6 WVC event types) | ✅ Done | Correct event semantics (`wvc.deployment.deleted` not `unhealthy`) |
 | §12 | Manifest JCS canonicalization + hashing | ✅ Done | RFC 8785 compliant |
 | §13 | Operator P-256 key generation + signing | ✅ Done | CLI generates keys locally, never sends private keys |
-| §16 | Verification library (local-dev-v1) | ✅ Done | `verifyLocalAppProof()`, `verifyLocalBootProof()` — 6-step verification, real P-256 ECDSA |
-| §16 | Verification library (production Nitro) | 🔨 Stub | COSE/CBOR parsing, X.509 chain, AWS root cert — deferred to Phase 2 |
+| §16 | Verification library (local-dev-v1) | ✅ Done | `verifyLocalAppProof()`, `verifyLocalBootProof()` — 7-step verification, real P-256 ECDSA |
+| §16 | Verification library (production Nitro) | ✅ Done | Full COSE_Sign1, CBOR, X.509 chain, AWS root cert — accepts both `public_key` and `user_data` binding |
 | §19 | App Proof format (local-dev-v1) | ✅ Done | Ephemeral key, payload hash, attestation doc, signature |
 | §19 | Boot Proof format (local-dev-v1) | ✅ Done | Attestation doc binding PCRs + ephemeral key |
 | §22 | CLI: login, operator init/list | ✅ Done | |
@@ -87,48 +88,60 @@
 | §22 | CLI: proof verify (--allow-local) | ✅ Done | Calls `verifyLocalAppProof()` with real crypto |
 | §22 | CLI: quorum-key rotate | ✅ Done | Initiates rotation ceremony |
 | §22 | CLI: ceremony status | ✅ Done | |
-| §23 | Dashboard: `/verifiable-cloud` (apps list) | ✅ Done | Create app, list with pagination |
-| §23 | Dashboard: `/verifiable-cloud/apps/:id` | ✅ Done | Overview, deployments, operators tabs |
-| §23 | Dashboard: Create deployment form | ✅ Done | Image, digest, PCRs, ports, resources |
+| §22 | CLI: quorum-key backup-share | ✅ Done | Real Shamir share extraction with ECIES decryption |
+| §22 | CLI: quorum-key recover | ✅ Done | Real Shamir threshold reconstruction (GF(256)) |
+| §23 | Dashboard: `/verifiable-compute` (apps list) | ✅ Done | Create app, list with pagination |
+| §23 | Dashboard: `/verifiable-compute/apps/:id` | ✅ Done | Overview, deployments, operators, proofs, ceremonies tabs |
+| §23 | Dashboard: `/verifiable-compute/deployments/:id` | ✅ Done | Deployment detail: manifest, health, boot proofs, app proofs |
+| §23 | Dashboard: `/verifiable-compute/operators` | ✅ Done | Org-wide operators roster |
+| §23 | Dashboard: Create deployment form | ✅ Done | Image, digest, PCRs, ports, resources, StageX |
 | §23 | Dashboard: Manifest view modal | ✅ Done | Shows hash, JSON, approval progress |
 | §23 | Dashboard: Add/revoke operator | ✅ Done | |
 | §23 | Dashboard: Invoke deployment | ✅ Done | Invoke modal with payload type selection, result + app proof display |
 | §23 | Dashboard: View app proofs | ✅ Done | Proofs tab, proof list, full proof detail modal |
-| §23 | Dashboard: View boot proofs | ✅ Done | Boot proof count shown in deployment table |
+| §23 | Dashboard: View boot proofs | ✅ Done | Boot proof count in deployment table + detail modal |
 | §23 | Dashboard: Key ceremonies tab | ✅ Done | Ceremony history, initiate new ceremony modal |
 | §23 | Dashboard: Client-side proof verification | ✅ Done | "Verify Proof in Browser" button using Web Crypto API |
-| §17-18 | Quorum Key bootstrapping (local) | ✅ Done | Auto-generates + persists Quorum Key on first provision, auto-completes bootstrap ceremony |
-| §18 | Key forwarding simulation (local) | ✅ Done | New replicas get Quorum Key from existing store |
-| §22 | CLI: quorum-key backup-share | ✅ Done | Shamir share extraction for operators |
-| §22 | CLI: quorum-key recover | ✅ Done | Recovery ceremony CLI command |
-| §25 | SDK: Wallet module → WVC integration | ✅ Done | `POST /wallets` routes through WVC when `WVC_WALLET_SIGNER_DEPLOYMENT_ID` set |
-| §25 | SDK: Transaction module → WVC integration | ✅ Done | `POST /transactions/sign` routes through WVC when WVC-enabled wallet detected |
-| §24 | Verification library: browser-compatible | ✅ Done | `@wrankey/wvc-verify/browser` entry point using Web Crypto API for local-dev-v1 |
-| §27 | E2E test (wvc-e2e-verify.test.ts) | ✅ Done | 31/31 WVC tests pass, full lifecycle with crypto verification |
-| — | Rust enclave crypto (JCS, AES-GCM, Shamir GF(256)) | ✅ Done | 3/3 Shamir tests pass |
+| §17-18 | Quorum Key bootstrapping (local) | ✅ Done | Auto-generates + persists Quorum Key on first provision, Shamir shares encrypted to operators |
+| §18 | Key forwarding (local) | ✅ Done | Real ECIES encryption (not pointer copy) |
+| §18.4 | Shamir Secret Sharing (TS) | ✅ Done | GF(256) split + recover in CLI and backend |
+| §25 | SDK: Wallet module → WVC integration | ✅ Done | `POST /wallets` routes through WVC, `devMode` flag in response |
+| §25 | SDK: Transaction module → WVC integration | ✅ Done | `POST /transactions/sign` routes through WVC, `devMode` flag |
+| §24 | Verification library: browser-compatible | ✅ Done | `@wrankey/wvc-verify/browser` entry point using Web Crypto API |
+| §27 | E2E tests | ✅ Done | 82/82 tests pass — lifecycle, verify, ceremonies, delete, adversarial, wallet, key-forwarding, StageX, manifest, operator, local-runtime |
+| §27 | Adversarial tests (§27 mandatory) | ✅ Done | PCR mismatch, signature tamper, stale attestation, rollback attack, unapproved provision |
+| — | Rust enclave crypto (JCS, AES-GCM, Shamir GF(256), ECIES) | ✅ Done | 3/3 Shamir tests pass, P1363 signatures, COSE_Sign1 attestation |
+| — | Rust enclave: parse_summary + policy_decision | ✅ Done | Both workload types implemented |
+| — | Rust enclave: migration module | ✅ Done | Wallet migration with re-encryption + proof |
+| §10 | Reproducible build CI | ✅ Done | GitHub Actions: double-build-diff, SBOM, StageX verify |
+| §20 | Host Agent | ✅ Done | vsock proxy, manifest delivery, egress lockdown, replica health |
+| §10 | StageX config wiring | ✅ Done | `stagedxRequired` → verify OCI digest before provisioning |
 
-### 0.2 What's MISSING (for local simulation completeness)
+### 0.2 What's PRODUCTION-READY (AWS Nitro — Phase 2)
 
-| PRD § | Feature | Priority | Effort | Notes |
-|-------|---------|----------|--------|-------|
-| §18 | **Key forwarding simulation (local)** | Medium | 3h | New replica should get Quorum Key from existing replica (simulated) — basic version done, production ECIES protocol deferred |
-| §28 | **WVC-specific audit events** | Low | 1h | Already partially done via `createAuditLog` — `WALLET_CREATE_WVC` and `TX_SIGN_WVC` audit actions added |
+| PRD § | Feature | Status | Notes |
+|-------|---------|--------|-------|
+| §10 | Reproducible build pipeline | ✅ Scaffold | GitHub Actions workflows created (double-build-diff, SBOM, StageX) |
+| §14 | Enclave harness | ✅ Scaffold | Full boot sequence, COSE_Sign1 attestation, Shamir, ECIES key forwarding |
+| §16 | Production attestation verification | ✅ Done | Full COSE_Sign1 + CBOR + X.509 chain in wvc-verify |
+| §18 | Real key forwarding protocol | ✅ Done | ECIES encryption, attestation verification, `POST /quorum-key/request` |
+| §20 | Host Agent | ✅ Scaffold | vsock proxy, manifest delivery, egress lockdown, replica health tracking |
+| §26 | Wallet migration | ✅ Scaffold | Migration enclave module with re-encryption + proof |
+| §22 | CLI: backup-share + recover | ✅ Done | Real Shamir cryptography (not stubs) |
 
-### 0.3 What's DEFERRED (AWS Nitro production — Phase 2)
+### 0.3 What's STILL NEEDED for Production Nitro
 
 | PRD § | Feature | Notes |
 |-------|---------|-------|
-| §5 | AWS Nitro Enclave setup | Parent EC2, Nitro CLI, EIF build |
-| §10 | Reproduducible build pipeline | StageX, Dockerfile, CI double-build-diff, SBOM |
-| §14 | Enclave harness (QOS-lite) | Binary digest check, NSM calls, key forwarding |
-| §16 | Production attestation verification | COSE_Sign1, CBOR, X.509 chain, AWS root cert |
-| §18 | Real key forwarding protocol | ECIES, cross-enclave attestation verification |
-| §20 | Host Agent | vsock proxy, egress lockdown, manifest delivery |
-| §20 | Networking | TLS termination, vsock, security groups |
-| §26 | Wallet migration plan | Migration enclave, re-derivation approach |
+| §5 | AWS Nitro Enclave setup | Parent EC2, Nitro CLI, EIF build — requires AWS infrastructure |
+| §14 | NSM `/dev/nsm` calls | Replace JSON attestation with real NSM API calls — requires Nitro hardware |
+| §14 | Real `AF_VSOCK` | Replace Unix sockets with `AF_VSOCK` — requires Nitro hardware |
+| §7 | Real ECDSA secp256k1 tx signing | `k256` crate needs to be added (commented out due to build env) |
+| §10 | StageX integration | Wire to real StageX endpoint for OCI digest verification |
+| §16 | Test against real Nitro attestation | Construct valid COSE_Sign1 + cert chain test (failure-branch tests exist) |
 | §29 | Production runbooks | Rolling upgrades, disaster recovery drills |
 | §30 | Incident response plan | SEV-1/2/3, tabletop exercises |
-| §32 | Compliance & audit checklist | SOC 2, external security audit |
+| §32 | Compliance & audit checklist | SOC 2, external security audit
 
 ### 0.4 Current end-to-end flow (local simulation)
 

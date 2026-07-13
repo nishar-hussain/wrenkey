@@ -126,6 +126,7 @@ export function buildManifestObject(input: {
   allowedUpgradeFrom: string[];
   stagedxDigest?: string;
   stagedxVersion?: string;
+  operatorPubkeys?: { operatorId: string; publicKey: string }[];
 }): ManifestValue {
   const manifest: Record<string, ManifestValue> = {
     version: "1",
@@ -151,6 +152,7 @@ export function buildManifestObject(input: {
 
   if (input.stagedxDigest) manifest.stagedx_digest = input.stagedxDigest;
   if (input.stagedxVersion) manifest.stagedx_version = input.stagedxVersion;
+  if (input.operatorPubkeys) manifest.operator_pubkeys = input.operatorPubkeys;
 
   return manifest as ManifestValue;
 }

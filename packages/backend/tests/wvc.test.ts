@@ -25,7 +25,7 @@ beforeAll(async () => {
   prisma = new PrismaClient();
   await prisma.$connect();
 
-  const org = await prisma.organization.create({ data: { name: "WVC Test Org" } });
+  const org = await prisma.organization.create({ data: { name: `WVC Test Org ${Date.now()}` } });
   orgId = org.id;
 
   const user = await prisma.user.create({

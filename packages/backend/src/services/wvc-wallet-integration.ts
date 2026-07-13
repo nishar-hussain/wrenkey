@@ -14,7 +14,12 @@ import { invokeDeployment, type InvokeResult } from "./wvc-relay.js";
 
 /** Returns true if WVC wallet signing is enabled (deployment ID is configured). */
 export function isWvcWalletSigningEnabled(): boolean {
-  return !!config.wvc.walletSignerDeploymentId;
+  return !!(config.wvc.walletSignerDeploymentId || process.env.WVC_WALLET_SIGNER_DEPLOYMENT_ID);
+}
+
+/** Get the configured wallet signer deployment ID (from env or config). */
+function getWalletSignerDeploymentId(): string {
+  return process.env.WVC_WALLET_SIGNER_DEPLOYMENT_ID || config.wvc.walletSignerDeploymentId || "";
 }
 
 /**
@@ -30,13 +35,16 @@ export function isWvcWalletSigningEnabled(): boolean {
 export async function wvcGenerateSeed(orgId: string): Promise<{
   seedId: string;
   appProof: InvokeResult["appProof"];
+  devMode: boolean;
 }> {
   if (!isWvcWalletSigningEnabled()) {
     throw new Error("WVC wallet signing is not enabled. Set WVC_WALLET_SIGNER_DEPLOYMENT_ID.");
   }
 
+  const deploymentId = getWalletSignerDeploymentId();
+
   const result = await invokeDeployment(
-    config.wvc.walletSignerDeploymentId,
+    deploymentId,
     orgId,
     { payloadType: "generate_seed" },
   );
@@ -46,7 +54,8 @@ export async function wvcGenerateSeed(orgId: string): Promise<{
     throw new Error("WVC enclave did not return a seedId");
   }
 
-  return { seedId, appProof: result.appProof };
+  const devMode = (result.result as any).warning !== undefined;
+  return { seedId, appProof: result.appProof, devMode };
 }
 
 /**
@@ -66,13 +75,14 @@ export async function wvcSignTransaction(
 ): Promise<{
   signedTx: string;
   appProof: InvokeResult["appProof"];
+  devMode: boolean;
 }> {
   if (!isWvcWalletSigningEnabled()) {
     throw new Error("WVC wallet signing is not enabled. Set WVC_WALLET_SIGNER_DEPLOYMENT_ID.");
   }
 
   const result = await invokeDeployment(
-    config.wvc.walletSignerDeploymentId,
+    getWalletSignerDeploymentId(),
     orgId,
     { payloadType: "signature", unsignedTx },
   );
@@ -82,5 +92,6 @@ export async function wvcSignTransaction(
     throw new Error("WVC enclave did not return a signedTx");
   }
 
-  return { signedTx, appProof: result.appProof };
+  const devMode = (result.result as any).warning !== undefined;
+  return { signedTx, appProof: result.appProof, devMode };
 }

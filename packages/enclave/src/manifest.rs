@@ -19,6 +19,14 @@ pub struct Manifest {
     pub approvers: Vec<String>,
     pub allowed_upgrade_from: Vec<String>,
     pub created_at: String,
+    #[serde(default)]
+    pub operator_pubkeys: Vec<OperatorPubkey>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OperatorPubkey {
+    pub operator_id: String,
+    pub public_key: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

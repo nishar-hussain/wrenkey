@@ -1,0 +1,22 @@
+{
+  "name": "@wrankey/host-agent",
+  "version": "0.1.0",
+  "description": "WranKey WVC Host Agent — vsock proxy + manifest delivery + egress lockdown for AWS Nitro Enclaves (PRD §20)",
+  "type": "module",
+  "main": "dist/main.js",
+  "bin": {
+    "wvc-host-agent": "dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "fastify": "^4.28.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "tsx": "^4.19.0"
+  }
+}

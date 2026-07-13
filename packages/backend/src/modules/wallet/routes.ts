@@ -30,7 +30,7 @@ export async function walletRoutes(app: FastifyInstance) {
 
       // ─── WVC path: seed generation through the enclave (PRD §25.1) ──────────
       if (isWvcWalletSigningEnabled()) {
-        const { seedId, appProof } = await wvcGenerateSeed(request.orgId!);
+        const { seedId, appProof, devMode } = await wvcGenerateSeed(request.orgId!);
         // Store the seed handle, not the seed itself. In local dev the "seed"
         // is a simulated handle — in production the Quorum Key encrypts the real
         // seed inside the enclave and only the handle is stored here.
@@ -78,6 +78,7 @@ export async function walletRoutes(app: FastifyInstance) {
           walletId: wallet.id, name: wallet.name, ownerType: wallet.ownerType, ownerId: wallet.ownerId,
           addresses: wallet.accounts.map((a: any) => ({ chainId: a.chainId, address: a.address, derivationPath: a.derivationPath, index: a.index })),
           wvcManaged: true,
+          devMode,
           appProof,
         }, 201);
       }

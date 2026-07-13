@@ -13,6 +13,8 @@ import os from "os";
 import { api, loadConfig, saveConfig } from "./api.js";
 import { initOperatorKey, signManifestHash, recomputeManifestHash, loadOperatorKey, listOperatorKeys } from "./keys.js";
 import { verifyAppProof, verifyLocalAppProof } from "@wrankey/wvc-verify";
+import { generateShares, recoverSecret, serializeShares, deserializeShares, type Share } from "./shamir.js";
+import { eciesDecrypt } from "./ecies.js";
 
 const program = new Command();
 
@@ -330,6 +332,7 @@ quorumKey
   .requiredOption("--app <appId>", "App ID")
   .requiredOption("--ceremony <ceremonyId>", "Ceremony ID")
   .requiredOption("--operator <alias>", "Local operator alias")
+  .option("--out <file>", "Output file to save the decrypted share (default: stdout)")
   .action(async (opts: any) => {
     const operatorKey = loadOperatorKey(opts.operator);
     if (!operatorKey.operatorId) {
@@ -337,15 +340,52 @@ quorumKey
       process.exit(1);
     }
     const res: any = await api(`/wvc/apps/${opts.app}/quorum-key/ceremonies/${opts.ceremony}`);
-    console.log(`  Ceremony:  ${res.id}`);
-    console.log(`  Type:      ${res.ceremonyType}`);
-    console.log(`  Status:    ${res.status}`);
-    console.log(`  Operators: ${res.participatingOperators?.length || 0} participating`);
-    console.log(`\n  In production, each operator's Shamir share is encrypted to their public key.`);
-    console.log(`  This local simulation does not generate real shares — the ceremony must be`);
-    console.log(`  completed via the dashboard or API, which bootstraps the Quorum Key.`);
-    console.log(`\n  Operator: ${opts.operator} (${operatorKey.operatorId})`);
-    console.log(`  Public key: ${operatorKey.publicKeyPem?.slice(0, 48)}...`);
+
+    if (!res.encryptedShares) {
+      console.error("No encrypted shares found for this ceremony.");
+      console.error("If this is a local simulation, shares are generated during provisioning.");
+      console.error("Create a bootstrap ceremony and provision a deployment first.");
+      process.exit(1);
+    }
+
+    // Find this operator's encrypted share
+    const myShare = (res.encryptedShares as any[]).find((s: any) => s.operatorId === operatorKey.operatorId);
+    if (!myShare) {
+      console.error(`No share found for operator ${operatorKey.operatorId}.`);
+      console.error("Participating operators:", res.participatingOperators);
+      process.exit(1);
+    }
+
+    // Decrypt the share using the operator's private key (ECIES)
+    const encryptedBytes = Buffer.from(myShare.encryptedShare, "hex");
+    const decrypted = eciesDecrypt(operatorKey.privateKeyPem, encryptedBytes);
+
+    const share: Share = {
+      index: (res.encryptedShares as any[]).indexOf(myShare) + 1,
+      data: new Uint8Array(decrypted),
+    };
+
+    const shareJson = JSON.stringify({
+      operatorId: operatorKey.operatorId,
+      index: share.index,
+      share: Buffer.from(share.data).toString("hex"),
+      ceremonyId: opts.ceremony,
+      appId: opts.app,
+    }, null, 2);
+
+    if (opts.out) {
+      fs.writeFileSync(opts.out, shareJson, { mode: 0o600 });
+      console.log(`Decrypted Shamir share saved to ${opts.out}`);
+    } else {
+      console.log(shareJson);
+    }
+
+    console.error(`\n  Ceremony:  ${res.id}`);
+    console.error(`  Type:      ${res.ceremonyType}`);
+    console.error(`  Status:    ${res.status}`);
+    console.error(`  Share index: ${share.index}`);
+    console.error(`  Share size:  ${decrypted.length} bytes`);
+    console.error(`  Operator:  ${opts.operator} (${operatorKey.operatorId})`);
   });
 
 quorumKey
@@ -353,24 +393,80 @@ quorumKey
   .description("Submit shares to recover a lost Quorum Key (PRD §18.4, §29.4)")
   .requiredOption("--app <appId>", "App ID")
   .requiredOption("--ceremony <ceremonyId>", "Recovery ceremony ID")
-  .requiredOption("--shares <file>", "JSON file with array of {operatorId, share} objects")
+  .requiredOption("--shares <file>", "JSON file with array of {operatorId, share, index} objects")
   .action(async (opts: any) => {
-    const shares = JSON.parse(fs.readFileSync(opts.shares, "utf8"));
-    if (!Array.isArray(shares) || shares.length === 0) {
+    const sharesRaw = JSON.parse(fs.readFileSync(opts.shares, "utf8"));
+    if (!Array.isArray(sharesRaw) || sharesRaw.length === 0) {
       console.error("Shares file must contain a non-empty JSON array.");
       process.exit(1);
     }
+
     console.log(`Recovery ceremony: ${opts.ceremony}`);
-    console.log(`Shares provided:    ${shares.length}`);
-    for (const s of shares) {
-      console.log(`  Operator ${s.operatorId?.slice(0, 8)}... — share: ${s.share?.slice(0, 16)}...`);
+    console.log(`Shares provided:    ${sharesRaw.length}`);
+
+    // Parse shares into ShamirShare format
+    const shares: Share[] = sharesRaw.map((s: any) => ({
+      index: s.index ?? s.x ?? 0,
+      data: new Uint8Array(Buffer.from(s.share ?? s.y ?? "", "hex")),
+    }));
+
+    // Reconstruct the secret using Shamir threshold reconstruction
+    const recoveredSecret = recoverSecret(shares);
+    if (!recoveredSecret) {
+      console.error("Failed to reconstruct the secret from the provided shares.");
+      console.error("Make sure you have enough shares to meet the threshold.");
+      process.exit(1);
     }
-    const res: any = await api(`/wvc/apps/${opts.app}/quorum-key/ceremonies/${opts.ceremony}/complete`, {
-      method: "POST",
-      body: { quorumPublicKey: shares[0]?.share || "recovered-key-simulated" },
-    });
-    console.log(`\nRecovery completed: ${res.status || "ok"}`);
-    console.log(`New Quorum Key generation available.`);
+
+    console.log(`Secret reconstructed: ${Buffer.from(recoveredSecret).toString("hex").slice(0, 16)}...`);
+
+    // Derive the P-256 public key from the recovered private key scalar
+    // Import the private key and export the public key
+    const { createPrivateKey, createPublicKey } = require("crypto");
+    const privKeyDer = Buffer.concat([
+      // PKCS8 wrapper for P-256 private key
+      Buffer.from([
+        0x30, 0x77, 0x02, 0x01, 0x01, 0x04, 0x20,
+      ]),
+      Buffer.from(recoveredSecret),
+      Buffer.from([
+        0xa1, 0x44, 0x03, 0x42, 0x00,
+      ]),
+      // We need the public key point, but we can derive it from the private key
+      // Actually, let's use a simpler approach: import as SEC1
+    ]);
+
+    // Use SEC1 format instead
+    const sec1Der = Buffer.concat([
+      Buffer.from([0x30, 0x77, 0x02, 0x01, 0x01, 0x04, 0x20]),
+      Buffer.from(recoveredSecret),
+      Buffer.from([0xa0, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07]),
+      Buffer.from([0xa1, 0x44, 0x03, 0x42, 0x00]),
+    ]);
+
+    try {
+      const privKeyObj = createPrivateKey({
+        key: sec1Der,
+        format: "der",
+        type: "sec1",
+      });
+      const pubKeyObj = createPublicKey(privKeyObj);
+      const pubDer = pubKeyObj.export({ format: "der", type: "spki" }) as Buffer;
+      const pubHex = `04${pubDer.toString("hex").slice(-128)}`;
+
+      console.log(`Recovered Quorum Key public key: ${pubHex.slice(0, 24)}...`);
+
+      const res: any = await api(`/wvc/apps/${opts.app}/quorum-key/ceremonies/${opts.ceremony}/complete`, {
+        method: "POST",
+        body: { quorumPublicKey: pubHex },
+      });
+      console.log(`\nRecovery completed: ${res.status || "ok"}`);
+      console.log(`New Quorum Key generation available.`);
+    } catch (err: any) {
+      console.error(`Failed to derive public key from recovered secret: ${err.message}`);
+      console.error("The shares may be invalid or corrupted.");
+      process.exit(1);
+    }
   });
 
 // ─── wvc ceremony ──────────────────────────────────────────────────────────

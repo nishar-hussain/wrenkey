@@ -64,6 +64,7 @@ export interface ProvisionResult {
   bootProofs: BootProofResponse[];
   quorumPublicKey?: string;
   quorumKeyGeneration?: number;
+  encryptedShares?: { operatorId: string; encryptedShare: string }[];
 }
 
 function isLocalRuntimeEndpoint(endpoint: string): boolean {
@@ -84,6 +85,23 @@ export async function provisionDeployment(deploymentId: string, orgId: string): 
   if (deployment.app.orgId !== orgId) throw new ForbiddenError("Deployment does not belong to your org");
   if (deployment.status !== "approved") {
     throw new ForbiddenError(`Cannot provision: deployment status is ${deployment.status}, must be approved`);
+  }
+
+  // StageX verification: if required, verify the OCI image digest before provisioning
+  if (config.wvc.stagedxRequired && deployment.stagedxDigest && config.wvc.stagedxEndpoint) {
+    try {
+      const stagedxResult = await verifyStagedxDigest(deployment.stagedxDigest, config.wvc.stagedxEndpoint);
+      if (!stagedxResult.valid) {
+        throw new ForbiddenError(`StageX verification failed: ${stagedxResult.reason}`);
+      }
+    } catch (err) {
+      if (err instanceof ForbiddenError) throw err;
+      // If StageX endpoint is unreachable, fail closed (unless in dev mode)
+      if (!config.isDev) {
+        throw new ForbiddenError(`StageX verification endpoint unreachable: ${(err as Error).message}`);
+      }
+      console.warn(`[WVC-RELAY] StageX verification skipped (endpoint unreachable in dev mode)`);
+    }
   }
 
   const request: ProvisionRequest = {
@@ -259,5 +277,32 @@ function detectProofFormat(attestationDoc: string): string {
     return parsed.proof_format_version || "v1";
   } catch {
     return "v1";
+  }
+}
+
+/** Verify an OCI image digest against the StageX reproducible build service (PRD §10). */
+async function verifyStagedxDigest(digest: string, endpoint: string): Promise<{ valid: boolean; reason?: string }> {
+  try {
+    const url = `${endpoint.replace(/\/$/, "")}/verify`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ digest }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      return { valid: false, reason: `StageX service returned HTTP ${res.status}` };
+    }
+
+    const data = (await res.json()) as { valid: boolean; reason?: string };
+    return data;
+  } catch (err) {
+    return { valid: false, reason: `StageX verification failed: ${(err as Error).message}` };
   }
 }

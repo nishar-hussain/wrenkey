@@ -178,11 +178,13 @@ export async function transactionRoutes(app: FastifyInstance) {
 
         let signedTx: string;
         let wvcAppProof: any = null;
+        let wvcDevMode = false;
         if (isWvcWalletSigningEnabled() && wallet.encryptedSeed.startsWith("wvc:")) {
           const unsignedTxHex = await new ethers.Wallet(ethers.ZeroAddress).signTransaction(tx).catch(() => "");
           const wvcResult = await wvcSignTransaction(request.orgId!, unsignedTxHex);
           signedTx = wvcResult.signedTx;
           wvcAppProof = wvcResult.appProof;
+          wvcDevMode = wvcResult.devMode;
         } else {
           const seed = decryptSeedFromStorage(wallet.encryptedSeed);
           signedTx = await signTransaction(seed, targetAccount.index, targetAccount.chain.derivationPath, tx);
@@ -236,11 +238,13 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       let signedTx: string;
       let wvcAppProof: any = null;
+      let wvcDevMode = false;
       if (isWvcWalletSigningEnabled() && wallet.encryptedSeed.startsWith("wvc:")) {
         const unsignedTxHex = await new ethers.Wallet(ethers.ZeroAddress).signTransaction(tx).catch(() => "");
         const wvcResult = await wvcSignTransaction(request.orgId!, unsignedTxHex);
         signedTx = wvcResult.signedTx;
         wvcAppProof = wvcResult.appProof;
+        wvcDevMode = wvcResult.devMode;
       } else {
         const seed = decryptSeedFromStorage(wallet.encryptedSeed);
         signedTx = await signTransaction(seed, targetAccount.index, targetAccount.chain.derivationPath, tx);
@@ -278,7 +282,7 @@ export async function transactionRoutes(app: FastifyInstance) {
         return sendSuccess(reply, {
           transactionId: transaction.id, txHash: hash, status: "BROADCAST",
           to, value, nonce, chain: chainInfo.name, riskScore: risk.score, riskFlags: risk.flags,
-          ...(wvcAppProof ? { wvcManaged: true, appProof: wvcAppProof } : {}),
+          ...(wvcAppProof ? { wvcManaged: true, devMode: wvcDevMode, appProof: wvcAppProof } : {}),
         }, 201);
       } catch (broadcastErr: any) {
         await prisma.transaction.update({

@@ -19,6 +19,7 @@
 import { createHash, generateKeyPairSync, createSign, randomBytes } from "crypto";
 import { ForbiddenError, ValidationError } from "../utils/errors.js";
 import { config } from "../config.js";
+import { shamirSplit, eciesEncrypt } from "./wvc-crypto.js";
 import type { InvokeRequest, InvokeResult, ProvisionRequest, ProvisionResult } from "./wvc-relay.js";
 
 export const LOCAL_PROOF_FORMAT = "local-dev-v1";
@@ -53,8 +54,10 @@ const LOCAL_PCRS = {
 interface QuorumKeyState {
   publicKeyHex: string;
   privateKeyPem: string;
+  privateKeyBytes: Uint8Array;
   generation: number;
   bootstrappedAt: number;
+  encryptedShares?: { operatorId: string; encryptedShare: string }[];
 }
 
 const _quorumKeyStore = new Map<string, QuorumKeyState>();
@@ -67,32 +70,78 @@ function generateQuorumKey(): QuorumKeyState {
     privateKeyEncoding: { type: "pkcs8", format: "pem" },
   });
   const pubDerHex = Buffer.from(publicKey).toString("hex");
+  // Extract the 32-byte private key scalar from the PKCS8 DER
+  const privKeyObj = require("crypto").createPrivateKey({ key: privateKey, format: "pem" });
+  const privDer = require("crypto").createPrivateKey({ key: privateKey, format: "pem" }).export({ format: "der", type: "pkcs8" }) as Buffer;
+  // The private key scalar is at offset 36 in PKCS8 for P-256 (after the algorithm OIDs)
+  // But safer: use the raw export
+  const privKeyBytes = extractPrivateKeyBytes(privateKey as string);
   return {
     publicKeyHex: `04${pubDerHex.slice(-128)}`,
     privateKeyPem: privateKey as string,
+    privateKeyBytes: privKeyBytes,
     generation: 1,
     bootstrappedAt: Date.now(),
   };
 }
 
+/** Extract the 32-byte private key scalar from a PEM private key. */
+function extractPrivateKeyBytes(pemPrivateKey: string): Uint8Array {
+  const keyObj = require("crypto").createPrivateKey({ key: pemPrivateKey, format: "pem" });
+  // Export as SEC1 DER, which contains the raw private key
+  const sec1Der = keyObj.export({ format: "der", type: "sec1" }) as Buffer;
+  // In SEC1 DER for P-256: SEQUENCE { INTEGER 1, OCTET STRING (32 bytes), [1] BIT STRING (public key) }
+  // The private key scalar is the first OCTET STRING after the version INTEGER
+  // Typically at offset 7 (30 77 02 01 01 04 20 <32 bytes>)
+  return new Uint8Array(sec1Der.subarray(7, 39));
+}
+
 /** Get or bootstrap the Quorum Key for an app (simulates enclave boot key injection). */
-function getOrBootstrapQuorumKey(appId: string): QuorumKeyState {
+function getOrBootstrapQuorumKey(
+  appId: string,
+  operatorPubkeys?: { operatorId: string; publicKey: string }[],
+  threshold?: number,
+): QuorumKeyState {
   let keyState = _quorumKeyStore.get(appId);
   if (!keyState) {
     keyState = generateQuorumKey();
+    // If operator pubkeys are available, generate Shamir shares and encrypt them
+    if (operatorPubkeys && operatorPubkeys.length > 0 && keyState.privateKeyBytes) {
+      const shares = shamirSplit(
+        keyState.privateKeyBytes,
+        threshold ?? Math.min(2, operatorPubkeys.length),
+        operatorPubkeys.length,
+      );
+      keyState.encryptedShares = operatorPubkeys.map((op, i) => ({
+        operatorId: op.operatorId,
+        encryptedShare: eciesEncrypt(op.publicKey, Buffer.from(shares[i].data)).toString("hex"),
+      }));
+      console.log(`[WVC-LOCAL] Bootstrapped Quorum Key for app ${appId} (generation ${keyState.generation}) — ${shares.length} Shamir shares encrypted to operators`);
+    } else {
+      console.log(`[WVC-LOCAL] Bootstrapped Quorum Key for app ${appId} (generation ${keyState.generation})`);
+    }
     _quorumKeyStore.set(appId, keyState);
-    console.log(`[WVC-LOCAL] Bootstrapped Quorum Key for app ${appId} (generation ${keyState.generation})`);
   }
   return keyState;
 }
 
-/** Simulate key forwarding: a new replica gets the Quorum Key from an existing one. */
-function forwardQuorumKey(appId: string): QuorumKeyState {
+/** Simulate key forwarding: a new replica gets the Quorum Key via ECIES (PRD §18.1). */
+function forwardQuorumKey(appId: string, requesterEphemeralPubkeyHex?: string): QuorumKeyState {
   const existing = _quorumKeyStore.get(appId);
   if (!existing) {
+    // No existing key — bootstrap a new one
     return getOrBootstrapQuorumKey(appId);
   }
-  console.log(`[WVC-LOCAL] Forwarded Quorum Key to new replica for app ${appId}`);
+  if (requesterEphemeralPubkeyHex) {
+    // Real ECIES key forwarding: encrypt the Quorum Key private material to the
+    // new replica's ephemeral public key. In production, the requesting enclave
+    // would decrypt it with its ephemeral private key. Here we log the operation
+    // but still return the key state directly (local sim).
+    const encrypted = eciesEncrypt(requesterEphemeralPubkeyHex, Buffer.from(existing.privateKeyBytes));
+    console.log(`[WVC-LOCAL] Forwarded Quorum Key to new replica for app ${appId} via ECIES (${encrypted.length} bytes ciphertext)`);
+  } else {
+    console.log(`[WVC-LOCAL] Forwarded Quorum Key to new replica for app ${appId}`);
+  }
   return existing;
 }
 
@@ -206,8 +255,21 @@ function buildLocalAttestation(params: {
 export async function provisionLocalDeployment(request: ProvisionRequest): Promise<ProvisionResult> {
   assertLocalProofsAllowed();
 
+  // Extract operator public keys from the manifest for Shamir share generation
+  const manifestJson = request.manifestJson as any;
+  const operatorPubkeys = manifestJson?.operator_pubkeys as { operatorId: string; publicKey: string }[] | undefined;
+  const requiredApprovals = manifestJson?.required_approvals as number | undefined;
+
   // Bootstrap or forward the Quorum Key (simulates §17-18 key model)
   const quorumKey = forwardQuorumKey(request.appId);
+
+  // If this is a fresh bootstrap (no key existed), generate Shamir shares
+  if (operatorPubkeys && quorumKey.encryptedShares) {
+    // Already has shares from bootstrap
+  } else if (operatorPubkeys && !quorumKey.encryptedShares) {
+    // Key existed but shares weren't generated — generate them now
+    getOrBootstrapQuorumKey(request.appId, operatorPubkeys, requiredApprovals);
+  }
 
   const proofs = Array.from({ length: Math.max(1, request.replicaCount) }).map((_, index) => {
     const key = makeEphemeralKey();
@@ -232,6 +294,7 @@ export async function provisionLocalDeployment(request: ProvisionRequest): Promi
     bootProofs: proofs,
     quorumPublicKey: quorumKey.publicKeyHex,
     quorumKeyGeneration: quorumKey.generation,
+    encryptedShares: quorumKey.encryptedShares,
   };
 }
 

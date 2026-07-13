@@ -28,6 +28,7 @@ export type AuditAction =
   | "WVC_DEPLOYMENT_INVOKE" | "WVC_MANIFEST_APPROVE"
   | "WVC_OPERATOR_ADD" | "WVC_OPERATOR_REVOKE"
   | "WVC_CEREMONY_START" | "WVC_CEREMONY_COMPLETE"
+  | "WVC_KEY_FORWARDING"
   | "WALLET_CREATE_WVC" | "TX_SIGN_WVC";
 
 export async function createAuditLog(
