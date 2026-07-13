@@ -25,31 +25,6 @@ beforeAll(async () => {
   prisma = new PrismaClient();
   await prisma.$connect();
 
-  // Clean WVC tables (TRUNCATE CASCADE handles circular FKs between apps/deployments/manifests)
-  await prisma.$executeRaw`TRUNCATE TABLE wvc_app_proofs, wvc_boot_proofs, wvc_manifest_approvals, wvc_key_ceremonies, wvc_quorum_keys, wvc_manifests, wvc_deployments, wvc_operators, wvc_apps CASCADE`;
-  // Clean all org-scoped tables (child-first for FK constraints)
-  await prisma.auditLog.deleteMany();
-  await prisma.webhookDelivery.deleteMany();
-  await prisma.webhook.deleteMany();
-  await prisma.agent.deleteMany();
-  await prisma.transaction.deleteMany();
-  await prisma.walletAccount.deleteMany();
-  await prisma.privateKeyAddress.deleteMany();
-  await prisma.privateKey.deleteMany();
-  await prisma.wallet.deleteMany();
-  await prisma.policy.deleteMany();
-  await prisma.spendingLimit.deleteMany();
-  await prisma.approvalRequest.deleteMany();
-  await prisma.apiKey.deleteMany();
-  await prisma.tag.deleteMany();
-  await prisma.invoice.deleteMany();
-  await prisma.contractInterface.deleteMany();
-  await prisma.orgConfig.deleteMany();
-  await prisma.session.deleteMany();
-  await prisma.authenticator.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.organization.deleteMany();
-
   const org = await prisma.organization.create({ data: { name: "WVC Test Org" } });
   orgId = org.id;
 
@@ -69,6 +44,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Clean up test data — cascade deletes from org
+  await prisma.wvcApp.deleteMany({ where: { orgId } }).catch(() => {});
+  await prisma.auditLog.deleteMany().catch(() => {});
+  await prisma.session.deleteMany().catch(() => {});
+  await prisma.user.deleteMany({ where: { orgId } }).catch(() => {});
+  await prisma.organization.deleteMany({ where: { id: orgId } }).catch(() => {});
   await app.close();
   await prisma.$disconnect();
 });

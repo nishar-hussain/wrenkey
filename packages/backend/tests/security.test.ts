@@ -19,16 +19,6 @@ beforeAll(async () => {
   prisma = new PrismaClient();
   await prisma.$connect();
 
-  // Clean
-  await prisma.$executeRaw`TRUNCATE TABLE wvc_app_proofs, wvc_boot_proofs, wvc_manifest_approvals, wvc_key_ceremonies, wvc_quorum_keys, wvc_manifests, wvc_deployments, wvc_operators, wvc_apps CASCADE`;
-  await prisma.auditLog.deleteMany();
-  await prisma.session.deleteMany();
-  await prisma.apiKey.deleteMany();
-  await prisma.agent.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.orgConfig.deleteMany();
-  await prisma.organization.deleteMany();
-
   const org = await prisma.organization.create({ data: { name: "Security Test Org" } });
   orgId = org.id;
 
@@ -54,6 +44,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.organization.deleteMany({ where: { id: orgId } }).catch(() => {});
   await app.close();
   await prisma.$disconnect();
 });

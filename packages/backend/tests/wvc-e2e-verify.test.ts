@@ -62,10 +62,7 @@ beforeAll(async () => {
   prisma = new PrismaClient();
   await prisma.$connect();
 
-  // Clean all tables with CASCADE to handle FK constraints
-  await prisma.$executeRaw`TRUNCATE TABLE wvc_app_proofs, wvc_boot_proofs, wvc_manifest_approvals, wvc_key_ceremonies, wvc_quorum_keys, wvc_manifests, wvc_deployments, wvc_operators, wvc_apps CASCADE`;
-  await prisma.$executeRaw`TRUNCATE TABLE audit_logs, webhook_deliveries, webhooks, sessions, api_keys, authenticators, agents, wallets, wallet_accounts, private_keys, private_key_addresses, spending_limits, approval_requests, transactions, policies, chains, contract_interfaces, invoices, tags, users, org_configs, organizations CASCADE`;
-
+  // Test-scoped: create a fresh org instead of wiping all data
   const org = await prisma.organization.create({ data: { name: "E2E Verify Test Org" } });
   orgId = org.id;
 
@@ -85,6 +82,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.organization.deleteMany({ where: { id: orgId } }).catch(() => {});
   await app.close();
   await prisma.$disconnect();
 });
