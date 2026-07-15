@@ -180,20 +180,20 @@ export async function transactionRoutes(app: FastifyInstance) {
         let wvcAppProof: any = null;
         let wvcDevMode = false;
         if (isWvcWalletSigningEnabled() && wallet.encryptedSeed.startsWith("wvc:")) {
-          const unsignedTxHex = await new ethers.Wallet(ethers.ZeroAddress).signTransaction(tx).catch(() => "");
-          const wvcResult = await wvcSignTransaction(request.orgId!, unsignedTxHex);
-          signedTx = wvcResult.signedTx;
-          wvcAppProof = wvcResult.appProof;
-          wvcDevMode = wvcResult.devMode;
-        } else {
-          const seed = decryptSeedFromStorage(wallet.encryptedSeed);
-          signedTx = await signTransaction(seed, targetAccount.index, targetAccount.chain.derivationPath, tx);
-        }
+const unsignedTxHex = ethers.Transaction.from(tx as ethers.TransactionLike<string>).unsignedSerialized;
+        const wvcResult = await wvcSignTransaction(request.orgId!, unsignedTxHex);
+        signedTx = wvcResult.signedTx;
+        wvcAppProof = wvcResult.appProof;
+        wvcDevMode = wvcResult.devMode;
+      } else {
+        const seed = decryptSeedFromStorage(wallet.encryptedSeed);
+        signedTx = await signTransaction(seed, targetAccount.index, targetAccount.chain.derivationPath, tx);
+      }
 
-        const transaction = await prisma.transaction.create({
-          data: {
-            accountId: targetAccount.id, orgId: request.orgId, chain: chainInfo.name,
-            to, value, nonce: consensusNonce, gasLimit, maxFeePerGas: resolvedMaxFeePerGas, maxPriorityFeePerGas: resolvedMaxPriorityFeePerGas, data, status: "SIGNED", signedTx, riskScore: risk.score,
+      const transaction = await prisma.transaction.create({
+        data: {
+          accountId: targetAccount.id, orgId: request.orgId, chain: chainInfo.name,
+          to, value, nonce: consensusNonce, gasLimit, maxFeePerGas: resolvedMaxFeePerGas, maxPriorityFeePerGas: resolvedMaxPriorityFeePerGas, data, status: "SIGNED", signedTx, riskScore: risk.score,
             sponsored: isSponsored,
           },
         });
@@ -240,7 +240,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       let wvcAppProof: any = null;
       let wvcDevMode = false;
       if (isWvcWalletSigningEnabled() && wallet.encryptedSeed.startsWith("wvc:")) {
-        const unsignedTxHex = await new ethers.Wallet(ethers.ZeroAddress).signTransaction(tx).catch(() => "");
+        const unsignedTxHex = ethers.Transaction.from(tx as ethers.TransactionLike<string>).unsignedSerialized;
         const wvcResult = await wvcSignTransaction(request.orgId!, unsignedTxHex);
         signedTx = wvcResult.signedTx;
         wvcAppProof = wvcResult.appProof;

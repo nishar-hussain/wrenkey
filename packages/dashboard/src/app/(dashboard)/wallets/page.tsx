@@ -21,6 +21,9 @@ interface Wallet {
   status: string;
   tags: string[];
   accounts: Array<{ address: string; chainId: string; chain?: { name: string } }>;
+  wvcManaged?: boolean;
+  devMode?: boolean;
+  appProof?: any;
   createdAt: string;
 }
 
@@ -288,15 +291,29 @@ export default function WalletsPage() {
     {
       key: "tags",
       header: "Tags",
-      render: (w: Wallet) =>
-        w.tags?.length > 0 ? (
+      render: (w: Wallet) => {
+        const userTags = (w.tags || []).filter((t) => t !== "wvc-managed");
+        return userTags.length > 0 ? (
           <div className="flex gap-1 flex-wrap">
-            {w.tags.map((t, i) => (
+            {userTags.map((t, i) => (
               <span key={i} className="text-xs bg-slate-200 px-1.5 py-0.5 rounded">{t}</span>
             ))}
           </div>
         ) : (
           <span className="text-xs text-slate-400">—</span>
+        );
+      },
+    },
+    {
+      key: "security",
+      header: "Security",
+      render: (w: Wallet) =>
+        w.wvcManaged ? (
+          <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${w.devMode ? "bg-amber-50 text-amber-700 border-amber-100" : "bg-emerald-50 text-emerald-700 border-emerald-100"}`}>
+            {w.devMode ? "WVC Dev" : "WVC Verified"}
+          </span>
+        ) : (
+          <span className="text-[11px] text-slate-400">Self-custodial</span>
         ),
     },
     {

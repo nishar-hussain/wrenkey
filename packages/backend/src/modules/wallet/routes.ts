@@ -30,22 +30,16 @@ export async function walletRoutes(app: FastifyInstance) {
 
       // ─── WVC path: seed generation through the enclave (PRD §25.1) ──────────
       if (isWvcWalletSigningEnabled()) {
-        const { seedId, appProof, devMode } = await wvcGenerateSeed(request.orgId!);
-        // Store the seed handle, not the seed itself. In local dev the "seed"
-        // is a simulated handle — in production the Quorum Key encrypts the real
-        // seed inside the enclave and only the handle is stored here.
+        const { seedId, derivedAddress, appProof, devMode } = await wvcGenerateSeed(request.orgId!);
         const encryptedSeed = `wvc:${seedId}`;
 
         const accountsCreate: any[] = [];
         if (!skipInitialAccount) {
           const chainInfo = chain ? (await getChainByName(chain).catch(() => null)) || await getDefaultChain() : await getDefaultChain();
           if (!chainInfo) throw new ValidationError("Invalid or no active chain found");
-          // In WVC mode, account derivation happens inside the enclave — we
-          // don't have the mnemonic in the backend. For now, store a
-          // placeholder address that the enclave will return on first invoke.
           accountsCreate.push({
             chainId: chainInfo.id,
-            address: `0xwvc-pending-${seedId.slice(0, 8)}`,
+            address: derivedAddress || `0x${seedId.slice(0, 40)}`,
             derivationPath: `${chainInfo.derivationPath}/0`,
             index: 0,
           });

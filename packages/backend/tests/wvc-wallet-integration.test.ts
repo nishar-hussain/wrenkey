@@ -158,12 +158,13 @@ describe("WVC Wallet Integration (PRD §25)", () => {
     expect(wallet!.tags).toContain("wvc-managed");
   });
 
-  it("WVC-managed wallet has placeholder address", async () => {
+  it("WVC-managed wallet has a derived address", async () => {
     const wallet = await prisma.wallet.findFirst({
       where: { orgId, name: "WVC Test Wallet" },
       include: { accounts: true },
     });
     expect(wallet!.accounts.length).toBeGreaterThan(0);
-    expect(wallet!.accounts[0].address.startsWith("0xwvc-pending-")).toBe(true);
+    expect(wallet!.accounts[0].address.startsWith("0x")).toBe(true);
+    expect(wallet!.accounts[0].address.length).toBe(42);
   });
 });

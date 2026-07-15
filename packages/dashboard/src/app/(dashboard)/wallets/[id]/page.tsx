@@ -29,6 +29,9 @@ interface WalletDetail {
   ownerId: string;
   status: string;
   tags: string[];
+  wvcManaged?: boolean;
+  devMode?: boolean;
+  appProof?: any;
   accounts: Array<{
     id: string;
     chainId: string;
@@ -334,6 +337,21 @@ export default function WalletDetailPage() {
           <Button variant="secondary" onClick={() => setShowDeleteConfirm(true)}>Delete</Button>
         </div>
       </div>
+
+      {wallet.wvcManaged && (
+        <div className={`mb-6 p-4 rounded-lg border ${wallet.devMode ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
+          <div className="flex items-center gap-2">
+            <span className={`text-sm font-semibold ${wallet.devMode ? "text-amber-800" : "text-emerald-800"}`}>
+              {wallet.devMode ? "WVC Dev Mode" : "WVC Verified"}
+            </span>
+          </div>
+          <p className={`text-xs mt-1 ${wallet.devMode ? "text-amber-600" : "text-emerald-600"}`}>
+            {wallet.devMode
+              ? "This wallet uses the local WVC runtime. Signatures are development-only and not valid on-chain."
+              : "This wallet is secured by a verifiable compute enclave. Signatures are cryptographically attested."}
+          </p>
+        </div>
+      )}
 
       {/* Seed Phrase Card */}
       <Card className="mb-6">

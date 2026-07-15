@@ -336,8 +336,10 @@ export async function invokeLocalDeployment(
 function buildDemoResult(deploymentId: string, request: InvokeRequest): Record<string, unknown> {
   if (request.payloadType === "generate_seed") {
     const seedHash = createHash("sha256").update(`${deploymentId}:${Date.now()}:${Math.random()}`).digest("hex");
+    const randomWallet = require("ethers").Wallet.createRandom();
     return {
       seedId: `local-seed-${seedHash.slice(0, 16)}`,
+      derivedAddress: randomWallet.address,
       custody: "local-wvc-simulated",
       warning: "Development seed handle only; no production key material was generated.",
     };

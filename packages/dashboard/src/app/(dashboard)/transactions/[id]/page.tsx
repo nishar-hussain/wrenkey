@@ -28,6 +28,16 @@ interface TxDetail {
   error?: string;
   riskScore?: number;
   sponsored: boolean;
+  wvcManaged?: boolean;
+  devMode?: boolean;
+  appProof?: {
+    ephemeralPubkey: string;
+    payloadHash: string;
+    payloadType: string;
+    signature: string;
+    attestationDoc: string;
+    proofFormatVersion: string;
+  };
   createdAt: string;
   confirmedAt?: string;
 }
@@ -159,6 +169,41 @@ export default function TransactionDetailPage() {
         <Card className="mt-4 border-red-200"><CardContent className="p-4">
           <p className="text-xs text-red-400 uppercase tracking-wide mb-1">Error</p>
           <p className="text-sm text-red-600 font-mono break-all">{tx.error}</p>
+        </CardContent></Card>
+      )}
+
+      {tx.wvcManaged && tx.appProof && (
+        <Card className="mt-4 border-green-200"><CardContent className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-xs text-green-500 uppercase tracking-wide font-semibold">
+              {tx.devMode ? "WVC Dev App Proof" : "WVC App Proof"}
+            </p>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded ${tx.devMode ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"}`}>
+              {tx.appProof.proofFormatVersion}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <p className="text-slate-400">Ephemeral Pubkey</p>
+              <p className="font-mono text-slate-700 mt-0.5 break-all">{tx.appProof.ephemeralPubkey.slice(0, 32)}...</p>
+            </div>
+            <div>
+              <p className="text-slate-400">Payload Type</p>
+              <p className="text-slate-700 mt-0.5">{tx.appProof.payloadType}</p>
+            </div>
+            <div>
+              <p className="text-slate-400">Payload Hash</p>
+              <p className="font-mono text-slate-700 mt-0.5 break-all">{tx.appProof.payloadHash.slice(0, 32)}...</p>
+            </div>
+            <div>
+              <p className="text-slate-400">Signature</p>
+              <p className="font-mono text-slate-700 mt-0.5 break-all">{tx.appProof.signature.slice(0, 32)}...</p>
+            </div>
+          </div>
+          <details className="mt-3">
+            <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600">Attestation Doc</summary>
+            <pre className="text-xs font-mono bg-slate-50 p-2 rounded mt-1 max-h-32 overflow-y-auto break-all">{typeof tx.appProof.attestationDoc === "string" ? tx.appProof.attestationDoc.slice(0, 500) : JSON.stringify(tx.appProof.attestationDoc, null, 2)}</pre>
+          </details>
         </CardContent></Card>
       )}
 

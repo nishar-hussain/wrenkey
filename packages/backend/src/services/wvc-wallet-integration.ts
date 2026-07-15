@@ -34,6 +34,7 @@ function getWalletSignerDeploymentId(): string {
  */
 export async function wvcGenerateSeed(orgId: string): Promise<{
   seedId: string;
+  derivedAddress?: string;
   appProof: InvokeResult["appProof"];
   devMode: boolean;
 }> {
@@ -54,8 +55,9 @@ export async function wvcGenerateSeed(orgId: string): Promise<{
     throw new Error("WVC enclave did not return a seedId");
   }
 
+  const derivedAddress = (result.result as any).derivedAddress as string | undefined;
   const devMode = (result.result as any).warning !== undefined;
-  return { seedId, appProof: result.appProof, devMode };
+  return { seedId, derivedAddress, appProof: result.appProof, devMode };
 }
 
 /**
