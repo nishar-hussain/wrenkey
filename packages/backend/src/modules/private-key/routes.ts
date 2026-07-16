@@ -10,6 +10,7 @@ import {
   deriveAccount,
   encryptSeedForStorage,
 } from "../../utils/enclave.js";
+import { isWvcWallet } from "../../services/wvc-wallet-integration.js";
 
 export async function privateKeyRoutes(app: FastifyInstance) {
 
@@ -22,6 +23,9 @@ export async function privateKeyRoutes(app: FastifyInstance) {
         where: { id: walletId, orgId: request.orgId },
       });
       if (!wallet) throw new NotFoundError("Wallet");
+      if (isWvcWallet(wallet.encryptedSeed)) {
+        throw new ValidationError("Cannot derive standalone private keys from a WVC-managed wallet — the seed is held in the enclave and never exposed to the backend");
+      }
 
       const chainInfo = chain ? (await getChainByName(chain).catch(() => null)) || await getDefaultChain() : await getDefaultChain();
       if (!chainInfo) throw new ValidationError("No active chain found");
@@ -124,6 +128,9 @@ export async function privateKeyRoutes(app: FastifyInstance) {
 
       const wallet = await prisma.wallet.findFirst({ where: { id: pk.walletId } });
       if (!wallet) throw new NotFoundError("Wallet");
+      if (isWvcWallet(wallet.encryptedSeed)) {
+        throw new ValidationError("Cannot export a private key derived from a WVC-managed wallet — the seed is held in the enclave and never exposed to the backend");
+      }
 
       const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
       const hdNode = deriveAccount(mnemonic, pk.derivationIndex, pk.addresses[0]?.chain?.derivationPath || "m/44'/60'/0'/0");
@@ -189,6 +196,9 @@ export async function privateKeyRoutes(app: FastifyInstance) {
 
       const wallet = await prisma.wallet.findFirst({ where: { id: pk.walletId } });
       if (!wallet) throw new NotFoundError("Wallet");
+      if (isWvcWallet(wallet.encryptedSeed)) {
+        throw new ValidationError("Cannot derive addresses for a private key from a WVC-managed wallet — the seed is held in the enclave and never exposed to the backend");
+      }
 
       const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
       const hdNode = deriveAccount(mnemonic, pk.derivationIndex, chainInfo.derivationPath);

@@ -4,7 +4,7 @@ import { authMiddleware } from "../../middleware/auth.js";
 import { sendSuccess, sendError, ValidationError, NotFoundError, ForbiddenError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
 import { parsePagination } from "../../utils/pagination.js";
-import { decryptSeedFromStorage, signTransaction, broadcastTransaction } from "../../utils/enclave.js";
+import { broadcastTransaction } from "../../utils/enclave.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
 
 export async function approvalRoutes(app: FastifyInstance) {

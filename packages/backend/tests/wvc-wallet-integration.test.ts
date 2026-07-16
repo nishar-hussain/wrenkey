@@ -250,4 +250,20 @@ describe("WVC Wallet Integration (PRD §25)", () => {
       expect([201, 200, 403]).toContain(res.statusCode);
     }
   });
+
+  // ─── Regression: private-key derivation must not crash on WVC wallets ──────
+  // The private-key module derives standalone keys from the wallet mnemonic.
+  // For WVC wallets the mnemonic lives in the enclave, so these must return a
+  // clear 400 — not the old "Invalid initialization vector" 500.
+
+  it("POST /private-keys rejects derivation from a WVC-managed wallet (400, not 500)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/private-keys",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { walletId, name: "should-fail", chain: "arc" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error.message).toMatch(/wvc|enclave/i);
+  });
 });
