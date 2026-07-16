@@ -3,6 +3,7 @@ import { buildApp } from "../../src/app.js";
 import type { FastifyInstance } from "fastify";
 import { PrismaClient } from "@prisma/client";
 import { signToken } from "../../src/utils/jwt.js";
+import { cleanupOrg, runSuffix } from "./helpers";
 
 let app: FastifyInstance;
 let prisma: PrismaClient;
@@ -11,6 +12,7 @@ let devToken: string;
 let orgId: string;
 let adminUserId: string;
 let devUserId: string;
+const suffix = runSuffix();
 
 beforeAll(async () => {
   app = await buildApp({ disableRateLimit: true });
@@ -19,16 +21,16 @@ beforeAll(async () => {
   prisma = new PrismaClient();
   await prisma.$connect();
 
-  const org = await prisma.organization.create({ data: { name: "Security Test Org" } });
+  const org = await prisma.organization.create({ data: { name: `Security Test Org ${suffix}` } });
   orgId = org.id;
 
   const admin = await prisma.user.create({
-    data: { orgId, name: "Admin", email: "admin@sec.test", role: "ORG_ADMIN" },
+    data: { orgId, name: "Admin", email: `admin-${suffix}@sec.test`, role: "ORG_ADMIN" },
   });
   adminUserId = admin.id;
 
   const dev = await prisma.user.create({
-    data: { orgId, name: "Dev", email: "dev@sec.test", role: "DEVELOPER" },
+    data: { orgId, name: "Dev", email: `dev-${suffix}@sec.test`, role: "DEVELOPER" },
   });
   devUserId = dev.id;
 
@@ -44,7 +46,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.organization.deleteMany({ where: { id: orgId } }).catch(() => {});
+  await cleanupOrg(prisma, orgId);
   await app.close();
   await prisma.$disconnect();
 });
@@ -188,7 +190,7 @@ describe("Security — Sub-org impersonation (S4)", () => {
       method: "POST",
       url: "/api/v1/sub-orgs",
       headers: { authorization: `Bearer ${adminToken}` },
-      payload: { name: "Empty Sub-Org" },
+      payload: { name: `Empty Sub-Org ${suffix}` },
     });
     expect(subOrgRes.statusCode).toBe(201);
     const subOrgId = JSON.parse(subOrgRes.payload).id;

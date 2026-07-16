@@ -15,6 +15,7 @@ let deploymentId: string;
 let manifestId: string;
 let operatorId: string;
 let operatorKeys: { publicKeyPem: string; privateKeyPem: string };
+let walletId: string;
 
 beforeAll(async () => {
   process.env.WVC_ALLOW_LOCAL_PROOFS = "true";
@@ -132,7 +133,7 @@ describe("WVC Wallet Integration (PRD §25)", () => {
       method: "POST",
       url: "/api/v1/wallets",
       headers: { authorization: `Bearer ${token}` },
-      payload: { name: "WVC Test Wallet" },
+      payload: { name: "WVC Test Wallet", chain: "arc" },
     });
     expect(res.statusCode).toBe(201);
     const body = JSON.parse(res.body);
@@ -141,6 +142,7 @@ describe("WVC Wallet Integration (PRD §25)", () => {
     expect(body.appProof).toBeTruthy();
     expect(body.appProof.proofFormatVersion).toBe("local-dev-v1");
     expect(body.appProof.payloadType).toBe("generate_seed");
+    walletId = body.walletId;
   });
 
   it("WVC-managed wallet stores seed handle, not raw seed", async () => {
@@ -166,5 +168,86 @@ describe("WVC Wallet Integration (PRD §25)", () => {
     expect(wallet!.accounts.length).toBeGreaterThan(0);
     expect(wallet!.accounts[0].address.startsWith("0x")).toBe(true);
     expect(wallet!.accounts[0].address.length).toBe(42);
+  });
+
+  // ─── Regression: key-consuming routes must not crash on WVC wallets ───────
+  // Previously these routes called decryptSeedFromStorage() on the "wvc:<seedId>"
+  // handle, which threw "Invalid initialization vector" (500). They must now
+  // either route through the enclave or return a clear, intentional error.
+
+  it("POST /wallets/:id/accounts rejects derivation on a WVC-managed wallet (400, not 500)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wallets/${walletId}/accounts`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { chain: "arc" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error.message).toMatch(/wvc|enclave/i);
+  });
+
+  it("POST /wallets/:id/export rejects export on a WVC-managed wallet (400, not 500)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wallets/${walletId}/export`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error.message).toMatch(/wvc|enclave/i);
+  });
+
+  it("POST /transactions/sign-message rejects message signing on a WVC-managed wallet (400, not 500)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/transactions/sign-message",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { walletId, message: "hello" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error.message).toMatch(/wvc|enclave/i);
+  });
+
+  it("POST /wallets/:id/rotate rotates through the enclave and stays WVC-managed", async () => {
+    const before = await prisma.wallet.findUnique({ where: { id: walletId } });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/wallets/${walletId}/rotate`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.wvcManaged).toBe(true);
+    expect(body.appProof).toBeTruthy();
+    expect(body.appProof.payloadType).toBe("generate_seed");
+
+    const after = await prisma.wallet.findUnique({ where: { id: walletId } });
+    expect(after!.encryptedSeed.startsWith("wvc:")).toBe(true);
+    // The seed handle must change (new seed generated in the enclave).
+    expect(after!.encryptedSeed).not.toBe(before!.encryptedSeed);
+  });
+
+  it("POST /transactions/sign reaches the enclave (no decrypt crash) for a WVC-managed wallet", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/transactions/sign",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        walletId,
+        chain: "arc",
+        to: "0x000000000000000000000000000000000000dead",
+        value: "0.0001",
+        gasLimit: "21000",
+      },
+    });
+    // The local WVC runtime produces a placeholder signature (0xlocal...) which
+    // cannot broadcast, so a 500 here is expected — but it must be a *broadcast*
+    // failure, never the old decrypt crash ("Invalid initialization vector").
+    if (res.statusCode === 500) {
+      const msg = JSON.parse(res.body).error?.message || "";
+      expect(msg).not.toMatch(/initialization vector|decrypt|auth tag/i);
+    } else {
+      expect([201, 200, 403]).toContain(res.statusCode);
+    }
   });
 });

@@ -7,7 +7,6 @@ import { sendSuccess, sendError, ValidationError, NotFoundError, ForbiddenError 
 import { createAuditLog } from "../../utils/audit.js";
 import {
   decryptSeedFromStorage,
-  signTransaction,
   broadcastTransaction,
   getTransactionStatus,
   simulateTransaction,
@@ -22,7 +21,7 @@ import { assessTransactionRisk, validateSpendingLimits } from "../../services/ri
 import { triggerWebhookEvents } from "../webhook/routes.js";
 import { notifyLargeTransaction, notifyTransactionFailed, notifyPolicyDenial } from "../../services/notifications.js";
 import { parsePagination } from "../../utils/pagination.js";
-import { isWvcWalletSigningEnabled, wvcSignTransaction } from "../../services/wvc-wallet-integration.js";
+import { isWvcWallet, signTxForWallet } from "../../services/wvc-wallet-integration.js";
 
 function parseTxStatus(txStatus: string): "PENDING" | "SIGNED" | "BROADCAST" | "CONFIRMED" | "FAILED" | "CANCELLED" | "REPLACED" | "RETRY" {
   return txStatus as any;
@@ -176,19 +175,10 @@ export async function transactionRoutes(app: FastifyInstance) {
           data: data || undefined,
         };
 
-        let signedTx: string;
-        let wvcAppProof: any = null;
-        let wvcDevMode = false;
-        if (isWvcWalletSigningEnabled() && wallet.encryptedSeed.startsWith("wvc:")) {
-const unsignedTxHex = ethers.Transaction.from(tx as ethers.TransactionLike<string>).unsignedSerialized;
-        const wvcResult = await wvcSignTransaction(request.orgId!, unsignedTxHex);
-        signedTx = wvcResult.signedTx;
-        wvcAppProof = wvcResult.appProof;
-        wvcDevMode = wvcResult.devMode;
-      } else {
-        const seed = decryptSeedFromStorage(wallet.encryptedSeed);
-        signedTx = await signTransaction(seed, targetAccount.index, targetAccount.chain.derivationPath, tx);
-      }
+        const signResult = await signTxForWallet(request.orgId!, wallet.encryptedSeed, targetAccount.index, targetAccount.chain.derivationPath, tx);
+        const signedTx = signResult.signedTx;
+        const wvcAppProof = signResult.appProof ?? null;
+        const wvcDevMode = signResult.devMode ?? false;
 
       const transaction = await prisma.transaction.create({
         data: {
@@ -236,19 +226,10 @@ const unsignedTxHex = ethers.Transaction.from(tx as ethers.TransactionLike<strin
         data: data || undefined,
       };
 
-      let signedTx: string;
-      let wvcAppProof: any = null;
-      let wvcDevMode = false;
-      if (isWvcWalletSigningEnabled() && wallet.encryptedSeed.startsWith("wvc:")) {
-        const unsignedTxHex = ethers.Transaction.from(tx as ethers.TransactionLike<string>).unsignedSerialized;
-        const wvcResult = await wvcSignTransaction(request.orgId!, unsignedTxHex);
-        signedTx = wvcResult.signedTx;
-        wvcAppProof = wvcResult.appProof;
-        wvcDevMode = wvcResult.devMode;
-      } else {
-        const seed = decryptSeedFromStorage(wallet.encryptedSeed);
-        signedTx = await signTransaction(seed, targetAccount.index, targetAccount.chain.derivationPath, tx);
-      }
+      const signResult = await signTxForWallet(request.orgId!, wallet.encryptedSeed, targetAccount.index, targetAccount.chain.derivationPath, tx);
+      const signedTx = signResult.signedTx;
+      const wvcAppProof = signResult.appProof ?? null;
+      const wvcDevMode = signResult.devMode ?? false;
 
       const transaction = await prisma.transaction.create({
         data: {
@@ -424,7 +405,6 @@ const unsignedTxHex = ethers.Transaction.from(tx as ethers.TransactionLike<strin
       if (!wallet) throw new NotFoundError("Wallet");
       if (wallet.status === "FROZEN") throw new ForbiddenError("Wallet is frozen");
 
-      const seed = decryptSeedFromStorage(wallet.encryptedSeed);
       lockId = await acquireNonceLock(account.address);
       const nonce = await getNextNonce(account.address, account.chain.rpcUrl);
 
@@ -439,7 +419,7 @@ const unsignedTxHex = ethers.Transaction.from(tx as ethers.TransactionLike<strin
         data: tx.data || undefined,
       };
 
-      const signedTx = await signTransaction(seed, account.index, account.chain.derivationPath, txData);
+      const { signedTx } = await signTxForWallet(request.orgId!, wallet.encryptedSeed, account.index, account.chain.derivationPath, txData);
 
       const retryTx = await prisma.transaction.create({
         data: {
@@ -485,7 +465,6 @@ const unsignedTxHex = ethers.Transaction.from(tx as ethers.TransactionLike<strin
       const wallet = await prisma.wallet.findFirst({ where: { id: account.walletId, orgId: request.orgId } });
       if (!wallet) throw new NotFoundError("Wallet");
 
-      const seed = decryptSeedFromStorage(wallet.encryptedSeed);
       lockId = await acquireNonceLock(account.address);
       const cancelNonce = tx.nonce || await getNextNonce(account.address, account.chain.rpcUrl);
 
@@ -496,7 +475,7 @@ const unsignedTxHex = ethers.Transaction.from(tx as ethers.TransactionLike<strin
         nonce: cancelNonce,
       };
 
-      const signedCancel = await signTransaction(seed, account.index, account.chain.derivationPath, cancelTx);
+      const { signedTx: signedCancel } = await signTxForWallet(request.orgId!, wallet.encryptedSeed, account.index, account.chain.derivationPath, cancelTx);
 
       const cancelTransaction = await prisma.transaction.create({
         data: {
@@ -543,8 +522,6 @@ const unsignedTxHex = ethers.Transaction.from(tx as ethers.TransactionLike<strin
       const wallet = await prisma.wallet.findFirst({ where: { id: account.walletId, orgId: request.orgId } });
       if (!wallet) throw new NotFoundError("Wallet");
 
-      const seed = decryptSeedFromStorage(wallet.encryptedSeed);
-
       lockId = await acquireNonceLock(account.address);
       lockedAddress = account.address;
 
@@ -564,7 +541,7 @@ const unsignedTxHex = ethers.Transaction.from(tx as ethers.TransactionLike<strin
         data: tx.data || undefined,
       };
 
-      const signedTx = await signTransaction(seed, account.index, account.chain.derivationPath, txData);
+      const { signedTx } = await signTxForWallet(request.orgId!, wallet.encryptedSeed, account.index, account.chain.derivationPath, txData);
 
       const replaceTx = await prisma.transaction.create({
         data: {
@@ -684,6 +661,10 @@ const unsignedTxHex = ethers.Transaction.from(tx as ethers.TransactionLike<strin
         : wallet.accounts[0];
 
       if (!targetAccount) throw new NotFoundError("Account for chain");
+
+      if (isWvcWallet(wallet.encryptedSeed)) {
+        throw new ValidationError("Message signing is not supported for WVC-managed wallets — the enclave only exposes transaction signing. Use the transaction sign endpoint instead.");
+      }
 
       const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
       const derived = deriveAccount(mnemonic, targetAccount.index, targetAccount.chain.derivationPath);

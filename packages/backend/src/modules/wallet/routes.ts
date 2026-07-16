@@ -17,7 +17,7 @@ import { getChainByName, getDefaultChain } from "../../services/chain.js";
 import { getTokenBalances } from "../../services/tokens.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
 import { notifyWalletCreated } from "../../services/notifications.js";
-import { isWvcWalletSigningEnabled, wvcGenerateSeed } from "../../services/wvc-wallet-integration.js";
+import { isWvcWalletSigningEnabled, isWvcWallet, wvcGenerateSeed } from "../../services/wvc-wallet-integration.js";
 import { config } from "../../config.js";
 
 export async function walletRoutes(app: FastifyInstance) {
@@ -272,6 +272,9 @@ export async function walletRoutes(app: FastifyInstance) {
 
       const wallet = await prisma.wallet.findFirst({ where: { id, orgId: request.orgId } });
       if (!wallet) throw new NotFoundError("Wallet");
+      if (isWvcWallet(wallet.encryptedSeed)) {
+        throw new ValidationError("Cannot derive additional accounts for a WVC-managed wallet — the seed is held in the enclave and never exposed to the backend");
+      }
 
       const chainInfo = chainName ? await getChainByName(chainName).catch(() => null) : await getDefaultChain();
       if (!chainInfo) throw new ValidationError("Invalid or no active chain found");
@@ -357,6 +360,9 @@ export async function walletRoutes(app: FastifyInstance) {
       if (!wallet) throw new NotFoundError("Wallet");
 
       if (wallet.status === "FROZEN") throw new ValidationError("Cannot export a frozen wallet");
+      if (isWvcWallet(wallet.encryptedSeed)) {
+        throw new ValidationError("Cannot export a WVC-managed wallet — the seed is generated and held inside the enclave and never leaves it");
+      }
 
       const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
 
@@ -434,6 +440,42 @@ export async function walletRoutes(app: FastifyInstance) {
       if (!wallet) throw new NotFoundError("Wallet");
       if (wallet.status !== "ACTIVE") throw new ValidationError("Only active wallets can be rotated");
 
+      // ─── WVC path: rotate the seed through the enclave (PRD §25.1) ──────────
+      // The backend never sees the plaintext seed; it only gets a new seed handle
+      // + a freshly derived address. Rotating in-process would silently downgrade
+      // a WVC-managed wallet to a locally-held seed, breaking the enclave model.
+      if (isWvcWallet(wallet.encryptedSeed)) {
+        if (wallet.accounts.length > 1) {
+          throw new ValidationError(
+            "Cannot rotate a multi-account WVC-managed wallet — the enclave exposes only the primary derived address. Remove extra accounts before rotating.",
+          );
+        }
+        const { seedId, derivedAddress, appProof, devMode } = await wvcGenerateSeed(request.orgId!);
+        const primary = wallet.accounts[0];
+        const rotatedWallet = await prisma.wallet.update({
+          where: { id },
+          data: {
+            encryptedSeed: `wvc:${seedId}`,
+            accounts: {
+              deleteMany: {},
+              create: [{
+                chainId: primary.chainId,
+                address: derivedAddress || `0x${seedId.slice(0, 40)}`,
+                derivationPath: primary.derivationPath,
+                index: primary.index,
+              }],
+            },
+          },
+          include: { accounts: true },
+        });
+
+        await createAuditLog(request.orgId, "WALLET_ROTATE_WVC", { walletId: id, seedId, deploymentId: config.wvc.walletSignerDeploymentId }, request.userId, request);
+        triggerWebhookEvents(request.orgId, "wallet.rotated", { walletId: id, wvcManaged: true });
+
+        return sendSuccess(reply, { ...rotatedWallet, wvcManaged: true, devMode, appProof });
+      }
+
+      // ─── Legacy path: in-process seed rotation ──────────────────────────────
       const { mnemonic } = generateHdWallet();
       const newEncryptedSeed = encryptSeedForStorage(mnemonic);
 

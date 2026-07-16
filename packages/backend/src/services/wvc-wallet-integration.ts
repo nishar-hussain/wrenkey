@@ -9,12 +9,42 @@
  * but the response includes an optional `appProof` field callers can verify.
  */
 
+import { ethers } from "ethers";
 import { config } from "../config.js";
 import { invokeDeployment, type InvokeResult } from "./wvc-relay.js";
+import { decryptSeedFromStorage, signTransaction } from "../utils/enclave.js";
 
 /** Returns true if WVC wallet signing is enabled (deployment ID is configured). */
 export function isWvcWalletSigningEnabled(): boolean {
   return !!(config.wvc.walletSignerDeploymentId || process.env.WVC_WALLET_SIGNER_DEPLOYMENT_ID);
+}
+
+/** Returns true if the given encryptedSeed is a WVC enclave handle (not a raw encrypted mnemonic). */
+export function isWvcWallet(encryptedSeed: string | null | undefined): boolean {
+  return typeof encryptedSeed === "string" && encryptedSeed.startsWith("wvc:");
+}
+
+/**
+ * Sign an unsigned transaction for a wallet, routing through the WVC enclave when
+ * the wallet is WVC-managed, or falling back to the in-process ethers.js signer
+ * for legacy wallets. This centralises the branch so every signing path
+ * (sign / retry / cancel / speed-up) stays consistent.
+ */
+export async function signTxForWallet(
+  orgId: string,
+  encryptedSeed: string,
+  accountIndex: number,
+  derivationPath: string,
+  tx: ethers.TransactionRequest,
+): Promise<{ signedTx: string; appProof?: InvokeResult["appProof"]; devMode?: boolean }> {
+  if (isWvcWallet(encryptedSeed)) {
+    const unsignedTxHex = ethers.Transaction.from(tx as ethers.TransactionLike<string>).unsignedSerialized;
+    const wvcResult = await wvcSignTransaction(orgId, unsignedTxHex);
+    return { signedTx: wvcResult.signedTx, appProof: wvcResult.appProof, devMode: wvcResult.devMode };
+  }
+  const seed = decryptSeedFromStorage(encryptedSeed);
+  const signedTx = await signTransaction(seed, accountIndex, derivationPath, tx);
+  return { signedTx };
 }
 
 /** Get the configured wallet signer deployment ID (from env or config). */

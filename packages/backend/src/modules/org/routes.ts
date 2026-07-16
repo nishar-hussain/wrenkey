@@ -85,23 +85,33 @@ export async function orgRoutes(app: FastifyInstance) {
 
       await createAuditLog(request.orgId, "USER_CREATE", { userId: user.id, email }, request.userId, request);
 
-      // Generate invitation token and store in Redis
+      // Generate invitation token and store in Redis (best-effort — a Redis
+      // outage must not block user creation; the invite link is simply skipped).
       const inviteToken = randomBytes(32).toString("hex");
-      const redis = getRedis();
       const INIVITE_TTL = 7 * 24 * 3600;
-      await redis.setex(
-        `invite:${inviteToken}`,
-        INIVITE_TTL,
-        JSON.stringify({ userId: user.id, email: user.email || email, orgId: request.orgId, orgName: org?.name || "" }),
-      );
+      let redisAvailable = true;
+      try {
+        const redis = getRedis();
+        await redis.setex(
+          `invite:${inviteToken}`,
+          INIVITE_TTL,
+          JSON.stringify({ userId: user.id, email: user.email || email, orgId: request.orgId, orgName: org?.name || "" }),
+        );
+      } catch (redisErr: any) {
+        redisAvailable = false;
+        console.warn(`[users.create] Redis unavailable, skipping invitation token: ${redisErr?.message || redisErr}`);
+      }
 
       const baseUrl = config.corsOrigin[0] || "http://localhost:5173";
-      const inviteLink = `${baseUrl}/accept-invitation?token=${inviteToken}`;
+      const inviteLink = redisAvailable ? `${baseUrl}/accept-invitation?token=${inviteToken}` : "";
 
       let emailStatus: "sent" | "skipped" | "failed" = "skipped";
       let emailError = "";
 
-      if (email && config.smtp.host && config.smtp.user && config.smtp.pass) {
+      if (!redisAvailable) {
+        // No invite token could be persisted, so don't send a broken link.
+        console.log(`[DEV] User ${email} created but invitation link skipped (Redis unavailable)`);
+      } else if (email && config.smtp.host && config.smtp.user && config.smtp.pass) {
         try {
           let branding = { appName: "WranKey", appLogo: "" };
           try {

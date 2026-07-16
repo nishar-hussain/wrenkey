@@ -209,6 +209,11 @@ describe("WVC Adversarial Tests (PRD §27)", () => {
     });
     const proof = JSON.parse(invokeRes.body).appProof;
 
+    // Wait long enough that the attestation timestamp is guaranteed older than
+    // maxAgeMs. Date.now() has millisecond resolution, so a 0/1ms gap can land
+    // in the same tick and falsely appear fresh.
+    await new Promise((r) => setTimeout(r, 10));
+
     // Verify with a very short max age (1ms) — should fail because the attestation is already older
     const result = verifyLocalAppProof(proof, {
       pcr0: "0".repeat(64),

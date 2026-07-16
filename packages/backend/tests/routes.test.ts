@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { buildApp } from "../../src/app";
 import type { FastifyInstance } from "fastify";
 import { PrismaClient } from "@prisma/client";
+import { cleanupOrg, runSuffix } from "./helpers";
 
 let app: FastifyInstance;
 let prisma: PrismaClient;
@@ -9,20 +10,25 @@ let token: string;
 let orgId: string;
 let userId: string;
 let walletId: string;
+const suffix = runSuffix();
 
 beforeAll(async () => {
+  // This suite exercises the LEGACY in-process signer. Ensure WVC wallet signing
+  // is disabled even if a developer's .env pins a deployment id.
+  delete process.env.WVC_WALLET_SIGNER_DEPLOYMENT_ID;
+
   app = await buildApp({ disableRateLimit: true });
   await app.ready();
 
   prisma = new PrismaClient();
   await prisma.$connect();
 
-  // Create test org + user + session
-  const org = await prisma.organization.create({ data: { name: "Test Org" } });
+  // Create test org + user + session (unique per run to avoid unique-constraint races)
+  const org = await prisma.organization.create({ data: { name: `Test Org ${suffix}` } });
   orgId = org.id;
 
   const user = await prisma.user.create({
-    data: { orgId, name: "Test User", email: "test@route.test", role: "ORG_ADMIN" },
+    data: { orgId, name: "Test User", email: `test-${suffix}@route.test`, role: "ORG_ADMIN" },
   });
   userId = user.id;
 
@@ -36,7 +42,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.organization.deleteMany({ where: { id: orgId } }).catch(() => {});
+  await cleanupOrg(prisma, orgId);
   await app.close();
   await prisma.$disconnect();
 });
@@ -171,7 +177,7 @@ describe("Organization Routes", () => {
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.payload);
-    expect(body.name).toBe("Test Org");
+    expect(body.name).toBe(`Test Org ${suffix}`);
   });
 });
 
@@ -181,7 +187,7 @@ describe("User Routes", () => {
       method: "POST",
       url: "/api/v1/users",
       headers: { authorization: `Bearer ${token}` },
-      payload: { name: "Dev User", email: "dev@route.test", role: "DEVELOPER" },
+      payload: { name: "Dev User", email: `dev-${suffix}@route.test`, role: "DEVELOPER" },
     });
     expect(res.statusCode).toBe(201);
     const body = JSON.parse(res.payload);
@@ -208,7 +214,7 @@ describe("User Routes", () => {
         headers: { authorization: `Bearer ${token}` },
       })
     ).payload).data;
-    const devUser = users.find((u: any) => u.email === "dev@route.test");
+    const devUser = users.find((u: any) => u.email === `dev-${suffix}@route.test`);
     expect(devUser).toBeTruthy();
 
     const res = await app.inject({
@@ -228,7 +234,7 @@ describe("User Routes", () => {
         headers: { authorization: `Bearer ${token}` },
       })
     ).payload).data;
-    const devUser = users.find((u: any) => u.email === "dev@route.test");
+    const devUser = users.find((u: any) => u.email === `dev-${suffix}@route.test`);
     if (devUser) {
       const res = await app.inject({
         method: "DELETE",

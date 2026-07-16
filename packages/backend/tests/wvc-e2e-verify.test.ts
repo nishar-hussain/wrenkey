@@ -23,6 +23,7 @@ import type { FastifyInstance } from "fastify";
 import { PrismaClient } from "@prisma/client";
 import { generateOperatorKeyPair, signWithOperatorKey } from "../../src/modules/wvc/operator.js";
 import { verifyLocalAppProof, verifyLocalBootProof } from "@wrankey/wvc-verify";
+import { cleanupOrg, runSuffix } from "./helpers";
 
 let app: FastifyInstance;
 let prisma: PrismaClient;
@@ -37,6 +38,7 @@ let manifestHash: string;
 let operatorKeys: { publicKeyPem: string; privateKeyPem: string };
 let appProofId: string;
 let bootProofId: string;
+const suffix = runSuffix();
 
 // Store the last proof from the invoke test for the verification tests
 let lastProof: {
@@ -63,11 +65,11 @@ beforeAll(async () => {
   await prisma.$connect();
 
   // Test-scoped: create a fresh org instead of wiping all data
-  const org = await prisma.organization.create({ data: { name: `E2E Verify Test Org ${Date.now()}` } });
+  const org = await prisma.organization.create({ data: { name: `E2E Verify Test Org ${suffix}` } });
   orgId = org.id;
 
   const user = await prisma.user.create({
-    data: { orgId, name: "E2E Admin", email: "e2e-verify@test.local", role: "ORG_ADMIN" },
+    data: { orgId, name: "E2E Admin", email: `e2e-verify-${suffix}@test.local`, role: "ORG_ADMIN" },
   });
   userId = user.id;
 
@@ -82,7 +84,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.organization.deleteMany({ where: { id: orgId } }).catch(() => {});
+  await cleanupOrg(prisma, orgId);
   await app.close();
   await prisma.$disconnect();
 });

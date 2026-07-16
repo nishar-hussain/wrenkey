@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { FastifyInstance } from "fastify";
 import { PrismaClient } from "@prisma/client";
+import { cleanupOrg, runSuffix } from "./helpers";
 
 let app: FastifyInstance;
 let prisma: PrismaClient;
@@ -12,19 +13,24 @@ let walletId: string;
 let spendingLimitId: string;
 let chainId: string;
 let transactionId: string;
+const suffix = runSuffix();
 
 beforeAll(async () => {
+  // This suite exercises the LEGACY in-process signer. Ensure WVC wallet signing
+  // is disabled even if a developer's .env pins a deployment id.
+  delete process.env.WVC_WALLET_SIGNER_DEPLOYMENT_ID;
+
   app = await buildApp({ disableRateLimit: true });
   await app.ready();
 
   prisma = new PrismaClient();
   await prisma.$connect();
 
-  const org = await prisma.organization.create({ data: { name: "Wallet Test Org" } });
+  const org = await prisma.organization.create({ data: { name: `Wallet Test Org ${suffix}` } });
   orgId = org.id;
 
   const user = await prisma.user.create({
-    data: { orgId, name: "Wallet Test User", email: "wallet-test@wrankey.io", role: "ORG_ADMIN" },
+    data: { orgId, name: "Wallet Test User", email: `wallet-test-${suffix}@wrankey.io`, role: "ORG_ADMIN" },
   });
   userId = user.id;
 
@@ -46,7 +52,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.organization.deleteMany({ where: { id: orgId } }).catch(() => {});
+  await cleanupOrg(prisma, orgId);
   await app.close();
   await prisma.$disconnect();
 });
@@ -435,7 +441,7 @@ describe("Wallet Infrastructure - Full Suite", () => {
 
     it("prevents non-admin from adding chains", async () => {
       const nonAdminUser = await prisma.user.create({
-        data: { orgId, name: "Dev", email: "dev@wallet-test.io", role: "DEVELOPER" },
+        data: { orgId, name: "Dev", email: `dev-${suffix}@wallet-test.io`, role: "DEVELOPER" },
       });
       const { signToken } = await import("../src/utils/jwt.js");
       const devToken = signToken({ sub: nonAdminUser.id, orgId, role: "DEVELOPER" });
