@@ -41,10 +41,12 @@ export async function quorumRoutes(app: FastifyInstance) {
       const health = getQuorumHealth(quorumCount, threshold, allUsers.length);
 
       return sendSuccess(reply, {
-        members,
-        threshold,
-        memberIds,
-        health,
+        data: {
+          members,
+          threshold,
+          memberIds,
+          health,
+        },
       });
     } catch (err) {
       return sendError(reply, err);
@@ -108,9 +110,11 @@ export async function quorumRoutes(app: FastifyInstance) {
       const health = getQuorumHealth(memberIds.length, threshold, allUsers.length);
 
       return sendSuccess(reply, {
-        memberIds,
-        threshold,
-        health,
+        data: {
+          memberIds,
+          threshold,
+          health,
+        },
       });
     } catch (err) {
       return sendError(reply, err);

@@ -164,8 +164,8 @@ export default function WalletDetailPage() {
     setQuorumCheckLoading(true);
     try {
       const quorumRes: any = await apiFetch("/quorum", { token }).catch(() => null);
-      if (quorumRes) {
-        setQuorumConfigured(quorumRes.memberIds && quorumRes.memberIds.length > 0);
+      if (quorumRes && quorumRes.data) {
+        setQuorumConfigured(quorumRes.data.memberIds && quorumRes.data.memberIds.length > 0);
       }
       const approvalRes: any = await apiFetch(`/approval-requests?status=PENDING&limit=50`, { token }).catch(() => null);
       if (approvalRes && approvalRes.data) {

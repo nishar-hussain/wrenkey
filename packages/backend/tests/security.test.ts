@@ -141,7 +141,7 @@ describe("Security — Quorum role check (S3)", () => {
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.payload);
-    expect(body.threshold).toBe(1);
+    expect(body.data.threshold).toBe(1);
   });
 });
 
