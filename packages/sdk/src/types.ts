@@ -101,13 +101,18 @@ export interface SpendingLimit {
 export interface ApprovalRequest {
   id: string;
   orgId: string;
-  transactionId: string;
+  transactionId?: string | null;
+  actionType: string;
+  targetId: string;
+  actionPayload?: Record<string, unknown> | null;
+  result?: Record<string, unknown> | null;
   requestedBy: string;
   approvedBy: string[];
   rejectedBy: string[];
   requiredApprovals: number;
   status: string;
-  transaction?: Transaction;
+  transaction?: Transaction | null;
+  wallet?: { id: string; name: string; status: string; tags: string[] } | null;
   createdAt: string;
   updatedAt: string;
 }

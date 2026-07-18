@@ -49,6 +49,12 @@ beforeAll(async () => {
 
   const chain = await prisma.chain.findUnique({ where: { name: "arc" } });
   chainId = chain!.id;
+
+  await prisma.orgConfig.upsert({
+    where: { orgId },
+    update: { config: { rootQuorumMembers: [userId], rootQuorumThreshold: 1 } },
+    create: { orgId, config: { rootQuorumMembers: [userId], rootQuorumThreshold: 1 } },
+  });
 });
 
 afterAll(async () => {

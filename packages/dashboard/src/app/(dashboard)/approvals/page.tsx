@@ -14,13 +14,16 @@ import { useToast } from "@/components/ui/Toast";
 
 interface ApprovalRequest {
   id: string;
-  transactionId: string;
+  transactionId?: string;
+  actionType: string;
+  targetId: string;
   requestedBy: string;
   approvedBy: string[];
   rejectedBy: string[];
   requiredApprovals: number;
   status: string;
   transaction?: { to: string; value: string; chain: string; riskScore?: number };
+  wallet?: { id: string; name: string; status: string; tags: string[] };
   createdAt: string;
 }
 
@@ -77,27 +80,47 @@ export default function ApprovalsPage() {
   if (!isAuthenticated) return null;
 
   const columns = [
-    { key: "id", header: "ID", render: (r: ApprovalRequest) => <span className="font-mono text-xs">{r.id.slice(0, 8)}...</span> },
     {
-      key: "tx", header: "Transaction",
+      key: "actionType", header: "Action",
       render: (r: ApprovalRequest) => (
-        <div>
-          {r.transaction ? (
-            <>
-              <span className="font-mono text-xs">{r.transaction.to.slice(0, 10)}...</span>
-              <span className="text-xs text-slate-500 ml-2">{r.transaction.value} {r.transaction.chain}</span>
-            </>
-          ) : <span className="text-slate-400">-</span>}
-        </div>
+        <StatusBadge status={r.actionType || "TRANSACTION"} />
       ),
     },
     {
+      key: "target", header: "Target",
+      render: (r: ApprovalRequest) => {
+        if (r.actionType !== "TRANSACTION" && r.wallet) {
+          return (
+            <button
+              onClick={() => router.push(`/wallets/${r.targetId}`)}
+              className="font-medium text-sm text-blue-600 hover:text-blue-800 underline"
+            >
+              {r.wallet.name}
+            </button>
+          );
+        }
+        if (r.transaction) {
+          return (
+            <div>
+              <span className="font-mono text-xs">{r.transaction.to.slice(0, 10)}...</span>
+              <span className="text-xs text-slate-500 ml-2">{r.transaction.value} {r.transaction.chain}</span>
+            </div>
+          );
+        }
+        return <span className="text-slate-400">-</span>;
+      },
+    },
+    { key: "id", header: "ID", render: (r: ApprovalRequest) => <span className="font-mono text-xs">{r.id.slice(0, 8)}...</span> },
+    {
       key: "risk", header: "Risk",
-      render: (r: ApprovalRequest) => r.transaction?.riskScore ? (
-        <span className={r.transaction.riskScore > 70 ? "text-red-500 font-bold" : "text-slate-500"}>
-          {r.transaction.riskScore}
-        </span>
-      ) : "-",
+      render: (r: ApprovalRequest) => {
+        if (r.actionType !== "TRANSACTION") return <span className="text-slate-400 text-xs">N/A</span>;
+        return r.transaction?.riskScore ? (
+          <span className={r.transaction.riskScore > 70 ? "text-red-500 font-bold" : "text-slate-500"}>
+            {r.transaction.riskScore}
+          </span>
+        ) : "-";
+      },
     },
     {
       key: "progress", header: "Progress",

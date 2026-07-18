@@ -194,6 +194,8 @@ export async function transactionRoutes(app: FastifyInstance) {
         const approval = await prisma.approvalRequest.create({
           data: {
             orgId: request.orgId,
+            actionType: "TRANSACTION",
+            targetId: transaction.id,
             transactionId: transaction.id,
             requestedBy: request.userId!,
             requiredApprovals: quorumThreshold,
@@ -202,6 +204,7 @@ export async function transactionRoutes(app: FastifyInstance) {
 
         await createAuditLog(request.orgId, "APPROVAL_REQUEST", { transactionId: transaction.id, approvalId: approval.id }, request.userId, request);
         triggerWebhookEvents(request.orgId, "transaction.submitted", { transactionId: transaction.id, requiresConsensus: true, approvalId: approval.id, walletId, to, value });
+        triggerWebhookEvents(request.orgId, "approval.requested", { approvalId: approval.id, actionType: "TRANSACTION", transactionId: transaction.id, requestedBy: request.userId, requiredApprovals: approval.requiredApprovals });
 
         return sendSuccess(reply, {
           transactionId: transaction.id,

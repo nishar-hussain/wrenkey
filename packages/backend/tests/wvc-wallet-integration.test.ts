@@ -41,6 +41,12 @@ beforeAll(async () => {
   });
   token = jwt;
 
+  await prisma.orgConfig.upsert({
+    where: { orgId },
+    update: { config: { rootQuorumMembers: [userId], rootQuorumThreshold: 1 } },
+    create: { orgId, config: { rootQuorumMembers: [userId], rootQuorumThreshold: 1 } },
+  });
+
   operatorKeys = generateOperatorKeyPair();
 
   // Create WVC app + operator + deployment + provision + set-live

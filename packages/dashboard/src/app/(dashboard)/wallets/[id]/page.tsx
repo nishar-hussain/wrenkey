@@ -119,6 +119,10 @@ export default function WalletDetailPage() {
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [securityLoading, setSecurityLoading] = useState<string | null>(null);
 
+  const [quorumConfigured, setQuorumConfigured] = useState<boolean | null>(null);
+  const [quorumCheckLoading, setQuorumCheckLoading] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState<any | null>(null);
+
   const fetchData = useCallback(async () => {
     if (!token) return;
     setLoading(true);
@@ -155,12 +159,46 @@ export default function WalletDetailPage() {
     } finally { setBalanceLoading(false); }
   };
 
+  const fetchQuorumStatus = useCallback(async () => {
+    if (!token) return;
+    setQuorumCheckLoading(true);
+    try {
+      const quorumRes: any = await apiFetch("/quorum", { token }).catch(() => null);
+      if (quorumRes) {
+        setQuorumConfigured(quorumRes.memberIds && quorumRes.memberIds.length > 0);
+      }
+      const approvalRes: any = await apiFetch(`/approval-requests?status=PENDING&limit=50`, { token }).catch(() => null);
+      if (approvalRes && approvalRes.data) {
+        const walletApprovals = approvalRes.data.filter(
+          (r: any) => r.targetId === params.id && r.status === "PENDING"
+        );
+        setPendingApproval(walletApprovals.length > 0 ? walletApprovals[0] : null);
+      }
+    } catch {
+      setQuorumConfigured(false);
+    } finally {
+      setQuorumCheckLoading(false);
+    }
+  }, [token, params.id]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchQuorumStatus();
+    }
+  }, [isAuthenticated, fetchQuorumStatus]);
+
   const handleSecurityAction = async (action: "freeze" | "unfreeze" | "rotate") => {
     setSecurityLoading(action);
     try {
-      await apiFetch(`/wallets/${params.id}/${action}`, { method: "POST", token: token! });
-      addToast(`Wallet ${action}${action === "freeze" ? "d" : "d"} successfully`, "success");
-      fetchData();
+      const res: any = await apiFetch(`/wallets/${params.id}/${action}`, { method: "POST", token: token! });
+      if (res && res.status === "AWAITING_APPROVAL") {
+        const actionLabels: Record<string, string> = { freeze: "Freeze", unfreeze: "Unfreeze", rotate: "Rotate keys" };
+        addToast(`Quorum approval required — ${res.approvedBy.length}/${res.requiredApprovals} approvals for ${actionLabels[action]}`, "info");
+        fetchQuorumStatus();
+      } else {
+        addToast(`Wallet ${action}${action === "freeze" ? "d" : "d"} successfully`, "success");
+        fetchData();
+      }
     } catch (err: any) {
       addToast(err.message || `Failed to ${action} wallet`, "error");
     } finally { setSecurityLoading(null); }
@@ -174,8 +212,13 @@ export default function WalletDetailPage() {
         body: JSON.stringify({}),
         token: token!,
       });
-      setSeedPhrase(res.mnemonic || "");
-      setShowSeedPhrase(true);
+      if (res && res.status === "AWAITING_APPROVAL") {
+        addToast(`Quorum approval required — ${res.approvedBy.length}/${res.requiredApprovals} approvals for seed phrase reveal`, "info");
+        fetchQuorumStatus();
+      } else {
+        setSeedPhrase(res.mnemonic || "");
+        setShowSeedPhrase(true);
+      }
     } catch (err: any) {
       addToast(err.message || "Failed to reveal seed phrase", "error");
     } finally {
@@ -235,7 +278,15 @@ export default function WalletDetailPage() {
         body: JSON.stringify(body),
         token: token!,
       });
-      setExportData(res);
+      if (res && res.status === "AWAITING_APPROVAL") {
+        addToast(`Quorum approval required — ${res.approvedBy.length}/${res.requiredApprovals} approvals for wallet export`, "info");
+        setShowExport(false);
+        setExportPassphrase("");
+        setExportPassConfirm("");
+        fetchQuorumStatus();
+      } else {
+        setExportData(res);
+      }
     } catch (err: any) {
       addToast(err.message || "Failed to export wallet", "error");
     } finally {
@@ -332,7 +383,7 @@ export default function WalletDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" onClick={() => router.push(`/transactions?walletId=${wallet.id}`)}>View Transactions</Button>
-          <Button onClick={() => { setShowExport(true); setExportData(null); setExportPassphrase(""); setExportPassConfirm(""); }}>Export</Button>
+          <Button onClick={() => { setShowExport(true); setExportData(null); setExportPassphrase(""); setExportPassConfirm(""); }} disabled={quorumConfigured === false}>Export</Button>
           <Button variant="secondary" onClick={() => { setEditName(wallet.name); setEditTags(wallet.tags.filter((t) => !t.startsWith("custom-token:")).join(", ")); setShowEdit(true); }}>Edit</Button>
           <Button variant="secondary" onClick={() => setShowDeleteConfirm(true)}>Delete</Button>
         </div>
@@ -353,6 +404,31 @@ export default function WalletDetailPage() {
         </div>
       )}
 
+      {quorumConfigured === false && !quorumCheckLoading && (
+        <div className="mb-6 p-4 rounded-lg border bg-red-50 border-red-200">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-red-800">Root Quorum Required</span>
+          </div>
+          <p className="text-xs mt-1 text-red-600">
+            Sensitive wallet operations (export, freeze, unfreeze, rotate) are disabled until an org admin sets up Root Quorum in{" "}
+            <a href="/team/root-quorum" className="underline font-medium">Team &rarr; Root Quorum</a>.
+          </p>
+        </div>
+      )}
+
+      {pendingApproval && (
+        <div className="mb-6 p-4 rounded-lg border bg-blue-50 border-blue-200">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-blue-800">Approval Pending</span>
+          </div>
+          <p className="text-xs mt-1 text-blue-600">
+            A <span className="font-medium capitalize">{String(pendingApproval.actionType || "").replace("WALLET_", "").replace("_", " ").toLowerCase()}</span> approval is pending:{" "}
+            <span className="font-mono">{pendingApproval.approvedBy?.length || 0}/{pendingApproval.requiredApprovals}</span> approved.{" "}
+            <a href="/approvals" className="underline font-medium">View approvals &rarr;</a>
+          </p>
+        </div>
+      )}
+
       {/* Seed Phrase Card */}
       <Card className="mb-6">
         <CardContent className="p-5">
@@ -362,7 +438,7 @@ export default function WalletDetailPage() {
                 <p className="font-medium">Seed Phrase</p>
                 <p className="text-sm text-slate-500 mt-0.5">Your seed phrase is the key to your wallet. Save it in a secure location.</p>
               </div>
-              <Button variant="secondary" onClick={handleRevealSeedPhrase} disabled={seedLoading}>
+              <Button variant="secondary" onClick={handleRevealSeedPhrase} disabled={seedLoading || quorumConfigured === false}>
                 {seedLoading ? "Loading..." : "Reveal"}
               </Button>
             </div>
@@ -405,15 +481,15 @@ export default function WalletDetailPage() {
                 {balanceLoading ? "Loading..." : "Refresh Balances"}
               </Button>
               {wallet.status === "FROZEN" ? (
-                <Button size="sm" variant="secondary" onClick={() => handleSecurityAction("unfreeze")} disabled={securityLoading === "unfreeze"}>
+                <Button size="sm" variant="secondary" onClick={() => handleSecurityAction("unfreeze")} disabled={securityLoading === "unfreeze" || quorumConfigured === false}>
                   {securityLoading === "unfreeze" ? "Unfreezing..." : "Unfreeze"}
                 </Button>
               ) : (
-                <Button size="sm" variant="secondary" onClick={() => handleSecurityAction("freeze")} disabled={securityLoading === "freeze"}>
+                <Button size="sm" variant="secondary" onClick={() => handleSecurityAction("freeze")} disabled={securityLoading === "freeze" || quorumConfigured === false}>
                   {securityLoading === "freeze" ? "Freezing..." : "Freeze"}
                 </Button>
               )}
-              <Button size="sm" variant="secondary" onClick={() => handleSecurityAction("rotate")} disabled={securityLoading === "rotate"}>
+              <Button size="sm" variant="secondary" onClick={() => handleSecurityAction("rotate")} disabled={securityLoading === "rotate" || quorumConfigured === false}>
                 {securityLoading === "rotate" ? "Rotating..." : "Rotate Keys"}
               </Button>
             </div>

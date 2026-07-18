@@ -39,6 +39,12 @@ beforeAll(async () => {
     data: { userId, token: jwt, type: "READ_WRITE", expiresAt: new Date(Date.now() + 3600 * 1000) },
   });
   token = jwt;
+
+  await prisma.orgConfig.upsert({
+    where: { orgId },
+    update: { config: { rootQuorumMembers: [userId], rootQuorumThreshold: 1 } },
+    create: { orgId, config: { rootQuorumMembers: [userId], rootQuorumThreshold: 1 } },
+  });
 });
 
 afterAll(async () => {

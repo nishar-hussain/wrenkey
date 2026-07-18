@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import prisma from "../../db.js";
 import { authMiddleware } from "../../middleware/auth.js";
+import { quorumMiddleware } from "../../middleware/quorum.js";
 import { sendSuccess, sendError, ValidationError, NotFoundError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
 import { parsePagination } from "../../utils/pagination.js";
@@ -350,7 +351,7 @@ export async function walletRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post("/wallets/:id/export", { preHandler: [authMiddleware] }, async (request, reply) => {
+  app.post("/wallets/:id/export", { preHandler: [authMiddleware, quorumMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const body = (request.body || {}) as { passphrase?: string };
@@ -362,6 +363,29 @@ export async function walletRoutes(app: FastifyInstance) {
       if (wallet.status === "FROZEN") throw new ValidationError("Cannot export a frozen wallet");
       if (isWvcWallet(wallet.encryptedSeed)) {
         throw new ValidationError("Cannot export a WVC-managed wallet — the seed is generated and held inside the enclave and never leaves it");
+      }
+
+      if (request.quorumRequired) {
+        const approval = await prisma.approvalRequest.create({
+          data: {
+            orgId: request.orgId,
+            actionType: "WALLET_EXPORT",
+            targetId: id,
+            actionPayload: passphrase ? { passphrase } : undefined,
+            requestedBy: request.userId!,
+            requiredApprovals: request.quorumThreshold!,
+          },
+        });
+        triggerWebhookEvents(request.orgId, "approval.requested", {
+          approvalId: approval.id, actionType: "WALLET_EXPORT", walletId: id, requestedBy: request.userId, requiredApprovals: approval.requiredApprovals,
+        });
+        await createAuditLog(request.orgId, "APPROVAL_REQUEST", { approvalId: approval.id, actionType: "WALLET_EXPORT", walletId: id }, request.userId, request);
+        return sendSuccess(reply, {
+          status: "AWAITING_APPROVAL",
+          approvalId: approval.id,
+          approvedBy: approval.approvedBy,
+          requiredApprovals: approval.requiredApprovals,
+        }, 201);
       }
 
       const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
@@ -390,11 +414,33 @@ export async function walletRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post("/wallets/:id/freeze", { preHandler: [authMiddleware] }, async (request, reply) => {
+  app.post("/wallets/:id/freeze", { preHandler: [authMiddleware, quorumMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const wallet = await prisma.wallet.findFirst({ where: { id, orgId: request.orgId } });
       if (!wallet) throw new NotFoundError("Wallet");
+
+      if (request.quorumRequired) {
+        const approval = await prisma.approvalRequest.create({
+          data: {
+            orgId: request.orgId,
+            actionType: "WALLET_FREEZE",
+            targetId: id,
+            requestedBy: request.userId!,
+            requiredApprovals: request.quorumThreshold!,
+          },
+        });
+        triggerWebhookEvents(request.orgId, "approval.requested", {
+          approvalId: approval.id, actionType: "WALLET_FREEZE", walletId: id, requestedBy: request.userId, requiredApprovals: approval.requiredApprovals,
+        });
+        await createAuditLog(request.orgId, "APPROVAL_REQUEST", { approvalId: approval.id, actionType: "WALLET_FREEZE", walletId: id }, request.userId, request);
+        return sendSuccess(reply, {
+          status: "AWAITING_APPROVAL",
+          approvalId: approval.id,
+          approvedBy: approval.approvedBy,
+          requiredApprovals: approval.requiredApprovals,
+        }, 201);
+      }
 
       await prisma.wallet.update({
         where: { id },
@@ -410,11 +456,33 @@ export async function walletRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post("/wallets/:id/unfreeze", { preHandler: [authMiddleware] }, async (request, reply) => {
+  app.post("/wallets/:id/unfreeze", { preHandler: [authMiddleware, quorumMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const wallet = await prisma.wallet.findFirst({ where: { id, orgId: request.orgId } });
       if (!wallet) throw new NotFoundError("Wallet");
+
+      if (request.quorumRequired) {
+        const approval = await prisma.approvalRequest.create({
+          data: {
+            orgId: request.orgId,
+            actionType: "WALLET_UNFREEZE",
+            targetId: id,
+            requestedBy: request.userId!,
+            requiredApprovals: request.quorumThreshold!,
+          },
+        });
+        triggerWebhookEvents(request.orgId, "approval.requested", {
+          approvalId: approval.id, actionType: "WALLET_UNFREEZE", walletId: id, requestedBy: request.userId, requiredApprovals: approval.requiredApprovals,
+        });
+        await createAuditLog(request.orgId, "APPROVAL_REQUEST", { approvalId: approval.id, actionType: "WALLET_UNFREEZE", walletId: id }, request.userId, request);
+        return sendSuccess(reply, {
+          status: "AWAITING_APPROVAL",
+          approvalId: approval.id,
+          approvedBy: approval.approvedBy,
+          requiredApprovals: approval.requiredApprovals,
+        }, 201);
+      }
 
       await prisma.wallet.update({
         where: { id },
@@ -430,7 +498,7 @@ export async function walletRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post("/wallets/:id/rotate", { preHandler: [authMiddleware] }, async (request, reply) => {
+  app.post("/wallets/:id/rotate", { preHandler: [authMiddleware, quorumMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const wallet = await prisma.wallet.findFirst({
@@ -439,6 +507,33 @@ export async function walletRoutes(app: FastifyInstance) {
       });
       if (!wallet) throw new NotFoundError("Wallet");
       if (wallet.status !== "ACTIVE") throw new ValidationError("Only active wallets can be rotated");
+
+      if (request.quorumRequired) {
+        if (isWvcWallet(wallet.encryptedSeed) && wallet.accounts.length > 1) {
+          throw new ValidationError(
+            "Cannot rotate a multi-account WVC-managed wallet — the enclave exposes only the primary derived address. Remove extra accounts before rotating.",
+          );
+        }
+        const approval = await prisma.approvalRequest.create({
+          data: {
+            orgId: request.orgId,
+            actionType: "WALLET_ROTATE",
+            targetId: id,
+            requestedBy: request.userId!,
+            requiredApprovals: request.quorumThreshold!,
+          },
+        });
+        triggerWebhookEvents(request.orgId, "approval.requested", {
+          approvalId: approval.id, actionType: "WALLET_ROTATE", walletId: id, requestedBy: request.userId, requiredApprovals: approval.requiredApprovals,
+        });
+        await createAuditLog(request.orgId, "APPROVAL_REQUEST", { approvalId: approval.id, actionType: "WALLET_ROTATE", walletId: id }, request.userId, request);
+        return sendSuccess(reply, {
+          status: "AWAITING_APPROVAL",
+          approvalId: approval.id,
+          approvedBy: approval.approvedBy,
+          requiredApprovals: approval.requiredApprovals,
+        }, 201);
+      }
 
       // ─── WVC path: rotate the seed through the enclave (PRD §25.1) ──────────
       // The backend never sees the plaintext seed; it only gets a new seed handle

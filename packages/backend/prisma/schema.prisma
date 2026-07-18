@@ -241,7 +241,11 @@ model SpendingLimit {
 model ApprovalRequest {
   id                String   @id @default(uuid())
   orgId             String   @map("org_id")
-  transactionId     String   @map("transaction_id")
+  transactionId     String?  @map("transaction_id")
+  actionType        String   @default("TRANSACTION") @map("action_type")
+  targetId          String   @map("target_id")
+  actionPayload     Json?    @map("action_payload")
+  result            Json?    @map("result")
   requestedBy       String   @map("requested_by")
   approvedBy        String[] @default([])
   rejectedBy        String[] @default([])
@@ -254,6 +258,8 @@ model ApprovalRequest {
 
   @@index([orgId, status])
   @@index([transactionId])
+  @@index([targetId])
+  @@index([actionType])
   @@map("approval_requests")
 }
 
