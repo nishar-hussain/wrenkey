@@ -124,12 +124,14 @@ export default function SendTransactionPage() {
         addToast(`Transaction blocked: ${res.reason}`, "error");
       } else if (res.requiresConsensus) {
         addToast(`Transaction requires approval (${res.approvalId})`, "info");
+      } else if (res.confirmed) {
+        addToast(`Transaction confirmed! Hash: ${res.txHash?.slice(0, 16)}...`, "success");
+        if (res.explorerUrl) window.open(res.explorerUrl, "_blank");
+        router.push(`/transactions/${res.transactionId}`);
       } else {
-        const riskMsg = res.riskScore ? ` | Risk: ${res.riskScore}` : "";
-        addToast(`Transaction sent! Hash: ${res.txHash?.slice(0, 16)}...${riskMsg}`, "success");
-        setForm({ walletId: "", to: "", value: "", chain: "sepolia", gasLimit: "21000", maxFeePerGas: "", maxPriorityFeePerGas: "", data: "", speed: "standard" });
-        setEstimatedFee(null);
-        setSimResult(null);
+        addToast(`Transaction broadcast but not yet confirmed. Hash: ${res.txHash?.slice(0, 16)}... Check Etherscan.`, "info");
+        if (res.explorerUrl) window.open(res.explorerUrl, "_blank");
+        router.push(`/transactions/${res.transactionId}`);
       }
     } catch (err: any) {
       addToast(err.message || "Failed to send transaction", "error");

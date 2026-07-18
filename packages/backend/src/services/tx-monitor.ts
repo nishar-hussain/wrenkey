@@ -5,7 +5,7 @@ import { notifyTransactionStatus } from "./websocket.js";
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 
-export function startTransactionMonitor(intervalMs = 30000) {
+export function startTransactionMonitor(intervalMs = 10000) {
   if (monitorInterval) return;
 
   monitorInterval = setInterval(async () => {

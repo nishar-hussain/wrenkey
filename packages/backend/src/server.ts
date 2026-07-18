@@ -5,6 +5,26 @@ import { registerWebSocketGateway } from "./services/websocket.js";
 import { seedChains } from "./services/chain.js";
 import { startTransactionMonitor, stopTransactionMonitor } from "./services/tx-monitor.js";
 import { processPendingDeliveries } from "./modules/webhook/routes.js";
+import prisma from "./db.js";
+
+async function cleanupStaleTransactions() {
+  try {
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const result = await prisma.transaction.updateMany({
+      where: {
+        status: "SIGNED",
+        txHash: null,
+        createdAt: { lt: tenMinAgo },
+      },
+      data: { status: "FAILED", error: "Stale transaction — broadcast never completed" },
+    });
+    if (result.count > 0) {
+      console.log(`[CLEANUP] Marked ${result.count} stale SIGNED transactions as FAILED`);
+    }
+  } catch (err) {
+    console.warn("[CLEANUP] Could not clean up stale transactions:", err);
+  }
+}
 
 async function start() {
   const app = await buildApp();
@@ -20,6 +40,8 @@ async function start() {
   } catch (err) {
     app.log.warn("Failed to seed chains, continuing anyway");
   }
+
+  await cleanupStaleTransactions();
 
   let webhookInterval: ReturnType<typeof setInterval> | null = null;
 

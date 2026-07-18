@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import prisma from "../../db.js";
 import { config } from "../../config.js";
 import { authMiddleware } from "../../middleware/auth.js";
-import { sendSuccess, sendError, ValidationError, NotFoundError, ForbiddenError } from "../../utils/errors.js";
+import { sendSuccess, sendError, ValidationError, NotFoundError, ForbiddenError, AppError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
 import {
   decryptSeedFromStorage,
@@ -72,18 +72,66 @@ export async function transactionRoutes(app: FastifyInstance) {
       const chainInfo = await getChainById(targetAccount.chainId);
       const numericValue = parseFloat(value);
 
-      // Resolve gas params from speed preset if explicit values not provided (C6)
+      // ─── Resolve gas params (EIP-1559) ───────────────────────────────────
+      // Always fetch fresh fee data from the RPC. Never sign with zero gas.
       let resolvedMaxFeePerGas = maxFeePerGas;
       let resolvedMaxPriorityFeePerGas = maxPriorityFeePerGas;
-      if (speed && !maxFeePerGas) {
+
+      if (!resolvedMaxFeePerGas) {
         try {
-          const gasPrices = await getGasPrice(chainInfo.rpcUrl);
-          const speedMap = { slow: gasPrices.slow, standard: gasPrices.standard, fast: gasPrices.fast };
-          resolvedMaxFeePerGas = speedMap[speed];
-          if (!resolvedMaxPriorityFeePerGas) {
-            resolvedMaxPriorityFeePerGas = (BigInt(resolvedMaxFeePerGas) / 2n).toString();
+          const feeProvider = new ethers.JsonRpcProvider(chainInfo.rpcUrl);
+          const feeData = await Promise.race([
+            feeProvider.getFeeData(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("RPC timeout fetching fee data")), 15000)),
+          ]) as any;
+
+          const baseFee = feeData.gasPrice || feeData.maxFeePerGas;
+          if (!baseFee) {
+            throw new AppError(502, "RPC returned no gas price data — cannot sign transaction without gas parameters");
           }
-        } catch { /* gas price fetch failed — fall back to network defaults */ }
+
+          // Apply speed multiplier
+          const speedMultiplier: Record<string, bigint> = {
+            slow: 9n,
+            standard: 12n,
+            fast: 15n,
+          };
+          const mult = speedMultiplier[speed || "standard"] || 12n;
+          resolvedMaxFeePerGas = (BigInt(baseFee) * mult / 10n).toString();
+
+          if (!resolvedMaxPriorityFeePerGas) {
+            // Priority fee = 10% of max fee, min 1 gwei
+            const priorityFee = BigInt(baseFee) / 10n;
+            const minPriority = ethers.parseUnits("1", "gwei");
+            resolvedMaxPriorityFeePerGas = (priorityFee > minPriority ? priorityFee : minPriority).toString();
+          }
+        } catch (feeErr: any) {
+          if (feeErr instanceof AppError) throw feeErr;
+          throw new AppError(502, `Could not fetch gas price from RPC: ${feeErr.message}. Check your chain's RPC URL.`);
+        }
+      }
+
+      if (!resolvedMaxPriorityFeePerGas) {
+        resolvedMaxPriorityFeePerGas = ethers.parseUnits("1", "gwei").toString();
+      }
+
+      // ─── Resolve gas limit ────────────────────────────────────────────────
+      let resolvedGasLimit = gasLimit;
+      if (!resolvedGasLimit) {
+        try {
+          const estProvider = new ethers.JsonRpcProvider(chainInfo.rpcUrl);
+          const estimated = await Promise.race([
+            estProvider.estimateGas({
+              to, value: ethers.parseEther(value), data: data || undefined,
+              from: targetAccount.address,
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("RPC timeout")), 15000)),
+          ]) as bigint;
+          // Add 20% buffer
+          resolvedGasLimit = (estimated * 120n / 100n).toString();
+        } catch {
+          resolvedGasLimit = "21000";
+        }
       }
 
       // Contract Interface ABI decoding
@@ -169,10 +217,11 @@ export async function transactionRoutes(app: FastifyInstance) {
         const tx: ethers.TransactionRequest = {
           to, value: ethers.parseEther(value), chainId: chainInfo.chainId,
           nonce: consensusNonce,
-          gasLimit: gasLimit ? BigInt(gasLimit) : undefined,
-          maxFeePerGas: resolvedMaxFeePerGas ? BigInt(resolvedMaxFeePerGas) : undefined,
-          maxPriorityFeePerGas: resolvedMaxPriorityFeePerGas ? BigInt(resolvedMaxPriorityFeePerGas) : undefined,
+          gasLimit: BigInt(resolvedGasLimit),
+          maxFeePerGas: BigInt(resolvedMaxFeePerGas),
+          maxPriorityFeePerGas: BigInt(resolvedMaxPriorityFeePerGas),
           data: data || undefined,
+          type: 2,
         };
 
         const signResult = await signTxForWallet(request.orgId!, wallet.encryptedSeed, targetAccount.index, targetAccount.chain.derivationPath, tx);
@@ -180,10 +229,10 @@ export async function transactionRoutes(app: FastifyInstance) {
         const wvcAppProof = signResult.appProof ?? null;
         const wvcDevMode = signResult.devMode ?? false;
 
-      const transaction = await prisma.transaction.create({
-        data: {
-          accountId: targetAccount.id, orgId: request.orgId, chain: chainInfo.name,
-          to, value, nonce: consensusNonce, gasLimit, maxFeePerGas: resolvedMaxFeePerGas, maxPriorityFeePerGas: resolvedMaxPriorityFeePerGas, data, status: "SIGNED", signedTx, riskScore: risk.score,
+        const transaction = await prisma.transaction.create({
+          data: {
+            accountId: targetAccount.id, orgId: request.orgId, chain: chainInfo.name,
+            to, value, nonce: consensusNonce, gasLimit: resolvedGasLimit, maxFeePerGas: resolvedMaxFeePerGas, maxPriorityFeePerGas: resolvedMaxPriorityFeePerGas, data, status: "SIGNED", signedTx, riskScore: risk.score,
             sponsored: isSponsored,
           },
         });
@@ -218,15 +267,52 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       lockId = await acquireNonceLock(targetAccount.address);
       lockedAddress = targetAccount.address;
-      const nonce = await getNextNonce(targetAccount.address, chainInfo.rpcUrl);
+
+      // Pre-send balance check
+      try {
+        const balProvider = new ethers.JsonRpcProvider(chainInfo.rpcUrl);
+        const senderBalance = await Promise.race([
+          balProvider.getBalance(targetAccount.address),
+          new Promise<bigint>((_, reject) => setTimeout(() => reject(new Error("RPC timeout")), 15000)),
+        ]);
+        const requiredValue = ethers.parseEther(value);
+        const requiredGas = BigInt(resolvedGasLimit) * BigInt(resolvedMaxFeePerGas);
+        if (senderBalance < requiredValue + requiredGas) {
+          throw new AppError(402, `Insufficient funds. Balance: ${ethers.formatEther(senderBalance)} ETH. Required: ${ethers.formatEther(requiredValue + requiredGas)} ETH (value + gas). Get test ETH from https://sepoliafaucet.com`);
+        }
+      } catch (balanceErr: any) {
+        if (balanceErr instanceof AppError) throw balanceErr;
+        console.warn("[tx.sign] Balance check failed:", balanceErr.message);
+      }
+
+      // Clean up stale SIGNED transactions from previous failed attempts
+      // so they don't block the nonce sequence
+      await prisma.transaction.updateMany({
+        where: {
+          accountId: targetAccount.id,
+          status: "SIGNED",
+          txHash: null,
+        },
+        data: { status: "FAILED", error: "Cleaned up before new transaction" },
+      }).catch(() => {});
+
+      // Use "latest" nonce — this gets the actual mined transaction count,
+      // NOT "pending" which includes stuck mempool transactions that will
+      // never confirm. This ensures we use the correct next nonce.
+      const nonceProvider = new ethers.JsonRpcProvider(chainInfo.rpcUrl);
+      const nonce = await Promise.race([
+        nonceProvider.getTransactionCount(targetAccount.address, "latest"),
+        new Promise<number>((_, reject) => setTimeout(() => reject(new Error("RPC timeout fetching nonce")), 15000)),
+      ]);
 
       const tx: ethers.TransactionRequest = {
         to, value: ethers.parseEther(value), chainId: chainInfo.chainId,
         nonce,
-        gasLimit: gasLimit ? BigInt(gasLimit) : undefined,
-        maxFeePerGas: resolvedMaxFeePerGas ? BigInt(resolvedMaxFeePerGas) : undefined,
-        maxPriorityFeePerGas: resolvedMaxPriorityFeePerGas ? BigInt(resolvedMaxPriorityFeePerGas) : undefined,
+        gasLimit: BigInt(resolvedGasLimit),
+        maxFeePerGas: BigInt(resolvedMaxFeePerGas),
+        maxPriorityFeePerGas: BigInt(resolvedMaxPriorityFeePerGas),
         data: data || undefined,
+        type: 2, // EIP-1559 transaction
       };
 
       const signResult = await signTxForWallet(request.orgId!, wallet.encryptedSeed, targetAccount.index, targetAccount.chain.derivationPath, tx);
@@ -237,7 +323,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       const transaction = await prisma.transaction.create({
         data: {
           accountId: targetAccount.id, orgId: request.orgId, chain: chainInfo.name,
-          to, value, nonce, gasLimit, maxFeePerGas: resolvedMaxFeePerGas, maxPriorityFeePerGas: resolvedMaxPriorityFeePerGas, data, status: "SIGNED", signedTx, riskScore: risk.score,
+          to, value, nonce, gasLimit: resolvedGasLimit, maxFeePerGas: resolvedMaxFeePerGas, maxPriorityFeePerGas: resolvedMaxPriorityFeePerGas, data, status: "SIGNED", signedTx, riskScore: risk.score,
           sponsored: isSponsored,
         },
       });
@@ -263,9 +349,36 @@ export async function transactionRoutes(app: FastifyInstance) {
           notifyLargeTransaction(request.orgId, hash, value, chainInfo.name, to).catch(() => {});
         }
 
+        // Wait up to 60 seconds for on-chain confirmation
+        let confirmed = false;
+        try {
+          const confProvider = new ethers.JsonRpcProvider(chainInfo.rpcUrl);
+          for (let i = 0; i < 30; i++) {
+            await new Promise((r) => setTimeout(r, 2000));
+            const receipt = await Promise.race([
+              confProvider.getTransactionReceipt(hash),
+              new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 10000)),
+            ]) as any;
+            if (receipt) {
+              confirmed = receipt.status === 1;
+              if (confirmed) {
+                await prisma.transaction.update({ where: { id: transaction.id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+                triggerWebhookEvents(request.orgId, "transaction.confirmed", { transactionId: transaction.id, txHash: hash });
+              } else {
+                await prisma.transaction.update({ where: { id: transaction.id }, data: { status: "FAILED", error: "Transaction reverted on-chain" } });
+                return sendError(reply, new AppError(400, `Transaction reverted on-chain. Check: ${chainInfo.blockExplorerUrl}/tx/${hash}`));
+              }
+              break;
+            }
+          }
+        } catch { /* confirmation wait failed — tx still in mempool */ }
+
         return sendSuccess(reply, {
-          transactionId: transaction.id, txHash: hash, status: "BROADCAST",
+          transactionId: transaction.id, txHash: hash,
+          status: confirmed ? "CONFIRMED" : "BROADCAST",
+          confirmed,
           to, value, nonce, chain: chainInfo.name, riskScore: risk.score, riskFlags: risk.flags,
+          explorerUrl: chainInfo.blockExplorerUrl ? `${chainInfo.blockExplorerUrl}/tx/${hash}` : undefined,
           ...(wvcAppProof ? { wvcManaged: true, devMode: wvcDevMode, appProof: wvcAppProof } : {}),
         }, 201);
       } catch (broadcastErr: any) {
