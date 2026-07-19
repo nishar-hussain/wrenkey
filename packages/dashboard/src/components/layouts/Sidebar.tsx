@@ -8,7 +8,7 @@ import { useAuth } from "@/components/providers/Providers";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Building2, Settings, UsersRound, Tag, Shield, Activity, CreditCard, Webhook, Wallet, Wrench, Layers, Cloud,
-  Menu, X, FileCode, Send, Key, Bot, CheckCircle, BarChart3, Lock, ScrollText, DollarSign, ChevronDown,
+  Menu, X, FileCode, Send, Key, Bot, CheckCircle, Lock, DollarSign, ChevronDown,
 } from "lucide-react";
 
 const mainNav = [
@@ -35,9 +35,7 @@ const orgSettingsChildren = [
   { href: "/tags", label: "Tags", icon: Tag },
   { href: "/policies", label: "Policies", icon: Shield },
   { href: "/activity-logs", label: "Activity Log", icon: Activity },
-  { href: "/audit-logs", label: "Audit Logs", icon: ScrollText },
   { href: "/billing", label: "Billing", icon: CreditCard },
-  { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/webhooks", label: "Webhooks", icon: Webhook },
 ];
 
