@@ -13,7 +13,14 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Users, Shield, Bot, Plus, Copy, Search, ChevronDown, User, Settings, AlertTriangle } from "lucide-react";
+import { Users, Shield, Bot, Plus, Copy, Search, ChevronDown, User, Settings, AlertTriangle, Tag as TagIcon, Check } from "lucide-react";
+
+interface TagRow {
+  id: string;
+  name: string;
+  type: string;
+  usageCount: number;
+}
 
 interface TeamMember {
   id: string;
@@ -48,15 +55,35 @@ export default function TeamPage() {
   const [credentials, setCredentials] = useState<any>(null);
   const [inviteResult, setInviteResult] = useState<any>(null);
 
+  const [newUserTags, setNewUserTags] = useState<string[]>([]);
+
+  const [tagDropdownUserId, setTagDropdownUserId] = useState<string | null>(null);
+  const [tagDropdownSearch, setTagDropdownSearch] = useState("");
+  const [tagDropdownCoords, setTagDropdownCoords] = useState({ top: 0, left: 0 });
+  const [allUserTags, setAllUserTags] = useState<TagRow[]>([]);
+  const [tagSaveLoading, setTagSaveLoading] = useState(false);
+  const tagDropdownRef = useRef<HTMLDivElement>(null);
+
   const [stats, setStats] = useState({ users: 0, rootUsers: 0, serviceUsers: 0 });
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowNewUserMenu(false);
+      if (tagDropdownRef.current && !tagDropdownRef.current.contains(e.target as Node)) setTagDropdownUserId(null);
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const fetchAvailableTags = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res: any = await apiFetch("/tags?type=user&limit=200", { token });
+      setAllUserTags(res.data || []);
+    } catch { /* silently fail */ }
+  }, [token]);
+
+  useEffect(() => { if (token) fetchAvailableTags(); }, [token, fetchAvailableTags]);
 
   const fetchMembers = useCallback(async () => {
     if (!token) return;
@@ -90,7 +117,9 @@ export default function TeamPage() {
     if (!newEmail.trim()) { addToast("Email required", "error"); return; }
     setCreateLoading(true);
     try {
-      const res: any = await apiFetch("/users", { method: "POST", body: JSON.stringify({ email: newEmail, name: newName, role: "DEVELOPER" }), token: token! });
+      const body: any = { email: newEmail, name: newName, role: "DEVELOPER" };
+      if (newUserTags.length > 0) body.tags = newUserTags;
+      const res: any = await apiFetch("/users", { method: "POST", body: JSON.stringify(body), token: token! });
       setInviteResult(res);
       if (res.emailStatus === "sent") {
         addToast("Invitation email sent", "success");
@@ -112,6 +141,31 @@ export default function TeamPage() {
       addToast("Service user created", "success"); fetchMembers();
     } catch (err: any) { addToast(err.message || "Failed", "error"); } finally { setCreateLoading(false); }
   };
+
+  const openTagDropdown = (userId: string, event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    setTagDropdownCoords({ top: rect.bottom + 4 + window.scrollY, left: rect.left + window.scrollX });
+    setTagDropdownUserId(tagDropdownUserId === userId ? null : userId);
+    setTagDropdownSearch("");
+  };
+
+  const toggleTagOnUser = async (userId: string, tagName: string) => {
+    const member = members.find(m => m.id === userId);
+    if (!member) return;
+    const currentTags = member.tags || [];
+    const newTags = currentTags.includes(tagName)
+      ? currentTags.filter(t => t !== tagName)
+      : [...currentTags, tagName];
+    setTagSaveLoading(true);
+    try {
+      const res: any = await apiFetch(`/users/${userId}`, { method: "PATCH", body: JSON.stringify({ tags: newTags }), token: token! });
+      setMembers(prev => prev.map(m => m.id === userId ? { ...m, tags: res.tags || newTags } : m));
+    } catch (err: any) { addToast(err.message || "Failed to update tags", "error"); } finally { setTagSaveLoading(false); }
+  };
+
+  const filteredAvailableTags = allUserTags.filter(t =>
+    !tagDropdownSearch || t.name.toLowerCase().includes(tagDropdownSearch.toLowerCase())
+  );
 
   if (!isAuthenticated) return null;
 
@@ -163,7 +217,7 @@ export default function TeamPage() {
           </Button>
           {showNewUserMenu && (
             <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-lg z-50 p-2">
-              <button onClick={() => { setShowNewUserMenu(false); setShowTeamMemberModal(true); setNewEmail(""); setNewName(""); }} className="w-full text-left p-3 rounded-md hover:bg-slate-50 flex items-start gap-3">
+              <button onClick={() => { setShowNewUserMenu(false);               setShowTeamMemberModal(true); setNewEmail(""); setNewName(""); setNewUserTags([]); }} className="w-full text-left p-3 rounded-md hover:bg-slate-50 flex items-start gap-3">
                 <User className="w-4 h-4 text-slate-500 mt-0.5" />
                 <div><p className="text-sm font-medium">Team Member</p><p className="text-xs text-slate-400">A person on your team</p></div>
               </button>
@@ -194,7 +248,10 @@ export default function TeamPage() {
                   { key: "tags", header: "Tags", render: (m: TeamMember) => (
                     <div className="flex items-center gap-1 flex-wrap">
                       {(m.tags || []).slice(0, 2).map((t: string, i: number) => <span key={i} className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{t}</span>)}
-                      <button className="text-[10px] text-slate-400 hover:text-slate-600 border border-dashed border-slate-300 rounded px-1.5 py-0.5">Add Tag</button>
+                      {(m.tags || []).length > 2 && <span className="text-[10px] text-slate-400">+{m.tags.length - 2}</span>}
+                      <button onClick={(e) => { e.stopPropagation(); openTagDropdown(m.id, e); }} className="text-[10px] text-slate-400 hover:text-slate-600 border border-dashed border-slate-300 rounded px-1.5 py-0.5">
+                        {m.tags.length > 0 ? "Edit Tags" : "Add Tag"}
+                      </button>
                     </div>
                   )},
                   { key: "apiKeys", header: "API Keys", render: (m: TeamMember) => <span className="text-sm">{m.apiKeyCount || "—"}</span> },
@@ -226,6 +283,35 @@ export default function TeamPage() {
             <p className="text-sm text-slate-500">Invite a person to join your organization.</p>
             <div className="space-y-1"><label className="text-sm font-medium">Email</label><Input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="person@example.com" /></div>
             <div className="space-y-1"><label className="text-sm font-medium">Name (optional)</label><Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name" /></div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Tags (optional)</label>
+              <div className="flex flex-wrap gap-1 min-h-[32px] p-1.5 border border-slate-200 rounded-md">
+                {newUserTags.length === 0 && <span className="text-xs text-slate-400">No tags selected</span>}
+                {allUserTags.filter(t => newUserTags.includes(t.name)).map(t => (
+                  <button key={t.id} onClick={() => setNewUserTags(prev => prev.filter(n => n !== t.name))} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700 border border-brand-200 hover:bg-brand-100">
+                    {t.name} <span className="text-brand-400">x</span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-1 relative">
+                <select
+                  className="w-full text-xs border border-slate-200 rounded-md py-1.5 px-2 text-slate-600 bg-white"
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value === "__manage__") { window.open("/tags", "_blank"); return; }
+                    if (e.target.value && !newUserTags.includes(e.target.value)) {
+                      setNewUserTags(prev => [...prev, e.target.value]);
+                    }
+                  }}
+                >
+                  <option value="">Add a tag...</option>
+                  <option value="__manage__">-- Manage Tags --</option>
+                  {allUserTags.filter(t => !newUserTags.includes(t.name)).map(t => (
+                    <option key={t.id} value={t.name}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <div className="flex gap-2"><Button variant="secondary" onClick={() => setShowTeamMemberModal(false)} className="flex-1">Cancel</Button><Button onClick={createTeamMember} disabled={createLoading} className="flex-1">{createLoading ? "Adding..." : "Add Member"}</Button></div>
           </div>
         ) : (
@@ -246,7 +332,7 @@ export default function TeamPage() {
                 </Button>
               </div>
             </div>
-            <Button onClick={() => { setShowTeamMemberModal(false); setInviteResult(null); setNewEmail(""); setNewName(""); }} variant="secondary" className="w-full">Close</Button>
+            <Button onClick={() => { setShowTeamMemberModal(false); setInviteResult(null); setNewEmail(""); setNewName(""); setNewUserTags([]); }} variant="secondary" className="w-full">Close</Button>
           </div>
         )}
       </Modal>
@@ -267,6 +353,60 @@ export default function TeamPage() {
           </div>
         )}
       </Modal>
+
+      {tagDropdownUserId && (() => {
+        const member = members.find(m => m.id === tagDropdownUserId);
+        if (!member) return null;
+        const memberTags = member.tags || [];
+        return (
+          <div ref={tagDropdownRef} className="fixed z-[100] bg-white border border-slate-200 rounded-lg shadow-xl w-72" style={{ top: tagDropdownCoords.top, left: tagDropdownCoords.left }}>
+            <div className="p-2 border-b border-slate-100">
+              <div className="flex items-center gap-1.5 px-2 py-1.5 bg-slate-50 rounded-md border border-slate-200">
+                <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <input
+                  value={tagDropdownSearch}
+                  onChange={e => setTagDropdownSearch(e.target.value)}
+                  placeholder="Search tags..."
+                  className="flex-1 bg-transparent text-xs text-slate-700 placeholder:text-slate-400 outline-none border-none"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="max-h-60 overflow-y-auto p-1">
+              {filteredAvailableTags.length === 0 ? (
+                <div className="p-3 text-center">
+                  <p className="text-xs text-slate-400">No tags found</p>
+                  <Link href="/tags" className="text-xs text-brand-600 hover:text-brand-700 font-medium mt-1 inline-block">Create a tag</Link>
+                </div>
+              ) : (
+                filteredAvailableTags.map(tag => {
+                  const isSelected = memberTags.includes(tag.name);
+                  return (
+                    <button
+                      key={tag.id}
+                      onClick={() => toggleTagOnUser(tagDropdownUserId, tag.name)}
+                      disabled={tagSaveLoading}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-left transition-colors ${isSelected ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:bg-slate-50"}`}
+                    >
+                      <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${isSelected ? "bg-brand-600 border-brand-600" : "border-slate-300"}`}>
+                        {isSelected && <Check className="w-2.5 h-2.5 text-white" />}
+                      </span>
+                      <span className="flex-1 truncate">{tag.name}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            <div className="p-2 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[10px] text-slate-400">Selected: {memberTags.length}</span>
+              <Link href="/tags" className="text-[10px] text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1" onClick={() => setTagDropdownUserId(null)}>
+                <TagIcon className="w-3 h-3" /> Manage Tags
+              </Link>
+            </div>
+          </div>
+        );
+      })()}
+
     </div>
   );
 }
