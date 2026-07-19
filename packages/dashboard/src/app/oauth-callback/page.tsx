@@ -54,11 +54,6 @@ function OAuthCallbackContent() {
           { id: res.org.id, name: res.org.name },
         );
 
-        localStorage.setItem(
-          "wrankey_remembered_user",
-          JSON.stringify({ email: res.user.email, orgName: res.org.name }),
-        );
-
         router.push("/");
       } catch (err: any) {
         setStep("error");

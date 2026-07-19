@@ -37,6 +37,7 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
         localStorage.removeItem("wrankey_token");
         localStorage.removeItem("wrankey_user");
         localStorage.removeItem("wrankey_org");
+        localStorage.removeItem("wrankey_remembered_user");
         if (process.env.NODE_ENV !== "test") {
           window.location.href = "/login";
         }

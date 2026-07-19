@@ -91,10 +91,6 @@ function AcceptInvitationContent() {
         { id: res.user.id, email: res.user.email, role: res.user.role },
         { id: res.org.id, name: res.org.name },
       );
-      localStorage.setItem(
-        "wrankey_remembered_user",
-        JSON.stringify({ email: res.user.email, orgName: res.org.name }),
-      );
       addToast("Invitation accepted!", "success");
       router.push("/");
     } catch (err: any) {

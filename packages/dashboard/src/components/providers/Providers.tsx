@@ -32,6 +32,44 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
+const ACCOUNTS_KEY = "wrankey_accounts";
+const LEGACY_REMEMBERED_KEY = "wrankey_remembered_user";
+
+interface StoredAccount {
+  email: string;
+  orgName: string;
+  lastUsed: number;
+}
+
+function saveAccountToStorage(email: string, orgName: string) {
+  if (!email || !orgName) return;
+  try {
+    const raw = localStorage.getItem(ACCOUNTS_KEY);
+    const accounts: StoredAccount[] = raw ? JSON.parse(raw) : [];
+    const existing = accounts.find(a => a.email === email);
+    if (existing) {
+      existing.orgName = orgName;
+      existing.lastUsed = Date.now();
+    } else {
+      accounts.push({ email, orgName, lastUsed: Date.now() });
+    }
+    accounts.sort((a, b) => b.lastUsed - a.lastUsed);
+    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts.slice(0, 20)));
+  } catch { /* silently fail */ }
+}
+
+function migrateLegacyRememberedUser() {
+  try {
+    const legacy = localStorage.getItem(LEGACY_REMEMBERED_KEY);
+    if (!legacy) return;
+    const parsed = JSON.parse(legacy);
+    if (parsed?.email) {
+      saveAccountToStorage(parsed.email, parsed.orgName || "");
+    }
+    localStorage.removeItem(LEGACY_REMEMBERED_KEY);
+  } catch { /* silently fail */ }
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<{ id: string; email?: string; role: string } | null>(null);
@@ -39,17 +77,17 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    migrateLegacyRememberedUser();
+
     const stored = localStorage.getItem("wrankey_token");
     const storedUser = localStorage.getItem("wrankey_user");
     const storedOrg = localStorage.getItem("wrankey_org");
 
     if (!stored) {
-      // No token at all — mark ready and let AuthGuard redirect to login
       setReady(true);
       return;
     }
 
-    // Validate the token against the backend before trusting it
     const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
     fetch(`${API_BASE}/api/v1/auth/me`, {
       headers: {
@@ -62,23 +100,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
         return res.json();
       })
       .then((data) => {
-        // Token is valid — hydrate state from backend response (always fresh)
         setToken(stored);
         setUser(data.user);
         setOrg(data.org);
-        // Keep localStorage in sync with fresh backend data
         localStorage.setItem("wrankey_user", JSON.stringify(data.user));
         localStorage.setItem("wrankey_org", JSON.stringify(data.org));
-        // Keep remembered user in sync too
         if (data.user?.email && data.org?.name) {
-          localStorage.setItem(
-            "wrankey_remembered_user",
-            JSON.stringify({ email: data.user.email, orgName: data.org.name })
-          );
+          saveAccountToStorage(data.user.email, data.org.name);
         }
       })
       .catch(() => {
-        // Token is expired/revoked — wipe everything so login page shows cleanly
         localStorage.removeItem("wrankey_token");
         localStorage.removeItem("wrankey_user");
         localStorage.removeItem("wrankey_org");
@@ -99,6 +130,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     localStorage.setItem("wrankey_token", newToken);
     localStorage.setItem("wrankey_user", JSON.stringify(newUser));
     localStorage.setItem("wrankey_org", JSON.stringify(newOrg));
+    if (newUser?.email && newOrg?.name) {
+      saveAccountToStorage(newUser.email, newOrg.name);
+    }
   };
 
   const logout = () => {
