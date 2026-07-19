@@ -70,18 +70,46 @@ export async function orgRoutes(app: FastifyInstance) {
       };
       if (!email && !phone) throw new ValidationError("Email or phone required");
 
-      // Check if user already exists in this org
+      // Check if user already exists
+      let existingUser = null;
       if (email) {
-        const existing = await prisma.user.findFirst({ where: { orgId: request.orgId, email } });
-        if (existing) throw new ValidationError("A user with this email already exists in your organization");
+        existingUser = await prisma.user.findUnique({
+          where: { email },
+          include: { authenticators: true },
+        });
+      } else if (phone) {
+        existingUser = await prisma.user.findUnique({
+          where: { phone },
+          include: { authenticators: true },
+        });
+      }
+
+      if (existingUser) {
+        if (existingUser.orgId !== request.orgId) {
+          throw new ValidationError("A user with this email or phone already exists in another organization");
+        }
+        const hasAuthenticators = existingUser.authenticators.length > 0;
+        if (hasAuthenticators) {
+          throw new ValidationError("A user with this email or phone already exists in your organization");
+        }
       }
 
       const org = await prisma.organization.findUnique({ where: { id: request.orgId }, select: { name: true } });
 
-      const user = await prisma.user.create({
-        data: { orgId: request.orgId, name, email, phone, role: role || "DEVELOPER", tags: tags || [] },
-        select: { id: true, name: true, email: true, phone: true, role: true, tags: true, createdAt: true },
-      });
+      let user;
+      if (existingUser) {
+        // Reuse the existing pending user (updating their info in case it has changed)
+        user = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { name, role: role || "DEVELOPER", tags: tags || [] },
+          select: { id: true, name: true, email: true, phone: true, role: true, tags: true, createdAt: true },
+        });
+      } else {
+        user = await prisma.user.create({
+          data: { orgId: request.orgId, name, email, phone, role: role || "DEVELOPER", tags: tags || [] },
+          select: { id: true, name: true, email: true, phone: true, role: true, tags: true, createdAt: true },
+        });
+      }
 
       await createAuditLog(request.orgId, "USER_CREATE", { userId: user.id, email }, request.userId, request);
 

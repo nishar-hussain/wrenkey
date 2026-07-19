@@ -201,6 +201,19 @@ describe("User Routes", () => {
     expect(body.role).toBe("DEVELOPER");
   });
 
+  it("POST /users allows re-inviting/updating a pending user with no authenticators", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/users",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: "Dev User Updated", email: `dev-${suffix}@route.test`, role: "ADMIN" },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.payload);
+    expect(body.name).toBe("Dev User Updated");
+    expect(body.role).toBe("ADMIN");
+  });
+
   it("GET /users lists users", async () => {
     const res = await app.inject({
       method: "GET",
