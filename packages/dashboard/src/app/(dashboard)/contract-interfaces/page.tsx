@@ -12,7 +12,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Plus, Search, Copy, Trash2, Edit3, Code2, FileCode, Play, X } from "lucide-react";
+import { Plus, Search, Copy, Trash2, Edit3, Code2, Play, X } from "lucide-react";
 
 interface ContractInterface {
   id: string;
@@ -20,6 +20,7 @@ interface ContractInterface {
   address: string;
   notes: string;
   interfaceType: string;
+  chainType: string;
   abi: any;
   createdAt: string;
 }
@@ -57,6 +58,7 @@ export default function ContractInterfacesPage() {
   const [ifaceNotes, setIfaceNotes] = useState("");
   const [ifaceAddress, setIfaceAddress] = useState("");
   const [ifaceType, setIfaceType] = useState("custom");
+  const [chainType, setChainType] = useState("ethereum");
   const [ifaceAbi, setIfaceAbi] = useState("");
   const [abiPreview, setAbiPreview] = useState<Array<{ name: string; inputs: Array<{ name: string; type: string }> }>>([]);
   const [saving, setSaving] = useState(false);
@@ -83,7 +85,7 @@ export default function ContractInterfacesPage() {
 
   const resetForm = () => {
     setIfaceName(""); setIfaceNotes(""); setIfaceAddress("");
-    setIfaceType("custom"); setIfaceAbi(""); setAbiPreview([]);
+    setIfaceType("custom"); setChainType("ethereum"); setIfaceAbi(""); setAbiPreview([]);
     setEditingId(null);
   };
 
@@ -121,6 +123,7 @@ export default function ContractInterfacesPage() {
         notes: ifaceNotes.trim(),
         address: ifaceAddress.trim(),
         interfaceType: ifaceType,
+        chainType: chainType,
         abi: ifaceAbi.trim(),
       };
 
@@ -176,10 +179,15 @@ export default function ContractInterfacesPage() {
         </button>
       </div>
     ) : <span className="text-xs text-slate-400">—</span> },
-    { key: "type", header: "Type", render: (i: ContractInterface) => (
-      <span className={`inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${i.interfaceType === "erc20" ? "bg-blue-50 text-blue-700 border-blue-100" : i.interfaceType === "erc721" ? "bg-violet-50 text-violet-700 border-violet-100" : i.interfaceType === "erc1155" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-slate-50 text-slate-600 border-slate-200"}`}>
-        {i.interfaceType?.toUpperCase()}
-      </span>
+    { key: "type", header: "Chain / Type", render: (i: ContractInterface) => (
+      <div className="flex items-center gap-1 flex-wrap">
+        <span className={`inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${(i.chainType || "ethereum") === "ethereum" ? "bg-sky-50 text-sky-700 border-sky-100" : "bg-violet-50 text-violet-700 border-violet-100"}`}>
+          {(i.chainType || "ethereum").toUpperCase()}
+        </span>
+        <span className={`inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${i.interfaceType === "erc20" ? "bg-blue-50 text-blue-700 border-blue-100" : i.interfaceType === "erc721" ? "bg-violet-50 text-violet-700 border-violet-100" : i.interfaceType === "erc1155" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-slate-50 text-slate-600 border-slate-200"}`}>
+          {i.interfaceType?.toUpperCase()}
+        </span>
+      </div>
     )},
     { key: "createdAt", header: "Created", render: (i: ContractInterface) => <span className="text-xs text-slate-500">{new Date(i.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span> },
     { key: "id", header: "ID", render: (i: ContractInterface) => (
@@ -262,11 +270,20 @@ export default function ContractInterfacesPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium">ABI / IDL JSON</label>
+            <label className="text-sm font-medium">Blockchain</label>
+            <select value={chainType} onChange={e => setChainType(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-slate-900">
+              <option value="ethereum">Ethereum / EVM</option>
+              <option value="solana">Solana</option>
+            </select>
+            <p className="text-[10px] text-slate-400">{chainType === "ethereum" ? "Uses ABI format for EVM smart contracts" : "Uses Anchor IDL format for Solana programs"}</p>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium">{chainType === "ethereum" ? "ABI JSON" : "IDL JSON"}</label>
             <textarea
               value={ifaceAbi}
               onChange={e => handleAbiChange(e.target.value)}
-              placeholder='[{"type":"function","name":"transfer","inputs":[{"name":"recipient","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[]}]'
+              placeholder={chainType === "ethereum" ? '[{"type":"function","name":"transfer","inputs":[{"name":"recipient","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[]}]' : '{"instructions":[{"name":"transfer","accounts":[{"name":"from","isMut":true,"isSigner":true}],"args":[{"name":"amount","type":"u64"}]}]}'}
               rows={8}
               className="w-full border rounded-md px-3 py-2 text-xs font-mono resize-none bg-slate-50 dark:bg-slate-800"
             />

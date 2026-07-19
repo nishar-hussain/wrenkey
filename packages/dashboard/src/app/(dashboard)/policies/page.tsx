@@ -12,7 +12,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Plus, Search, Copy, Trash2, Edit3, X, HelpCircle } from "lucide-react";
+import { Plus, Search, Copy, Trash2, Edit3, X, HelpCircle, FileCode } from "lucide-react";
 
 const CONDITION_TYPES = [
   { value: "LESS_THAN", label: "Less than" },
@@ -65,8 +65,8 @@ function humanizeCondition(c: Condition): string {
 
 const POLICY_EXAMPLES = [
   {
-    title: "Allow a specific user to create wallets",
-    description: "Grants a specific user permission to create wallets. Activities may be upgraded over time, and thus new versions may be introduced. These policies will NOT be valid if an activity type is upgraded and requests are made on the new activity type.",
+    title: "Allow user to create wallets",
+    description: "Grants a specific user permission to create wallets.",
     json: {
       effect: "EFFECT_ALLOW",
       consensus: "approvers.any(user, user.id == '<USER_ID>')",
@@ -74,106 +74,106 @@ const POLICY_EXAMPLES = [
     }
   },
   {
-    title: "Allow users with a specific tag to create users",
-    description: "Grants permission to any user with the specified tag to create new users.",
+    title: "Allow users with tag to create users",
+    description: "Grants permission to any user with the specified tag.",
     json: {
       effect: "EFFECT_ALLOW",
-      consensus: "approvers.any(user, user.tags.contains('<TAG_ID>'))",
+      consensus: "approvers.any(user, user.tags.contains('<TAG>'))",
       condition: "activity.resource == 'USER' && activity.action == 'CREATE'"
     }
   },
   {
-    title: "Require two users with a specific tag to add policies",
-    description: "Requires approval from at least two users who share the specified tag before a policy can be created.",
+    title: "Require two tagged users for policy creation",
+    description: "Requires at least two users sharing a tag to approve policy changes.",
     json: {
       effect: "EFFECT_ALLOW",
-      consensus: "approvers.filter(user, user.tags.contains('<TAG_ID>')).count() >= 2",
+      consensus: "approvers.filter(user, user.tags.contains('<TAG>')).count() >= 2",
       condition: "activity.resource == 'POLICY' && activity.action == 'CREATE'"
     }
   },
   {
-    title: "Deny all delete actions for users with a specific tag",
-    description: "Prevents users with the specified tag from performing any delete actions.",
+    title: "Deny deletes from tagged users",
+    description: "Prevents users with a specific tag from performing any delete actions.",
     json: {
       effect: "EFFECT_DENY",
-      consensus: "approvers.any(user, user.tags.contains('<TAG_ID>'))",
+      consensus: "approvers.any(user, user.tags.contains('<TAG>'))",
       condition: "activity.action == 'DELETE'"
     }
   },
   {
-    title: "Allow a specific user (e.g. API-only user) to create a sub-org",
-    description: "Grants a specific user permission to create sub-organizations, commonly used for API-only users.",
+    title: "Allow user to create sub-orgs",
+    description: "Grants an API-only user permission to create sub-organizations.",
     json: {
       effect: "EFFECT_ALLOW",
       consensus: "approvers.any(user, user.id == '<USER_ID>')",
-      condition: "activity.resource == 'SUB_ORGANIZATION' && activity.action == 'CREATE'"
+      condition: "activity.resource == 'ORGANIZATION' && activity.action == 'CREATE'"
     }
   },
   {
-    title: "Allow a specific user to perform auth type activities",
-    description: "Grants permission to perform authentication-related activities such as creating authenticators",
+    title: "Allow only passkeys for signing",
+    description: "Restricts transaction signing to passkey-authenticated requests only. Replaces <USER_ID> with the specific user you want to allow.",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "credentials.any(credential, credential.type == 'CREDENTIAL_TYPE_WEBAUTHN_AUTHENTICATOR') && approvers.any(user, user.id == '<USER_ID>')",
+      condition: "activity.kind == 'SIGN_TRANSACTION'"
+    }
+  },
+  {
+    title: "Allow signing with a specific wallet",
+    description: "Grants a user permission to sign transactions using a specific wallet.",
     json: {
       effect: "EFFECT_ALLOW",
       consensus: "approvers.any(user, user.id == '<USER_ID>')",
-      condition: "activity.resource == 'AUTHENTICATOR' && activity.action == 'CREATE'"
+      condition: "activity.action == 'SIGN' && wallet.id == '<WALLET_ID>'"
     }
   },
   {
-    title: "Allow a specific user to perform generic OTP activities",
-    description: "Grants a specific user permission to initiate and verify OTP-based authentication.",
+    title: "Limit ERC-20 transfer amount (ABI-based)",
+    description: "Allows ERC-20 transfers with a maximum amount, using uploaded Smart Contract Interface. Requires an ABI upload for the contract.",
     json: {
       effect: "EFFECT_ALLOW",
       consensus: "approvers.any(user, user.id == '<USER_ID>')",
-      condition: "activity.resource == 'OTP_AUTH'"
+      condition: "eth.tx.function_name == 'transfer' && eth.tx.to == '<CONTRACT_ADDRESS>' && eth.tx.contract_call_args['amount'] < 1000000000000000000"
     }
   },
   {
-    title: "Allow a specific user to perform a specific activity type",
-    description: "Grants a specific user permission to execute a single, named activity type.",
+    title: "Restrict to specific contract function",
+    description: "Only allows transactions calling a specific function on a specific contract. Useful for DEX interactions.",
     json: {
       effect: "EFFECT_ALLOW",
       consensus: "approvers.any(user, user.id == '<USER_ID>')",
-      condition: "activity.type == '<ACTIVITY_TYPE>'"
+      condition: "activity.action == 'SIGN' && eth.tx.to == '<CONTRACT_ADDRESS>' && eth.tx.function_signature == '0xa9059cbb'"
     }
   },
   {
-    title: "Allow a specific credential type to perform a specific action",
-    description: "Restricts an action to requests authenticated with a particular credential type.",
-    json: {
-      effect: "EFFECT_ALLOW",
-      condition: "activity.resource == '<RESOURCE>' && activity.action == '<ACTION>' && credential.type == '<CREDENTIAL_TYPE>'"
-    }
-  },
-  {
-    title: "Require consensus from two users to sign transactions",
-    description: "Enforces a two-person approval requirement for all signing operations.",
-    json: {
-      effect: "EFFECT_ALLOW",
-      consensus: "approvers.filter(user, user.tags.contains('<TAG_ID>')).count() >= 2",
-      condition: "activity.resource == 'WALLET' && activity.action == 'SIGN'"
-    }
-  },
-  {
-    title: "Allow a specific user to sign with a specific wallet",
-    description: "Grants signing permission on a single wallet to a specific user",
+    title: "Allow testnet only transactions",
+    description: "Only allows Ethereum transactions on Sepolia testnet.",
     json: {
       effect: "EFFECT_ALLOW",
       consensus: "approvers.any(user, user.id == '<USER_ID>')",
-      condition: "activity.resource == 'WALLET' && activity.action == 'SIGN' && wallet.id == '<WALLET_ID>'"
+      condition: "activity.action == 'SIGN' && eth.tx.chain_id == 11155111"
     }
   },
   {
-    title: "Allow ERC-20 token transfers up to a limit",
-    description: "Permits ERC-20 transfers below a specified value threshold on EVM chains.",
+    title: "Require two approvers for signing",
+    description: "Enforces a two-person approval requirement for all signing operations using tag-based quorum.",
     json: {
       effect: "EFFECT_ALLOW",
-      consensus: "approvers.any(user, user.id == '<USER_ID>')",
-      condition: "activity.resource == 'WALLET' && activity.action == 'SIGN' && eth.tx.to == '<CONTRACT_ADDRESS>'"
+      consensus: "approvers.filter(user, user.tags.contains('<TAG>')).count() >= 2",
+      condition: "activity.action == 'SIGN'"
     }
   },
   {
-    title: "Allow a specific user to sign Solana transactions",
-    description: "Grants signing permission for Solana transactions to a specific user.",
+    title: "Deny all except allowlisted address",
+    description: "Explicitly deny all signing unless allowed by another policy. Use this as a safety net combined with an ALLOW policy for specific addresses.",
+    json: {
+      effect: "EFFECT_DENY",
+      condition: "activity.action == 'SIGN' && eth.tx.to != '<ALLOWED_ADDRESS>'"
+    }
+  },
+  {
+    title: "Allow Solana transfers below limit",
+    description: "Allows SOL transfers below a specified amount in lamports (1 SOL = 1,000,000,000 lamports).",
     json: {
       effect: "EFFECT_ALLOW",
       consensus: "approvers.any(user, user.id == '<USER_ID>')",
@@ -181,21 +181,21 @@ const POLICY_EXAMPLES = [
     }
   },
   {
-    title: "Allow a specific user to sign Tron transactions",
-    description: "Grants signing permission for Tron transactions to a specific user.",
+    title: "Allow signing on all EVM chains",
+    description: "Grants broad signing permission for all EVM-compatible chains. Combine with specific address or value limits for production use.",
     json: {
       effect: "EFFECT_ALLOW",
       consensus: "approvers.any(user, user.id == '<USER_ID>')",
-      condition: "activity.resource == 'WALLET' && activity.action == 'SIGN' && wallet.id == '<TRON_WALLET_ID>'"
+      condition: "activity.action == 'SIGN'"
     }
   },
   {
-    title: "Allow a specific user to sign Bitcoin transactions",
-    description: "Grants signing permission for Bitcoin transactions to a specific user.",
+    title: "Allow specific credential public key",
+    description: "Only allows requests authenticated with a specific credential public key.",
     json: {
       effect: "EFFECT_ALLOW",
-      consensus: "approvers.any(user, user.id == '<USER_ID>')",
-      condition: "activity.resource == 'WALLET' && activity.action == 'SIGN' && wallet.id == '<BITCOIN_WALLET_ID>'"
+      consensus: "credentials.any(credential, credential.id == '<CREDENTIAL_ID>')",
+      condition: "activity.action == 'SIGN'"
     }
   }
 ];
@@ -217,6 +217,8 @@ export default function PoliciesPage() {
   
   // UI states
   const [showHelpPanel, setShowHelpPanel] = useState(false);
+  const [showContractRefs, setShowContractRefs] = useState(false);
+  const [contractInterfaces, setContractInterfaces] = useState<Array<{ id: string; name: string; address: string; abi: any }>>([]);
 
   // Form inputs
   const [policyName, setPolicyName] = useState("");
@@ -257,7 +259,18 @@ export default function PoliciesPage() {
     setShowHelpPanel(false);
   };
 
-  const openCreate = () => { resetForm(); setShowModal(true); };
+  const openCreate = () => {
+    resetForm();
+    setShowModal(true);
+    fetchContractInterfaces();
+  };
+  
+  const fetchContractInterfaces = async () => {
+    try {
+      const res: any = await apiFetch("/contract-interfaces?limit=50", { token: token! });
+      setContractInterfaces(res.data || []);
+    } catch { /* silently fail */ }
+  };
   
   const openEdit = (p: Policy) => {
     setEditingId(p.id);
@@ -480,14 +493,24 @@ export default function PoliciesPage() {
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">JSON Rule</label>
-                  <button
-                    type="button"
-                    onClick={() => setShowHelpPanel(!showHelpPanel)}
-                    className="text-xs text-brand-600 hover:text-brand-700 font-semibold underline flex items-center gap-1"
-                  >
-                    <HelpCircle className="w-3.5 h-3.5" />
-                    {showHelpPanel ? "Hide Examples" : "Click here for policy examples"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setShowContractRefs(!showContractRefs); if (!showContractRefs) fetchContractInterfaces(); }}
+                      className="text-xs text-brand-600 hover:text-brand-700 font-medium underline flex items-center gap-1"
+                    >
+                      <FileCode className="w-3 h-3" />
+                      Contract Refs
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowHelpPanel(!showHelpPanel)}
+                      className="text-xs text-brand-600 hover:text-brand-700 font-semibold underline flex items-center gap-1"
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                      {showHelpPanel ? "Hide Examples" : "Policy Examples"}
+                    </button>
+                  </div>
                 </div>
                 <div className="border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden bg-slate-900 shadow-inner">
                   <div className="flex justify-between items-center bg-slate-850 px-3 py-1.5 border-b border-slate-800 text-[10px] font-mono text-slate-400">
@@ -503,6 +526,58 @@ export default function PoliciesPage() {
                   />
                 </div>
               </div>
+
+              {showContractRefs && (
+                <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-slate-600">Uploaded Contract Interfaces</p>
+                    <button onClick={() => setShowContractRefs(false)} className="text-slate-400 hover:text-slate-600"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                  {contractInterfaces.length === 0 ? (
+                    <p className="text-[11px] text-slate-400">No contract interfaces uploaded yet. <a href="/contract-interfaces" className="text-brand-600 underline" target="_blank">Upload an ABI</a> to use function references in policies.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {contractInterfaces.map((ci: any) => {
+                        const functions = Array.isArray(ci.abi) ? ci.abi.filter((a: any) => a.type === "function") : [];
+                        return (
+                          <div key={ci.id} className="text-xs border border-slate-200 bg-white rounded p-2">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-semibold text-slate-700">{ci.name}</span>
+                              {ci.address && <code className="text-[9px] font-mono text-slate-400">{ci.address.slice(0, 6)}...</code>}
+                            </div>
+                            {functions.length > 0 && (
+                              <div className="space-y-0.5">
+                                {functions.map((fn: any, i: number) => (
+                                  <button
+                                    key={i}
+                                    type="button"
+                                    onClick={() => {
+                                      const snippet = `eth.tx.to == '${ci.address || "<ADDRESS>"}' && eth.tx.function_name == '${fn.name}'`;
+                                      const current = policyJson.trim();
+                                      if (current) {
+                                        try {
+                                          const parsed = JSON.parse(current);
+                                          parsed.condition = parsed.condition ? `${parsed.condition} && ${snippet}` : snippet;
+                                          setPolicyJson(JSON.stringify(parsed, null, 2));
+                                        } catch {
+                                          setPolicyJson(`${current}\n// ${snippet}`);
+                                        }
+                                      }
+                                    }}
+                                    className="block w-full text-left text-[10px] font-mono text-brand-600 hover:text-brand-700 hover:bg-brand-50 rounded px-1 py-0.5"
+                                  >
+                                    {fn.name}({fn.inputs ? fn.inputs.map((i: any) => i.type).join(", ") : ""})
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center justify-between pt-2">
                 <div className="flex flex-col">

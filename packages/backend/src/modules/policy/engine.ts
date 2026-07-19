@@ -33,11 +33,13 @@ export type Condition = z.infer<typeof ConditionSchema>;
 
 export interface EvaluationContext {
   params: Record<string, unknown>;
-  user?: { id: string; role: string; tags: string[] };
-  wallet?: { id: string; ownerId: string; ownerType: string };
-  activity?: { resource?: string; action?: string; type?: string };
-  credential?: { type?: string };
-  eth?: { tx?: { to?: string } };
+  user?: { id: string; role: string; tags: string[]; email?: string };
+  wallet?: { id: string; ownerId: string; ownerType: string; tags?: string[] };
+  activity?: { resource?: string; action?: string; type?: string; kind?: string };
+  credential?: { type?: string; id?: string };
+  credentials?: Array<{ type?: string; id?: string }>;
+  eth?: { tx?: { to?: string; data?: string; value?: number; chain_id?: number; function_name?: string; function_signature?: string; from?: string } };
+  contractInterface?: { functions?: Array<{ name: string; signature: string }> };
   timestamp?: number;
 }
 
@@ -46,6 +48,12 @@ export interface EvaluationResult {
   requiresConsensus: boolean;
   matchedPolicyId?: string;
   reason?: string;
+}
+
+function compareValues(a: any, b: any): boolean {
+  if (typeof a === "number" && typeof b === "number") return a === b;
+  if (typeof a === "boolean" && typeof b === "boolean") return a === b;
+  return String(a) === String(b);
 }
 
 function isSafeRegex(pattern: string): boolean {
@@ -164,11 +172,17 @@ export function evaluateCel(expression: string, context: EvaluationContext): any
   function parseComparison(ctx: any): any {
     let left = parseExpression(ctx);
     const op = peek();
+    if (op === "in") {
+      consume();
+      const right = parseExpression(ctx);
+      if (Array.isArray(right)) return right.map(String).includes(String(left));
+      return false;
+    }
     if (["==", "!=", ">=", "<=", ">", "<"].includes(op)) {
       consume();
       const right = parseExpression(ctx);
-      if (op === "==") return String(left) === String(right);
-      if (op === "!=") return String(left) !== String(right);
+      if (op === "==") return compareValues(left, right);
+      if (op === "!=") return !compareValues(left, right);
       if (op === ">=") return Number(left) >= Number(right);
       if (op === "<=") return Number(left) <= Number(right);
       if (op === ">") return Number(left) > Number(right);
@@ -239,6 +253,7 @@ export function evaluateCel(expression: string, context: EvaluationContext): any
   function resolveValue(path: string, ctx: any): any {
     if (path === "activity") return ctx.activity;
     if (path === "credential") return ctx.credential;
+    if (path === "credentials") return ctx.credentials || (ctx.credential ? [ctx.credential] : []);
     if (path === "wallet") return ctx.wallet;
     if (path === "user") return ctx.user;
     if (path === "eth") return ctx.eth;
@@ -248,7 +263,11 @@ export function evaluateCel(expression: string, context: EvaluationContext): any
     let current = ctx;
     for (const p of parts) {
       if (current === undefined || current === null) return undefined;
-      if (p === "tx" && current.eth) current = current.eth;
+      if (p === "tx" && current.eth) { current = current.eth; continue; }
+      if (p === "contract_call_args" && current.tx && current.tx.contract_call_args) {
+        current = current.tx.contract_call_args;
+        continue;
+      }
       current = current[p];
     }
     return current;
@@ -257,15 +276,37 @@ export function evaluateCel(expression: string, context: EvaluationContext): any
   function executeMethod(obj: any, method: string, argTokens: string[], ctx: any): any {
     if (method === "contains") {
       const val = evaluateSubTokens(argTokens, ctx);
-      return Array.isArray(obj) && obj.includes(val);
+      return Array.isArray(obj) && obj.some((item: any) => String(item) === String(val));
     }
 
     if (method === "any") {
       const varName = argTokens[0];
       const lambdaTokens = argTokens.slice(2);
       if (Array.isArray(obj)) {
-        return obj.some(item => {
-          const subCtx = { ...ctx, [varName]: item };
+        return obj.some((item: any) => {
+          const subCtx: any = { ...ctx };
+          if (typeof item === "object" && item !== null) {
+            subCtx[varName] = item;
+          } else {
+            subCtx[varName] = { value: item };
+          }
+          return evaluateSubTokens(lambdaTokens, subCtx);
+        });
+      }
+      return false;
+    }
+
+    if (method === "all") {
+      const varName = argTokens[0];
+      const lambdaTokens = argTokens.slice(2);
+      if (Array.isArray(obj)) {
+        return obj.length > 0 && obj.every((item: any) => {
+          const subCtx: any = { ...ctx };
+          if (typeof item === "object" && item !== null) {
+            subCtx[varName] = item;
+          } else {
+            subCtx[varName] = { value: item };
+          }
           return evaluateSubTokens(lambdaTokens, subCtx);
         });
       }
@@ -276,8 +317,13 @@ export function evaluateCel(expression: string, context: EvaluationContext): any
       const varName = argTokens[0];
       const lambdaTokens = argTokens.slice(2);
       if (Array.isArray(obj)) {
-        return obj.filter(item => {
-          const subCtx = { ...ctx, [varName]: item };
+        return obj.filter((item: any) => {
+          const subCtx: any = { ...ctx };
+          if (typeof item === "object" && item !== null) {
+            subCtx[varName] = item;
+          } else {
+            subCtx[varName] = { value: item };
+          }
           return evaluateSubTokens(lambdaTokens, subCtx);
         });
       }
@@ -331,10 +377,11 @@ export function evaluatePolicies(
             return { allowed: false, requiresConsensus: false, reason: `Denied by policy: ${policy.effect}` };
           }
         }
-      } else if (policy.conditions) {
+      } else if (policy.conditions && Array.isArray(policy.conditions)) {
+        const conditions = policy.conditions as Condition[];
         const conditionsMet = policy.consensus === "ANY"
-          ? policy.conditions.some((c) => evaluateCondition(c, context))
-          : policy.conditions.every((c) => evaluateCondition(c, context));
+          ? conditions.some((c) => evaluateCondition(c, context))
+          : conditions.every((c) => evaluateCondition(c, context));
         if (conditionsMet) {
           return { allowed: false, requiresConsensus: false, reason: `Denied by policy: ${policy.effect}` };
         }
@@ -362,15 +409,16 @@ export function evaluatePolicies(
           }
         }
       } else {
-        if (!policy.conditions || policy.conditions.length === 0) {
+        const legacyConditions = Array.isArray(policy.conditions) ? policy.conditions as Condition[] : null;
+        if (!legacyConditions || legacyConditions.length === 0) {
           if (policy.consensus === "REQUIRES_CONSENSUS") {
             return { allowed: true, requiresConsensus: true };
           }
           return { allowed: true, requiresConsensus: false };
         }
         const conditionsMet = policy.consensus === "ANY"
-          ? policy.conditions.some((c) => evaluateCondition(c, context))
-          : policy.conditions.every((c) => evaluateCondition(c, context));
+          ? legacyConditions.some((c) => evaluateCondition(c, context))
+          : legacyConditions.every((c) => evaluateCondition(c, context));
         if (conditionsMet) {
           return { allowed: true, requiresConsensus: policy.consensus === "REQUIRES_CONSENSUS" };
         }
