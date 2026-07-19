@@ -245,6 +245,14 @@ export default function TeamPage() {
                     </div>
                   )},
                   { key: "id", header: "User ID", render: (m: TeamMember) => <div className="flex items-center gap-1"><span className="font-mono text-[11px]">{m.id.slice(0, 4)}····{m.id.slice(-4)}</span><button onClick={() => { navigator.clipboard.writeText(m.id); addToast("Copied", "success"); }} className="text-slate-400 hover:text-slate-600"><Copy className="w-3 h-3" /></button></div> },
+                  { key: "access", header: "Access Level", render: (m: TeamMember) => {
+                    const isRoot = m.role === "ORG_ADMIN";
+                    return (
+                      <span className={`inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full border ${isRoot ? "text-violet-700 bg-violet-50 border-violet-100" : "text-slate-600 bg-slate-50 border-slate-200"}`}>
+                        <Shield className="w-3 h-3 mr-1" /> {isRoot ? "Root User" : "Basic"}
+                      </span>
+                    );
+                  }},
                   { key: "tags", header: "Tags", render: (m: TeamMember) => (
                     <div className="flex items-center gap-1 flex-wrap">
                       {(m.tags || []).slice(0, 2).map((t: string, i: number) => <span key={i} className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{t}</span>)}
