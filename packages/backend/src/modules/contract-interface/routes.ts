@@ -33,8 +33,8 @@ export async function contractInterfaceRoutes(app: FastifyInstance) {
 
   app.post("/contract-interfaces", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
-      const { name, notes, address, interfaceType, abi } = request.body as {
-        name: string; notes?: string; address?: string; interfaceType?: string; abi?: any;
+      const { name, notes, address, interfaceType, chainType, abi } = request.body as {
+        name: string; notes?: string; address?: string; interfaceType?: string; chainType?: string; abi?: any;
       };
       if (!name || !name.trim()) throw new ValidationError("Interface name required");
 
@@ -48,6 +48,7 @@ export async function contractInterfaceRoutes(app: FastifyInstance) {
           orgId: request.orgId, name: name.trim(),
           notes: notes || "", address: address || "",
           interfaceType: interfaceType || "custom",
+          chainType: chainType || "ethereum",
           abi: (abi && typeof abi === "string" && abi.trim()) ? JSON.parse(abi.trim()) : (abi || []),
         },
       });
@@ -62,7 +63,7 @@ export async function contractInterfaceRoutes(app: FastifyInstance) {
   app.patch("/contract-interfaces/:id", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      const { name, notes, address, interfaceType, abi } = request.body as any;
+      const { name, notes, address, interfaceType, chainType, abi } = request.body as any;
 
       const existing = await prisma.contractInterface.findFirst({ where: { id, orgId: request.orgId } });
       if (!existing) throw new NotFoundError("Contract interface");
@@ -72,6 +73,7 @@ export async function contractInterfaceRoutes(app: FastifyInstance) {
       if (notes !== undefined) updateData.notes = notes;
       if (address !== undefined) updateData.address = address;
       if (interfaceType !== undefined) updateData.interfaceType = interfaceType;
+      if (chainType !== undefined) updateData.chainType = chainType;
       if (abi !== undefined) {
         if (typeof abi === "string" && abi.trim()) {
           try { updateData.abi = JSON.parse(abi.trim()); } catch { throw new ValidationError("Invalid ABI JSON format"); }

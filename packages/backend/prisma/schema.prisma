@@ -438,6 +438,7 @@ model ContractInterface {
   notes         String   @default("")
   address       String   @default("")
   interfaceType String   @default("custom") @map("interface_type")
+  chainType     String   @default("ethereum") @map("chain_type")
   abi           Json     @default("[]")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
