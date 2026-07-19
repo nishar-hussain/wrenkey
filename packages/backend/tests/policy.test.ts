@@ -368,3 +368,86 @@ describe("evaluatePolicies", () => {
     expect(result.allowed).toBe(true);
   });
 });
+
+describe("evaluateCel & Turnkey policies", () => {
+  const turnkeyContext = {
+    params: { value: 500, to: "0xcontractaddress", chain: "arc", walletId: "solana-wallet-123" },
+    user: { id: "usr-123", role: "DEVELOPER", tags: ["api", "dev-team"] },
+    wallet: { id: "solana-wallet-123", ownerId: "usr-123", ownerType: "USER" },
+    activity: { resource: "WALLET", action: "SIGN", type: "SIGN_TRANSACTION" },
+    credential: { type: "API_KEY" },
+    eth: { tx: { to: "0xcontractaddress" } },
+    timestamp: Date.now(),
+  };
+
+  it("should evaluate basic equality and logical AND comparison", () => {
+    const result = evaluatePolicies(
+      [
+        {
+          effect: "EFFECT_ALLOW",
+          conditions: {
+            condition: "activity.resource == 'WALLET' && activity.action == 'SIGN'",
+            isTurnkey: true
+          },
+          consensus: "approvers.any(user, user.id == 'usr-123')",
+        }
+      ],
+      turnkeyContext
+    );
+    expect(result.allowed).toBe(true);
+    expect(result.requiresConsensus).toBe(false);
+  });
+
+  it("should require consensus if current user doesn't meet consensus requirement", () => {
+    const result = evaluatePolicies(
+      [
+        {
+          effect: "EFFECT_ALLOW",
+          conditions: {
+            condition: "activity.resource == 'WALLET' && activity.action == 'SIGN'",
+            isTurnkey: true
+          },
+          consensus: "approvers.any(user, user.id == 'usr-456')",
+        }
+      ],
+      turnkeyContext
+    );
+    expect(result.allowed).toBe(true);
+    expect(result.requiresConsensus).toBe(true);
+  });
+
+  it("should filter approvers by tag and check count for threshold", () => {
+    const result = evaluatePolicies(
+      [
+        {
+          effect: "EFFECT_ALLOW",
+          conditions: {
+            condition: "activity.resource == 'WALLET' && activity.action == 'SIGN'",
+            isTurnkey: true
+          },
+          consensus: "approvers.filter(user, user.tags.contains('dev-team')).count() >= 2",
+        }
+      ],
+      turnkeyContext
+    );
+    expect(result.allowed).toBe(true);
+    expect(result.requiresConsensus).toBe(true);
+  });
+
+  it("should deny when deny turnkey policy condition and consensus are met", () => {
+    const result = evaluatePolicies(
+      [
+        {
+          effect: "EFFECT_DENY",
+          conditions: {
+            condition: "activity.action == 'SIGN'",
+            isTurnkey: true
+          },
+          consensus: "approvers.any(user, user.tags.contains('api'))",
+        }
+      ],
+      turnkeyContext
+    );
+    expect(result.allowed).toBe(false);
+  });
+});

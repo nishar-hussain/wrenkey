@@ -7,11 +7,26 @@ export const ConditionSchema = z.object({
   values: z.array(z.union([z.string(), z.number()])).optional(),
 });
 
-export const PolicyRuleSchema = z.object({
+export const LegacyPolicyRuleSchema = z.object({
   effect: z.enum(["EFFECT_ALLOW", "EFFECT_DENY"]),
   conditions: z.array(ConditionSchema).optional(),
   consensus: z.enum(["ANY", "ALL", "REQUIRES_CONSENSUS"]).default("ANY"),
 });
+
+export const TurnkeyPolicyRuleSchema = z.object({
+  effect: z.enum(["EFFECT_ALLOW", "EFFECT_DENY"]),
+  conditions: z.object({
+    condition: z.string().optional(),
+    isTurnkey: z.literal(true),
+    description: z.string().optional(),
+  }),
+  consensus: z.string().optional(),
+});
+
+export const PolicyRuleSchema = z.union([
+  LegacyPolicyRuleSchema,
+  TurnkeyPolicyRuleSchema,
+]);
 
 export type PolicyRule = z.infer<typeof PolicyRuleSchema>;
 export type Condition = z.infer<typeof ConditionSchema>;
@@ -20,6 +35,9 @@ export interface EvaluationContext {
   params: Record<string, unknown>;
   user?: { id: string; role: string; tags: string[] };
   wallet?: { id: string; ownerId: string; ownerType: string };
+  activity?: { resource?: string; action?: string; type?: string };
+  credential?: { type?: string };
+  eth?: { tx?: { to?: string } };
   timestamp?: number;
 }
 
@@ -31,11 +49,8 @@ export interface EvaluationResult {
 }
 
 function isSafeRegex(pattern: string): boolean {
-  // Reject patterns longer than 256 chars
   if (pattern.length > 256) return false;
-  // Reject patterns with nested quantifiers (common ReDoS vector)
   if (/(?:\*\+|\+\*|\+\+|\*\*|\{\d+,\}\{|\{\d+,\}[*+])/.test(pattern)) return false;
-  // Reject patterns with nested groups and quantifiers
   if (/(?:\(.*(\*|\+|\{\d+,\})\).*(\*|\+|\{\d+,\}))/.test(pattern)) return false;
   return true;
 }
@@ -100,6 +115,195 @@ function resolveFieldPath(path: string, context: EvaluationContext): unknown {
   return value;
 }
 
+export function evaluateCel(expression: string, context: EvaluationContext): any {
+  const tokens = tokenize(expression);
+  let pos = 0;
+
+  function tokenize(str: string): string[] {
+    const regex = /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|\b[a-zA-Z_][a-zA-Z0-9_]*\b|==|!=|>=|<=|>|<|&&|\|\||[(),\.]/g;
+    const matches = [];
+    let match;
+    while ((match = regex.exec(str)) !== null) {
+      matches.push(match[0]);
+    }
+    return matches;
+  }
+
+  function peek() {
+    return tokens[pos];
+  }
+
+  function consume(expected?: string) {
+    const t = tokens[pos++];
+    if (expected && t !== expected) {
+      throw new Error(`Expected ${expected} but got ${t}`);
+    }
+    return t;
+  }
+
+  function parseLogicalOr(ctx: any): any {
+    let left = parseLogicalAnd(ctx);
+    while (peek() === "||") {
+      consume();
+      const right = parseLogicalAnd(ctx);
+      left = left || right;
+    }
+    return left;
+  }
+
+  function parseLogicalAnd(ctx: any): any {
+    let left = parseComparison(ctx);
+    while (peek() === "&&") {
+      consume();
+      const right = parseComparison(ctx);
+      left = left && right;
+    }
+    return left;
+  }
+
+  function parseComparison(ctx: any): any {
+    let left = parseExpression(ctx);
+    const op = peek();
+    if (["==", "!=", ">=", "<=", ">", "<"].includes(op)) {
+      consume();
+      const right = parseExpression(ctx);
+      if (op === "==") return String(left) === String(right);
+      if (op === "!=") return String(left) !== String(right);
+      if (op === ">=") return Number(left) >= Number(right);
+      if (op === "<=") return Number(left) <= Number(right);
+      if (op === ">") return Number(left) > Number(right);
+      if (op === "<") return Number(left) < Number(right);
+    }
+    return left;
+  }
+
+  function parseExpression(ctx: any): any {
+    const token = peek();
+    if (!token) return undefined;
+
+    if (token.startsWith("'") || token.startsWith('"')) {
+      consume();
+      return token.slice(1, -1);
+    }
+
+    if (/^\d+$/.test(token)) {
+      consume();
+      return parseInt(token, 10);
+    }
+
+    if (token === "(") {
+      consume();
+      const val = parseLogicalOr(ctx);
+      consume(")");
+      return val;
+    }
+
+    consume();
+    let val = resolveValue(token, ctx);
+
+    while (pos < tokens.length && (peek() === "(" || peek() === ".")) {
+      if (peek() === "(") {
+        consume();
+        consume(")");
+        // empty call
+      } else {
+        consume();
+        const method = consume();
+        if (peek() === "(") {
+          consume();
+          const argTokens: string[] = [];
+          let depth = 1;
+          while (pos < tokens.length) {
+            const t = tokens[pos];
+            if (t === "(") depth++;
+            if (t === ")") {
+              depth--;
+              if (depth === 0) {
+                pos++;
+                break;
+              }
+            }
+            argTokens.push(t);
+            pos++;
+          }
+          val = executeMethod(val, method, argTokens, ctx);
+        } else {
+          val = val?.[method];
+        }
+      }
+    }
+
+    return val;
+  }
+
+  function resolveValue(path: string, ctx: any): any {
+    if (path === "activity") return ctx.activity;
+    if (path === "credential") return ctx.credential;
+    if (path === "wallet") return ctx.wallet;
+    if (path === "user") return ctx.user;
+    if (path === "eth") return ctx.eth;
+    if (path === "approvers") return ctx.user ? [ctx.user] : [];
+
+    const parts = path.split(".");
+    let current = ctx;
+    for (const p of parts) {
+      if (current === undefined || current === null) return undefined;
+      if (p === "tx" && current.eth) current = current.eth;
+      current = current[p];
+    }
+    return current;
+  }
+
+  function executeMethod(obj: any, method: string, argTokens: string[], ctx: any): any {
+    if (method === "contains") {
+      const val = evaluateSubTokens(argTokens, ctx);
+      return Array.isArray(obj) && obj.includes(val);
+    }
+
+    if (method === "any") {
+      const varName = argTokens[0];
+      const lambdaTokens = argTokens.slice(2);
+      if (Array.isArray(obj)) {
+        return obj.some(item => {
+          const subCtx = { ...ctx, [varName]: item };
+          return evaluateSubTokens(lambdaTokens, subCtx);
+        });
+      }
+      return false;
+    }
+
+    if (method === "filter") {
+      const varName = argTokens[0];
+      const lambdaTokens = argTokens.slice(2);
+      if (Array.isArray(obj)) {
+        return obj.filter(item => {
+          const subCtx = { ...ctx, [varName]: item };
+          return evaluateSubTokens(lambdaTokens, subCtx);
+        });
+      }
+      return [];
+    }
+
+    if (method === "count") {
+      return Array.isArray(obj) ? obj.length : 0;
+    }
+
+    return undefined;
+  }
+
+  function evaluateSubTokens(subTokens: string[], subCtx: any): any {
+    const subExpr = subTokens.join(" ");
+    return evaluateCel(subExpr, subCtx);
+  }
+
+  try {
+    return parseLogicalOr(context);
+  } catch (e) {
+    console.error("CEL Evaluation error:", e);
+    return false;
+  }
+}
+
 export function evaluatePolicies(
   policies: PolicyRule[],
   context: EvaluationContext,
@@ -113,33 +317,67 @@ export function evaluatePolicies(
     return { allowed: false, requiresConsensus: false, reason: "No policies defined" };
   }
 
+  // Deny rules check
   for (const policy of policies) {
-    if (policy.effect === "EFFECT_DENY" && policy.conditions) {
-      const conditionsMet = policy.consensus === "ANY"
-        ? policy.conditions.some((c) => evaluateCondition(c, context))
-        : policy.conditions.every((c) => evaluateCondition(c, context));
-      if (conditionsMet) {
-        return { allowed: false, requiresConsensus: false, reason: `Denied by policy: ${policy.effect}` };
+    if (policy.effect === "EFFECT_DENY") {
+      const isTurnkey = policy.conditions && !Array.isArray(policy.conditions) && (policy.conditions as any).isTurnkey;
+      if (isTurnkey) {
+        const conditionExpr = (policy.conditions as any).condition;
+        const consensusExpr = policy.consensus;
+        const conditionMet = conditionExpr ? evaluateCel(conditionExpr, context) : true;
+        if (conditionMet) {
+          const consensusMet = consensusExpr ? evaluateCel(consensusExpr, context) : true;
+          if (consensusMet) {
+            return { allowed: false, requiresConsensus: false, reason: `Denied by policy: ${policy.effect}` };
+          }
+        }
+      } else if (policy.conditions) {
+        const conditionsMet = policy.consensus === "ANY"
+          ? policy.conditions.some((c) => evaluateCondition(c, context))
+          : policy.conditions.every((c) => evaluateCondition(c, context));
+        if (conditionsMet) {
+          return { allowed: false, requiresConsensus: false, reason: `Denied by policy: ${policy.effect}` };
+        }
       }
     }
   }
 
+  // Allow rules check
   for (const policy of policies) {
     if (policy.effect === "EFFECT_ALLOW") {
-      if (!policy.conditions || policy.conditions.length === 0) {
-        if (policy.consensus === "REQUIRES_CONSENSUS") {
-          return { allowed: true, requiresConsensus: true };
+      const isTurnkey = policy.conditions && !Array.isArray(policy.conditions) && (policy.conditions as any).isTurnkey;
+      if (isTurnkey) {
+        const conditionExpr = (policy.conditions as any).condition;
+        const consensusExpr = policy.consensus;
+        const conditionMet = conditionExpr ? evaluateCel(conditionExpr, context) : true;
+        if (conditionMet) {
+          if (!consensusExpr) {
+            return { allowed: true, requiresConsensus: false };
+          }
+          const consensusMet = evaluateCel(consensusExpr, context);
+          if (consensusMet) {
+            return { allowed: true, requiresConsensus: false };
+          } else {
+            return { allowed: true, requiresConsensus: true };
+          }
         }
-        return { allowed: true, requiresConsensus: false };
-      }
-      const conditionsMet = policy.consensus === "ANY"
-        ? policy.conditions.some((c) => evaluateCondition(c, context))
-        : policy.conditions.every((c) => evaluateCondition(c, context));
-      if (conditionsMet) {
-        return { allowed: true, requiresConsensus: policy.consensus === "REQUIRES_CONSENSUS" };
+      } else {
+        if (!policy.conditions || policy.conditions.length === 0) {
+          if (policy.consensus === "REQUIRES_CONSENSUS") {
+            return { allowed: true, requiresConsensus: true };
+          }
+          return { allowed: true, requiresConsensus: false };
+        }
+        const conditionsMet = policy.consensus === "ANY"
+          ? policy.conditions.some((c) => evaluateCondition(c, context))
+          : policy.conditions.every((c) => evaluateCondition(c, context));
+        if (conditionsMet) {
+          return { allowed: true, requiresConsensus: policy.consensus === "REQUIRES_CONSENSUS" };
+        }
       }
     }
   }
 
   return { allowed: false, requiresConsensus: false, reason: "No matching allow policy" };
 }
+

@@ -168,13 +168,21 @@ export async function transactionRoutes(app: FastifyInstance) {
         throw new ForbiddenError(spendingCheck.reason || "Transaction blocked by spending limits");
       }
 
+      const dbUser = request.userId ? await prisma.user.findUnique({ where: { id: request.userId } }) : null;
+      const userContext = dbUser ? { id: dbUser.id, role: dbUser.role, tags: dbUser.tags || [] } : undefined;
+
+      const riskContext = {
+        params: { walletId, accountId: targetAccount.id, to, value: numericValue, chain: chainInfo.name, gasLimit: gasLimit || "21000" },
+        user: userContext,
+        wallet: { id: walletId, ownerId: wallet.ownerId, ownerType: wallet.ownerType },
+        activity: { resource: "WALLET", action: "SIGN", type: "SIGN_TRANSACTION" },
+        credential: { type: request.auth?.type === "api_key" ? "API_KEY" : "EMAIL" },
+        eth: { tx: { to } },
+        timestamp: Date.now(),
+      };
+
       const risk = await assessTransactionRisk(
-        {
-          params: { walletId, accountId: targetAccount.id, to, value: numericValue, chain: chainInfo.name, gasLimit: gasLimit || "21000" },
-          user: request.userId ? { id: request.userId, role: request.auth.role, tags: [] } : undefined,
-          wallet: { id: walletId, ownerId: wallet.ownerId, ownerType: wallet.ownerType },
-          timestamp: Date.now(),
-        },
+        riskContext,
         walletId
       );
 
@@ -185,8 +193,11 @@ export async function transactionRoutes(app: FastifyInstance) {
           chain: chainInfo.name, gasLimit: gasLimit || "21000",
           ...(decodedFunction ? { contractFunction: decodedFunction.functionName, contractSignature: decodedFunction.signature } : {}),
         },
-        user: request.userId ? { id: request.userId, role: request.auth.role, tags: [] } : undefined,
+        user: userContext,
         wallet: { id: walletId, ownerId: wallet.ownerId, ownerType: wallet.ownerType },
+        activity: { resource: "WALLET", action: "SIGN", type: "SIGN_TRANSACTION" },
+        credential: { type: request.auth?.type === "api_key" ? "API_KEY" : "EMAIL" },
+        eth: { tx: { to } },
         timestamp: Date.now(),
       };
 

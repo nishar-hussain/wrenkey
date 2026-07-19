@@ -10,10 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
-import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Plus, Search, Copy, Trash2, Edit3, Shield, X, GripVertical } from "lucide-react";
+import { Plus, Search, Copy, Trash2, Edit3, X, HelpCircle } from "lucide-react";
 
 const CONDITION_TYPES = [
   { value: "LESS_THAN", label: "Less than" },
@@ -50,7 +49,7 @@ interface Policy {
   id: string;
   name: string;
   effect: string;
-  conditions: Condition[];
+  conditions: any; // Can be Condition[] or Turnkey conditions object
   consensus: string;
   priority: number;
   active: boolean;
@@ -63,6 +62,143 @@ function humanizeCondition(c: Condition): string {
   const val = c.values ? c.values.join(", ") : String(c.value ?? "");
   return `${fieldLabel} ${typeLabel.toLowerCase()} ${val}`;
 }
+
+const POLICY_EXAMPLES = [
+  {
+    title: "Allow a specific user to create wallets",
+    description: "Grants a specific user permission to create wallets. Activities may be upgraded over time, and thus new versions may be introduced. These policies will NOT be valid if an activity type is upgraded and requests are made on the new activity type.",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "approvers.any(user, user.id == '<USER_ID>')",
+      condition: "activity.resource == 'WALLET' && activity.action == 'CREATE'"
+    }
+  },
+  {
+    title: "Allow users with a specific tag to create users",
+    description: "Grants permission to any user with the specified tag to create new users.",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "approvers.any(user, user.tags.contains('<TAG_ID>'))",
+      condition: "activity.resource == 'USER' && activity.action == 'CREATE'"
+    }
+  },
+  {
+    title: "Require two users with a specific tag to add policies",
+    description: "Requires approval from at least two users who share the specified tag before a policy can be created.",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "approvers.filter(user, user.tags.contains('<TAG_ID>')).count() >= 2",
+      condition: "activity.resource == 'POLICY' && activity.action == 'CREATE'"
+    }
+  },
+  {
+    title: "Deny all delete actions for users with a specific tag",
+    description: "Prevents users with the specified tag from performing any delete actions.",
+    json: {
+      effect: "EFFECT_DENY",
+      consensus: "approvers.any(user, user.tags.contains('<TAG_ID>'))",
+      condition: "activity.action == 'DELETE'"
+    }
+  },
+  {
+    title: "Allow a specific user (e.g. API-only user) to create a sub-org",
+    description: "Grants a specific user permission to create sub-organizations, commonly used for API-only users.",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "approvers.any(user, user.id == '<USER_ID>')",
+      condition: "activity.resource == 'SUB_ORGANIZATION' && activity.action == 'CREATE'"
+    }
+  },
+  {
+    title: "Allow a specific user to perform auth type activities",
+    description: "Grants permission to perform authentication-related activities such as creating authenticators",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "approvers.any(user, user.id == '<USER_ID>')",
+      condition: "activity.resource == 'AUTHENTICATOR' && activity.action == 'CREATE'"
+    }
+  },
+  {
+    title: "Allow a specific user to perform generic OTP activities",
+    description: "Grants a specific user permission to initiate and verify OTP-based authentication.",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "approvers.any(user, user.id == '<USER_ID>')",
+      condition: "activity.resource == 'OTP_AUTH'"
+    }
+  },
+  {
+    title: "Allow a specific user to perform a specific activity type",
+    description: "Grants a specific user permission to execute a single, named activity type.",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "approvers.any(user, user.id == '<USER_ID>')",
+      condition: "activity.type == '<ACTIVITY_TYPE>'"
+    }
+  },
+  {
+    title: "Allow a specific credential type to perform a specific action",
+    description: "Restricts an action to requests authenticated with a particular credential type.",
+    json: {
+      effect: "EFFECT_ALLOW",
+      condition: "activity.resource == '<RESOURCE>' && activity.action == '<ACTION>' && credential.type == '<CREDENTIAL_TYPE>'"
+    }
+  },
+  {
+    title: "Require consensus from two users to sign transactions",
+    description: "Enforces a two-person approval requirement for all signing operations.",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "approvers.filter(user, user.tags.contains('<TAG_ID>')).count() >= 2",
+      condition: "activity.resource == 'WALLET' && activity.action == 'SIGN'"
+    }
+  },
+  {
+    title: "Allow a specific user to sign with a specific wallet",
+    description: "Grants signing permission on a single wallet to a specific user",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "approvers.any(user, user.id == '<USER_ID>')",
+      condition: "activity.resource == 'WALLET' && activity.action == 'SIGN' && wallet.id == '<WALLET_ID>'"
+    }
+  },
+  {
+    title: "Allow ERC-20 token transfers up to a limit",
+    description: "Permits ERC-20 transfers below a specified value threshold on EVM chains.",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "approvers.any(user, user.id == '<USER_ID>')",
+      condition: "activity.resource == 'WALLET' && activity.action == 'SIGN' && eth.tx.to == '<CONTRACT_ADDRESS>'"
+    }
+  },
+  {
+    title: "Allow a specific user to sign Solana transactions",
+    description: "Grants signing permission for Solana transactions to a specific user.",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "approvers.any(user, user.id == '<USER_ID>')",
+      condition: "activity.resource == 'WALLET' && activity.action == 'SIGN' && wallet.id == '<SOLANA_WALLET_ID>'"
+    }
+  },
+  {
+    title: "Allow a specific user to sign Tron transactions",
+    description: "Grants signing permission for Tron transactions to a specific user.",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "approvers.any(user, user.id == '<USER_ID>')",
+      condition: "activity.resource == 'WALLET' && activity.action == 'SIGN' && wallet.id == '<TRON_WALLET_ID>'"
+    }
+  },
+  {
+    title: "Allow a specific user to sign Bitcoin transactions",
+    description: "Grants signing permission for Bitcoin transactions to a specific user.",
+    json: {
+      effect: "EFFECT_ALLOW",
+      consensus: "approvers.any(user, user.id == '<USER_ID>')",
+      condition: "activity.resource == 'WALLET' && activity.action == 'SIGN' && wallet.id == '<BITCOIN_WALLET_ID>'"
+    }
+  }
+];
 
 export default function PoliciesPage() {
   const router = useRouter();
@@ -78,7 +214,14 @@ export default function PoliciesPage() {
 
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // UI states
+  const [showHelpPanel, setShowHelpPanel] = useState(false);
+
+  // Form inputs
   const [policyName, setPolicyName] = useState("");
+  const [policyDescription, setPolicyDescription] = useState("");
+  const [policyJson, setPolicyJson] = useState("");
   const [policyEffect, setPolicyEffect] = useState<"EFFECT_ALLOW" | "EFFECT_DENY">("EFFECT_ALLOW");
   const [policyConsensus, setPolicyConsensus] = useState<"ANY" | "ALL" | "REQUIRES_CONSENSUS">("ANY");
   const [policyPriority, setPolicyPriority] = useState(0);
@@ -103,28 +246,50 @@ export default function PoliciesPage() {
 
   const resetForm = () => {
     setPolicyName("");
+    setPolicyDescription("");
+    setPolicyJson(`{\n  "effect": "EFFECT_ALLOW",\n  "consensus": "approvers.any(user, user.id == '<USER_ID>')",\n  "condition": "activity.resource == 'WALLET' && activity.action == 'CREATE'"\n}`);
     setPolicyEffect("EFFECT_ALLOW");
     setPolicyConsensus("ANY");
     setPolicyPriority(0);
     setPolicyActive(true);
     setPolicyConditions([]);
     setEditingId(null);
+    setShowHelpPanel(false);
   };
 
   const openCreate = () => { resetForm(); setShowModal(true); };
+  
   const openEdit = (p: Policy) => {
     setEditingId(p.id);
     setPolicyName(p.name);
-    setPolicyEffect(p.effect as any);
-    setPolicyConsensus(p.consensus as any);
     setPolicyPriority(p.priority);
     setPolicyActive(p.active);
-    setPolicyConditions((p.conditions || []).map((c: any) => ({
-      type: c.type || "",
-      field: c.field || "",
-      value: c.value !== undefined ? c.value : undefined,
-      values: c.values !== undefined ? c.values : undefined,
-    })));
+
+    const isTurnkey = p.conditions && !Array.isArray(p.conditions) && (p.conditions as any).isTurnkey;
+    if (isTurnkey) {
+      const condObj = p.conditions as any;
+      setPolicyDescription(condObj.description || "");
+      const jsonVal = {
+        effect: p.effect,
+        consensus: p.consensus !== "ANY" ? p.consensus : undefined,
+        condition: condObj.condition || undefined,
+      };
+      setPolicyJson(JSON.stringify(jsonVal, null, 2));
+    } else {
+      // Legacy structured policy — convert to JSON editor format
+      setPolicyDescription("");
+      const legacyConditions = (p.conditions || []).map((c: any) => {
+        const clean: any = { type: c.type, field: c.field };
+        if (c.values) clean.values = c.values;
+        else if (c.value !== undefined) clean.value = c.value;
+        return clean;
+      });
+      setPolicyJson(JSON.stringify({
+        effect: p.effect,
+        consensus: p.consensus,
+        conditions: legacyConditions
+      }, null, 2));
+    }
     setShowModal(true);
   };
 
@@ -155,20 +320,27 @@ export default function PoliciesPage() {
     if (!policyName.trim()) { addToast("Name required", "error"); return; }
     setSaving(true);
     try {
-      const conditions = policyConditions.filter(c => c.field && (c.value !== undefined && c.value !== "" || c.values && c.values.length > 0)).map(c => {
-        const clean: any = { type: c.type, field: c.field };
-        if (c.values && c.values.length > 0) clean.values = c.values;
-        else if (c.value !== undefined && c.value !== "") clean.value = c.type === "LESS_THAN" || c.type === "GREATER_THAN" ? Number(c.value) : String(c.value);
-        return clean;
-      });
+      let jsonParsed;
+      try {
+        jsonParsed = JSON.parse(policyJson);
+      } catch (e) {
+        throw new Error("Invalid JSON rule format");
+      }
+      if (!jsonParsed.effect) {
+        throw new Error("JSON rule must specify 'effect' (EFFECT_ALLOW or EFFECT_DENY)");
+      }
 
       const body: any = {
         name: policyName.trim(),
-        effect: policyEffect,
-        consensus: policyConsensus,
-        priority: policyPriority,
         active: policyActive,
-        conditions,
+        priority: policyPriority,
+        effect: jsonParsed.effect,
+        consensus: jsonParsed.consensus || "ANY",
+        conditions: {
+          condition: jsonParsed.condition || "",
+          description: policyDescription.trim(),
+          isTurnkey: true
+        },
       };
 
       if (editingId) {
@@ -214,16 +386,29 @@ export default function PoliciesPage() {
         </div>
       </div>
     )},
-    { key: "conditions", header: "Conditions", render: (p: Policy) => (
-      <div className="space-y-0.5">
-        {(p.conditions || []).length === 0 ? (
-          <span className="text-[11px] text-slate-400 italic">No conditions (always matches)</span>
-        ) : (p.conditions || []).slice(0, 3).map((c, i) => (
-          <p key={i} className="text-[11px] text-slate-600 dark:text-slate-400 font-mono truncate max-w-[240px]">{humanizeCondition(c as Condition)}</p>
-        ))}
-        {(p.conditions || []).length > 3 && <p className="text-[10px] text-slate-400">+{p.conditions.length - 3} more</p>}
-      </div>
-    )},
+    { key: "conditions", header: "Conditions / Expressions", render: (p: Policy) => {
+      const isTurnkey = p.conditions && !Array.isArray(p.conditions) && p.conditions.isTurnkey;
+      if (isTurnkey) {
+        return (
+          <div className="space-y-0.5">
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 font-mono truncate max-w-[240px]">{p.conditions.condition || "always"}</p>
+            {p.conditions.description && (
+              <p className="text-[10px] text-slate-400 italic truncate max-w-[240px]">{p.conditions.description}</p>
+            )}
+          </div>
+        );
+      }
+      return (
+        <div className="space-y-0.5">
+          {(p.conditions || []).length === 0 ? (
+            <span className="text-[11px] text-slate-400 italic">No conditions (always matches)</span>
+          ) : (p.conditions || []).slice(0, 3).map((c: any, i: number) => (
+            <p key={i} className="text-[11px] text-slate-600 dark:text-slate-400 font-mono truncate max-w-[240px]">{humanizeCondition(c as Condition)}</p>
+          ))}
+          {(p.conditions || []).length > 3 && <p className="text-[10px] text-slate-400">+{p.conditions.length - 3} more</p>}
+        </div>
+      );
+    }},
     { key: "priority", header: "Priority", render: (p: Policy) => <span className="text-sm font-mono text-slate-600">{p.priority}</span> },
     { key: "createdAt", header: "Created", render: (p: Policy) => <span className="text-xs text-slate-500">{new Date(p.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span> },
     { key: "id", header: "ID", render: (p: Policy) => (
@@ -276,141 +461,107 @@ export default function PoliciesPage() {
         </CardContent>
       </Card>
 
-      <Modal open={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingId ? "Edit Policy" : "New Policy"}>
-        <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
-          <p className="text-sm text-slate-500">Policies are evaluated on every transaction. DENY rules take precedence over ALLOW rules.</p>
+      <Modal open={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingId ? "Edit Policy" : "New Policy"} size={showHelpPanel ? "xl" : "md"}>
+        <div className="max-h-[70vh] overflow-y-auto pr-1">
+          <div className="flex gap-6">
+            {/* Form Side */}
+            <div className="flex-1 space-y-4 min-w-[320px]">
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Name</label>
-            <Input value={policyName} onChange={e => setPolicyName(e.target.value)} placeholder="e.g. Treasury Spending Limit" />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Effect</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setPolicyEffect("EFFECT_ALLOW")}
-                className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${policyEffect === "EFFECT_ALLOW" ? "bg-emerald-50 border-emerald-300 text-emerald-700 ring-2 ring-emerald-100" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
-              >
-                <Shield className="w-4 h-4 inline mr-1.5" /> Allow
-              </button>
-              <button
-                type="button"
-                onClick={() => setPolicyEffect("EFFECT_DENY")}
-                className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${policyEffect === "EFFECT_DENY" ? "bg-red-50 border-red-300 text-red-700 ring-2 ring-red-100" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
-              >
-                <X className="w-4 h-4 inline mr-1.5" /> Deny
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Consensus</label>
-              <select
-                value={policyConsensus}
-                onChange={e => setPolicyConsensus(e.target.value as any)}
-                className="w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-slate-900"
-              >
-                <option value="ANY">Any condition matches (OR)</option>
-                <option value="ALL">All conditions must match (AND)</option>
-                <option value="REQUIRES_CONSENSUS">Requires approval</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Priority</label>
-              <Input
-                type="number"
-                value={policyPriority}
-                onChange={e => setPolicyPriority(parseInt(e.target.value) || 0)}
-                placeholder="0"
-                className="text-sm"
-              />
-              <p className="text-[10px] text-slate-400">Higher priority policies are evaluated first.</p>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium">Active</label>
-            <button
-              type="button"
-              onClick={() => setPolicyActive(!policyActive)}
-              className={`relative w-9 h-5 rounded-full transition-colors ${policyActive ? "bg-emerald-500" : "bg-slate-300"}`}
-            >
-              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${policyActive ? "left-4" : "left-0.5"}`} />
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">Conditions</label>
-              <button type="button" onClick={addCondition} className="text-xs text-brand-600 hover:text-brand-700 font-medium">
-                <Plus className="w-3 h-3 inline mr-0.5" /> Add condition
-              </button>
-            </div>
-
-            {policyConditions.length === 0 && (
-              <div className="text-center py-6 border border-dashed border-slate-200 rounded-lg">
-                <p className="text-xs text-slate-400">No conditions yet. Add one to define what this policy checks.</p>
-                <p className="text-[10px] text-slate-400 mt-1">A policy with no conditions applies to all transactions.</p>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Name</label>
+                <Input value={policyName} onChange={e => setPolicyName(e.target.value)} placeholder="e.g. Treasury Spending Limit" />
               </div>
-            )}
 
-            {policyConditions.map((cond, idx) => (
-              <div key={idx} className="p-3 border border-slate-200 rounded-lg space-y-2 bg-slate-50/50">
-                <div className="flex items-center gap-2">
-                  <select
-                    value={cond.type}
-                    onChange={e => updateCondition(idx, "type", e.target.value)}
-                    className="text-xs border rounded px-2 py-1.5 bg-white flex-1"
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Description</label>
+                <Input value={policyDescription} onChange={e => setPolicyDescription(e.target.value)} placeholder="e.g. Allow developers to sign on specific wallets" />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">JSON Rule</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowHelpPanel(!showHelpPanel)}
+                    className="text-xs text-brand-600 hover:text-brand-700 font-semibold underline flex items-center gap-1"
                   >
-                    {CONDITION_TYPES.map(ct => (
-                      <option key={ct.value} value={ct.value}>{ct.label}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={cond.field}
-                    onChange={e => updateCondition(idx, "field", e.target.value)}
-                    className="text-xs border rounded px-2 py-1.5 bg-white flex-1"
-                  >
-                    <option value="">Field...</option>
-                    {CONDITION_FIELDS.map(cf => (
-                      <option key={cf.value} value={cf.value}>{cf.label}</option>
-                    ))}
-                    <option value="params.userId">User ID</option>
-                  </select>
-                  {needsValuesInput(cond.type) ? (
-                    <Input
-                      value={(cond.values || []).join(", ")}
-                      onChange={e => updateCondition(idx, "values", e.target.value)}
-                      placeholder="val1, val2, ..."
-                      className="text-xs h-8 flex-1"
-                    />
-                  ) : (
-                    <Input
-                      value={cond.value !== undefined ? String(cond.value) : ""}
-                      onChange={e => updateCondition(idx, "value", e.target.value)}
-                      placeholder="value"
-                      className="text-xs h-8 flex-1"
-                    />
-                  )}
-                  <button onClick={() => removeCondition(idx)} className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-500 shrink-0">
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <HelpCircle className="w-3.5 h-3.5" />
+                    {showHelpPanel ? "Hide Examples" : "Click here for policy examples"}
                   </button>
                 </div>
-                {cond.field && (cond.value || (cond.values && cond.values.length > 0)) && (
-                  <p className="text-[10px] text-slate-500 font-mono">{humanizeCondition(cond)}</p>
-                )}
+                <div className="border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden bg-slate-900 shadow-inner">
+                  <div className="flex justify-between items-center bg-slate-850 px-3 py-1.5 border-b border-slate-800 text-[10px] font-mono text-slate-400">
+                    <span>JSON Editor</span>
+                    <span className="text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded uppercase font-semibold">CEL format</span>
+                  </div>
+                  <textarea
+                    value={policyJson}
+                    onChange={e => setPolicyJson(e.target.value)}
+                    rows={12}
+                    className="w-full bg-transparent p-3 outline-none resize-none font-mono text-xs leading-relaxed text-emerald-400 dark:text-emerald-300 focus:ring-0"
+                    placeholder="Type or paste your JSON policy here..."
+                  />
+                </div>
               </div>
-            ))}
-          </div>
 
-          <div className="flex gap-2 pt-2">
-            <Button variant="secondary" onClick={() => { setShowModal(false); resetForm(); }} className="flex-1">Cancel</Button>
-            <Button onClick={savePolicy} disabled={saving} className="flex-1">
-              {saving ? "Saving..." : editingId ? "Update Policy" : "Create Policy"}
-            </Button>
+              <div className="flex items-center justify-between pt-2">
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Policy Status</span>
+                  <span className="text-[10px] text-slate-400">Toggle whether this policy is active in the engine</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPolicyActive(!policyActive)}
+                  className={`relative w-9 h-5 rounded-full transition-colors ${policyActive ? "bg-emerald-500" : "bg-slate-300"}`}
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${policyActive ? "left-4" : "left-0.5"}`} />
+                </button>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button variant="secondary" onClick={() => { setShowModal(false); resetForm(); }} className="flex-1">Cancel</Button>
+                <Button onClick={savePolicy} disabled={saving} className="flex-1">
+                  {saving ? "Saving..." : editingId ? "Update Policy" : "Create Policy"}
+                </Button>
+              </div>
+            </div>
+
+            {/* Help/Examples Sidebar */}
+            {showHelpPanel && (
+              <div className="w-[360px] border-l border-slate-100 pl-6 space-y-4 shrink-0 flex flex-col">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-sm text-slate-900">Policy Presets</span>
+                    <span className="text-[10px] text-slate-400">Click Use to quickly load into the editor</span>
+                  </div>
+                  <button onClick={() => setShowHelpPanel(false)} className="text-slate-400 hover:text-slate-600 rounded p-1 hover:bg-slate-50">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="space-y-3 overflow-y-auto max-h-[60vh] pr-1">
+                  {POLICY_EXAMPLES.map((ex, idx) => (
+                    <div key={idx} className="p-3 border border-slate-100 rounded-lg hover:border-brand-200 hover:bg-slate-50/50 transition-all space-y-2 group">
+                      <div className="flex justify-between items-start gap-2">
+                        <h4 className="font-semibold text-xs text-slate-800 leading-tight group-hover:text-brand-700 transition-colors">{ex.title}</h4>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPolicyName(ex.title);
+                            setPolicyDescription(ex.description);
+                            setPolicyJson(JSON.stringify(ex.json, null, 2));
+                            addToast("Loaded preset template", "success");
+                          }}
+                          className="text-[10px] text-brand-600 hover:text-brand-700 font-bold uppercase tracking-wider shrink-0 bg-brand-50 group-hover:bg-brand-100 px-2 py-0.5 rounded transition-all"
+                        >
+                          Use
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-normal">{ex.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </Modal>

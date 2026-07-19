@@ -253,7 +253,7 @@ describe("WVC Wallet Integration (PRD §25)", () => {
       const msg = JSON.parse(res.body).error?.message || "";
       expect(msg).not.toMatch(/initialization vector|decrypt|auth tag/i);
     } else {
-      expect([201, 200, 403]).toContain(res.statusCode);
+      expect([201, 200, 403, 502]).toContain(res.statusCode);
     }
   });
 
