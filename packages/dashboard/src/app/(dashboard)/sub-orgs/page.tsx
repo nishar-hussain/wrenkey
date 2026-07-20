@@ -12,7 +12,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Layers, Plus, Copy, Trash2, Pencil, ExternalLink, ChevronRight } from "lucide-react";
+import { Layers, Plus, Copy, Trash2, Pencil, ExternalLink, ChevronRight, ArrowRight } from "lucide-react";
 
 interface SubOrg {
   id: string;
@@ -41,6 +41,10 @@ export default function SubOrgsPage() {
   const [newEmail, setNewEmail] = useState("");
   const [saveLoading, setSaveLoading] = useState(false);
   const [impersonateId, setImpersonateId] = useState<string | null>(null);
+
+  // Go-to sub-org input
+  const [gotoSubOrgId, setGotoSubOrgId] = useState("");
+  const [gotoError, setGotoError] = useState("");
 
   const fetchSubOrgs = useCallback(async () => {
     if (!token) return;
@@ -82,19 +86,12 @@ export default function SubOrgsPage() {
     } catch (err: any) { addToast(err.message || "Failed", "error"); }
   };
 
-  const impressSubOrg = async (subOrg: SubOrg) => {
-    setImpersonateId(subOrg.id);
-    try {
-      const res: any = await apiFetch(`/sub-orgs/${subOrg.id}/impersonate`, { method: "POST", token: token! });
-      localStorage.setItem("wrankey_parent_token", token!);
-      localStorage.setItem("wrankey_parent_user", JSON.stringify(org));
-      localStorage.setItem("wrankey_parent_org", JSON.stringify(org));
-      localStorage.setItem("wrankey_parent_org_name", org?.name || "");
-      login(res.sessionToken, { id: res.user.id, email: res.user.email, role: res.user.role }, { id: res.org.id, name: res.org.name });
-      addToast(`Switched to "${subOrg.name}"`, "success");
-      router.push("/");
-    } catch (err: any) { addToast(err.message || "Failed to switch", "error"); }
-    finally { setImpersonateId(null); }
+  const handleGoToSubOrg = () => {
+    const trimmed = gotoSubOrgId.trim();
+    if (!trimmed) { setGotoError("Enter a Sub-org ID"); return; }
+    if (!/^[a-f0-9-]{36}$/i.test(trimmed)) { setGotoError("Invalid UUID format"); return; }
+    setGotoError("");
+    router.push(`/sub-orgs/${trimmed}`);
   };
 
   if (!isAuthenticated) return null;
@@ -111,6 +108,30 @@ export default function SubOrgsPage() {
         </Button>
       </div>
 
+      {/* Go to Sub-Org ID */}
+      <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <label className="text-xs font-semibold text-slate-700 mb-1 block">Sub-org ID</label>
+              <div className="flex gap-2">
+                <Input
+                  value={gotoSubOrgId}
+                  onChange={e => { setGotoSubOrgId(e.target.value); setGotoError(""); }}
+                  placeholder="Paste a sub-org UUID to navigate directly..."
+                  className="flex-1 h-10 text-xs font-mono"
+                  onKeyDown={e => e.key === "Enter" && handleGoToSubOrg()}
+                />
+                <Button onClick={handleGoToSubOrg} className="h-10 px-4">
+                  <ArrowRight className="w-4 h-4 mr-1.5" /> Go to sub-org
+                </Button>
+              </div>
+              {gotoError && <p className="text-[11px] text-red-500 mt-1">{gotoError}</p>}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
         <CardContent className="p-0">
           {loading ? (
@@ -124,8 +145,8 @@ export default function SubOrgsPage() {
                       {s.name} <ChevronRight className="w-3 h-3 inline" />
                     </button>
                   )},
-                  { key: "id", header: "Sub-Org ID", render: (s: SubOrg) => (
-                    <div className="flex items-center gap-1"><span className="font-mono text-[11px]">{s.id.slice(0, 8)}...</span><button onClick={() => { navigator.clipboard.writeText(s.id); addToast("Copied", "success"); }} className="text-slate-400 hover:text-slate-600"><Copy className="w-3 h-3" /></button></div>
+                  { key: "id", header: "ID", render: (s: SubOrg) => (
+                    <div className="flex items-center gap-1"><span className="font-mono text-[11px]">{s.id.slice(0, 8)}...{s.id.slice(-4)}</span><button onClick={() => { navigator.clipboard.writeText(s.id); addToast("Copied", "success"); }} className="text-slate-400 hover:text-slate-600"><Copy className="w-3 h-3" /></button></div>
                   )},
                   { key: "rootUser", header: "Root User", render: (s: SubOrg) => <span className="text-xs">{s.rootUserEmail || "—"}</span> },
                   { key: "users", header: "Users", render: (s: SubOrg) => <span className="text-sm font-medium">{s.userCount}</span> },
@@ -133,9 +154,6 @@ export default function SubOrgsPage() {
                   { key: "createdAt", header: "Created", render: (s: SubOrg) => <span className="text-xs text-slate-500">{new Date(s.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span> },
                   { key: "actions", header: "", render: (s: SubOrg) => (
                     <div className="flex items-center gap-1">
-                      <Button size="sm" variant="secondary" className="h-7 text-[11px] px-2" onClick={() => impressSubOrg(s)} disabled={impersonateId === s.id}>
-                        <ExternalLink className="w-3 h-3 mr-1" /> {impersonateId === s.id ? "..." : "Go to Sub-Org"}
-                      </Button>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditSubOrg(s); setNewName(s.name); setShowEdit(true); }}><Pencil className="w-3 h-3" /></Button>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => deleteSubOrg(s.id)}><Trash2 className="w-3 h-3 text-red-400" /></Button>
                     </div>
