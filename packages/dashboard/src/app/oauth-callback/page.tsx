@@ -21,17 +21,20 @@ function OAuthCallbackContent() {
   const searchParams = useSearchParams();
   const { login } = useAuth();
 
-  const [step, setStep] = useState<"exchanging" | "error">("exchanging");
+  const [step, setStep] = useState<"exchanging" | "error" | "external">("exchanging");
   const [error, setError] = useState("");
+  const [sessionResult, setSessionResult] = useState<any>(null);
 
   useEffect(() => {
     const code = searchParams.get("code");
-    const provider = searchParams.get("provider") || searchParams.get("state");
-    const error = searchParams.get("error");
+    const provider = searchParams.get("provider") || extractProvider(searchParams.get("state"));
+    const errorParam = searchParams.get("error");
+    const configId = searchParams.get("configId");
+    const isExternal = !!configId;
 
-    if (error) {
+    if (errorParam) {
       setStep("error");
-      setError(error || "Authorization denied by provider");
+      setError(errorParam || "Authorization denied by provider");
       return;
     }
 
@@ -43,18 +46,33 @@ function OAuthCallbackContent() {
 
     async function exchangeCode() {
       try {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (configId) {
+          headers["X-Auth-Proxy-Config-Id"] = configId;
+        }
+
         const res: any = await apiFetch("/auth/oauth", {
           method: "POST",
-          body: JSON.stringify({ provider: provider || "google", code, redirectUri: window.location.origin + "/oauth-callback" }),
+          body: JSON.stringify({
+            provider: provider || "google",
+            code,
+            redirectUri: window.location.origin + "/oauth-callback",
+          }),
         });
 
-        login(
-          res.sessionToken,
-          { id: res.user.id, email: res.user.email, role: res.user.role },
-          { id: res.org.id, name: res.org.name },
-        );
-
-        router.push("/");
+        if (isExternal) {
+          // External app — return session via URL hash
+          setStep("external");
+          setSessionResult(res);
+        } else {
+          // WranKey dashboard — login directly
+          login(
+            res.sessionToken,
+            { id: res.user.id, email: res.user.email, role: res.user.role },
+            { id: res.org.id, name: res.org.name },
+          );
+          router.push("/");
+        }
       } catch (err: any) {
         setStep("error");
         setError(err.message || "Failed to complete authentication. Please try again.");
@@ -63,6 +81,26 @@ function OAuthCallbackContent() {
 
     exchangeCode();
   }, [searchParams, router, login]);
+
+  function extractProvider(state: string | null): string | null {
+    if (!state) return null;
+    const match = state.match(/provider:(\w+)/);
+    return match ? match[1] : state;
+  }
+
+  function sendToExternalApp() {
+    if (!sessionResult) return;
+    const data = encodeURIComponent(JSON.stringify({
+      sessionToken: sessionResult.sessionToken,
+      user: sessionResult.user,
+      org: sessionResult.org,
+    }));
+    // Post message to opener window, then redirect with hash
+    if (window.opener) {
+      window.opener.postMessage({ type: "wrankey-oauth-complete", ...sessionResult }, window.location.origin);
+    }
+    window.location.hash = `wrankey_session=${data}`;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4 py-12">
@@ -73,6 +111,28 @@ function OAuthCallbackContent() {
               <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               <Skeleton className="h-5 w-32" />
               <p className="text-sm text-muted-foreground text-center">Completing authentication...</p>
+            </div>
+          )}
+
+          {step === "external" && (
+            <div className="space-y-6 text-center">
+              <div className="flex justify-center">
+                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 text-xl">
+                  ✓
+                </div>
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Authentication Complete</h2>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Signed in as <strong>{sessionResult?.user?.email}</strong>
+                </p>
+              </div>
+              <Button onClick={sendToExternalApp} className="w-full h-11">
+                Return to App
+              </Button>
+              <p className="text-[11px] text-muted-foreground">
+                Copy session token: <code className="bg-slate-100 px-1 rounded text-xs">{sessionResult?.sessionToken?.slice(0, 20)}...</code>
+              </p>
             </div>
           )}
 

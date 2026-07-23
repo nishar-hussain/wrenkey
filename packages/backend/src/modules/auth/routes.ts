@@ -13,7 +13,7 @@ import { createAuditLog } from "../../utils/audit.js";
 import { getRedis } from "../../redis.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
 import { parsePagination } from "../../utils/pagination.js";
-import { signToken } from "../../utils/jwt.js";
+import { signToken, verifyToken } from "../../utils/jwt.js";
 import { hashSha256, generateRandomToken } from "../../utils/crypto.js";
 
 function validateEmail(email: string) {
@@ -192,7 +192,24 @@ export async function authRoutes(app: FastifyInstance) {
         applyOrgConfigOverlay(baseConfig, oc);
       }
 
-      // If authenticated, overlay org-level config
+      // Try to resolve org from Bearer token even on public paths
+      // (auth middleware skips public paths, so we parse manually here)
+      if (!request.userId) {
+        const authHeader = request.headers.authorization;
+        if (authHeader?.startsWith("Bearer ")) {
+          try {
+            const token = authHeader.slice(7);
+            const payload = verifyToken(token);
+            if (payload?.orgId) {
+              const orgConfigRow = await prisma.orgConfig.findUnique({ where: { orgId: payload.orgId } });
+              const oc = (orgConfigRow?.config as any) || {};
+              applyOrgConfigOverlay(baseConfig, oc);
+            }
+          } catch { /* token invalid/expired, use defaults */ }
+        }
+      }
+
+      // If authenticated via middleware (non-public paths), overlay org config
       if (request.userId && request.orgId) {
         try {
           const orgConfigRow = await prisma.orgConfig.findUnique({ where: { orgId: request.orgId } });

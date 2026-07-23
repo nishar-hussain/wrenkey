@@ -233,10 +233,41 @@ export default function LoginPage() {
 
   // ─── Social OAuth ─────────────────────────────────────────────────
 
+  const getEnabledSocialProviders = () => {
+    if (!config) return [];
+    const providers: Array<{ key: string; label: string; icon: string; color: string; enabled: boolean; hasCredentials: boolean }> = [];
+    
+    for (const p of OAUTH_PROVIDERS) {
+      let enabled = false;
+      let hasCredentials = false;
+      
+      if (p.key === "google") {
+        enabled = config.googleLogin === true;
+        hasCredentials = !!(config.googleClientId);
+      } else if (p.key === "apple") {
+        enabled = config.appleLogin === true;
+        hasCredentials = true;
+      } else if (p.key === "x") {
+        enabled = config.xLogin === true;
+        hasCredentials = true;
+      } else if (p.key === "discord") {
+        enabled = config.discordLogin === true;
+        hasCredentials = true;
+      } else if (p.key === "github") {
+        enabled = config.socialOAuth === true;
+        hasCredentials = true;
+      }
+      
+      if (enabled) {
+        providers.push({ ...p, enabled, hasCredentials });
+      }
+    }
+    return providers;
+  };
+
   const handleSocialLogin = (provider: string) => {
     const clientIdMap: Record<string, string> = {
       google: config?.googleClientId || "",
-      apple: "com.wrankey.app", discord: "wrankey", github: "wrankey", x: "wrankey",
     };
     const scopeMap: Record<string, string> = {
       google: "openid email profile", apple: "name email", discord: "identify email",
@@ -246,14 +277,15 @@ export default function LoginPage() {
     const clientId = clientIdMap[provider] || "";
     const scope = scopeMap[provider] || "email";
 
+    // For external apps, pass configId in the state parameter
+    const stateParam = `provider:${provider}`;
+
     if (provider === "x" || provider === "twitter") {
-      const state = encodeURIComponent(redirectUri);
-      const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope.replace(/ /g, "%20")}&state=provider:x&code_challenge=challenge&code_challenge_method=plain`;
-      window.location.href = authUrl;
+      window.location.href = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope.replace(/ /g, "%20")}&state=${stateParam}&code_challenge=challenge&code_challenge_method=plain`;
     } else if (provider === "apple") {
-      window.location.href = `https://appleid.apple.com/auth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=provider:apple`;
+      window.location.href = `https://appleid.apple.com/auth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${stateParam}`;
     } else {
-      window.location.href = `${OAUTH_PROVIDERS.find(p => p.key === provider)?.authUrl}?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=provider:${provider}`;
+      window.location.href = `${OAUTH_PROVIDERS.find(p => p.key === provider)?.authUrl}?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${stateParam}`;
     }
   };
 
@@ -292,29 +324,27 @@ export default function LoginPage() {
 
   // ─── Social Buttons ───────────────────────────────────────────────
 
-  const SocialButtons = () => (
-    <div className="space-y-2">
-      {config?.googleLogin && OAUTH_PROVIDERS.filter(p => {
-        if (p.key === "google") return config.googleLogin;
-        if (p.key === "apple") return config.appleLogin;
-        if (p.key === "x") return config.xLogin;
-        if (p.key === "discord") return config.discordLogin;
-        return true;
-      }).map(p => (
-        <button key={p.key} onClick={() => handleSocialLogin(p.key)} disabled={loading}
-          className="w-full h-11 rounded-lg text-white text-sm font-medium flex items-center justify-center gap-2 transition-opacity hover:opacity-90 disabled:opacity-50"
-          style={{
-            background: p.key === "google" ? "#4285f4" : p.key === "apple" ? "#000" : p.key === "discord" ? "#5865F2" : p.key === "github" ? "#24292e" : "#000"
-          }}>
-          {p.key === "apple" ? (
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="white"><path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
-          ) : (
-            <span className="font-bold text-base">{p.icon}</span>
-          )}Continue with {p.label}
-        </button>
-      ))}
-    </div>
-  );
+  const SocialButtons = () => {
+    const providers = getEnabledSocialProviders();
+    if (providers.length === 0) {
+      return <p className="text-xs text-slate-400 text-center py-4">No social login providers available. Ask your admin to enable them in Configuration → Auth.</p>;
+    }
+    return (
+      <div className="space-y-2">
+        {providers.map(p => (
+          <button key={p.key} onClick={() => handleSocialLogin(p.key)} disabled={loading}
+            className="w-full h-11 rounded-lg text-white text-sm font-medium flex items-center justify-center gap-2 transition-opacity hover:opacity-90 disabled:opacity-50"
+            style={{ background: p.key === "google" ? "#4285f4" : p.key === "apple" ? "#000" : p.key === "discord" ? "#5865F2" : p.key === "github" ? "#24292e" : "#000" }}>
+            {p.key === "apple" ? (
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="white"><path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+            ) : (
+              <span className="font-bold text-base">{p.icon}</span>
+            )}Continue with {p.label}
+          </button>
+        ))}
+      </div>
+    );
+  };
 
   // ─── Render ───────────────────────────────────────────────────────
 

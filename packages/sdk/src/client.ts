@@ -111,6 +111,38 @@ export class WranKeyClient {
     return res;
   }
 
+  /** Build the OAuth authorization URL to redirect the user to the provider. */
+  getOAuthRedirectUrl(provider: string, redirectUri: string, clientId?: string, scope?: string): string {
+    const scopes: Record<string, string> = {
+      google: "openid email profile", apple: "name email", discord: "identify email",
+      github: "user:email", x: "users.read tweet.read",
+    };
+    const urls: Record<string, string> = {
+      google: "https://accounts.google.com/o/oauth2/v2/auth",
+      apple: "https://appleid.apple.com/auth/authorize",
+      discord: "https://discord.com/api/oauth2/authorize",
+      github: "https://github.com/login/oauth/authorize",
+      x: "https://twitter.com/i/oauth2/authorize",
+    };
+
+    const s = scope || scopes[provider] || "email";
+    const baseUrl = urls[provider] || urls.google;
+    const params = new URLSearchParams({
+      response_type: "code",
+      client_id: clientId || "",
+      redirect_uri: redirectUri,
+      scope: s,
+      state: `provider:${provider}${this.configId ? `:${this.configId}` : ""}`,
+    });
+
+    if (provider === "x" || provider === "twitter") {
+      params.set("code_challenge", "challenge");
+      params.set("code_challenge_method", "plain");
+    }
+
+    return `${baseUrl}?${params.toString()}`;
+  }
+
   async walletLogin(address: string, signature: string, message?: string): Promise<AuthResponse> {
     const res = await this.request<AuthResponse>("POST", "/auth/wallet", { address, signature, message });
     this.sessionToken = res.sessionToken;
