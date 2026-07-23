@@ -12,18 +12,16 @@ export function getEmailTransporter(): Transporter | null {
     return cachedTransporter;
   }
 
-  const isGmail = config.smtp.host.includes("gmail");
   const isSecure = config.smtp.port === 465;
 
   const transporter = createTransport({
-    ...(isGmail
-      ? { service: "gmail" }
-      : { host: config.smtp.host, port: config.smtp.port, secure: isSecure }),
+    host: config.smtp.host,
+    port: config.smtp.port,
+    secure: isSecure,
     auth: {
       user: config.smtp.user,
       pass: config.smtp.pass,
     },
-    requireTLS: !isSecure,
     tls: {
       rejectUnauthorized: !config.isDev,
     },

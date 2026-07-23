@@ -104,7 +104,11 @@ export default function LoginPage() {
     if (!contact || loading) return;
     setLoading(true); setError("");
     try {
-      await apiFetch(`/auth/${isEmail ? "email" : "phone"}/send`, { method: "POST", body: JSON.stringify(isEmail ? { email: contact } : { phone: contact }) });
+      const sendRes: any = await apiFetch(`/auth/${isEmail ? "email" : "phone"}/send`, { method: "POST", body: JSON.stringify(isEmail ? { email: contact } : { phone: contact }) });
+      if (sendRes.data?.emailSent === false || sendRes.emailSent === false) {
+        setError(sendRes.data?.message || sendRes.message || "Failed to send email. Check SMTP configuration.");
+        return;
+      }
       setStep("otp-verify");
     } catch (err: any) { setError(err.message || "Failed"); } finally { setLoading(false); }
   };

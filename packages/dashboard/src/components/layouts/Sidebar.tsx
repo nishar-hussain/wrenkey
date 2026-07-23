@@ -35,7 +35,6 @@ const orgSettingsChildren = [
   { href: "/tags", label: "Tags", icon: Tag },
   { href: "/policies", label: "Policies", icon: Shield },
   { href: "/activity-logs", label: "Activity Log", icon: Activity },
-  { href: "/sessions", label: "Sessions", icon: CheckCircle },
   { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/webhooks", label: "Webhooks", icon: Webhook },
 ];

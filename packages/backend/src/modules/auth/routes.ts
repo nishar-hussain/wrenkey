@@ -55,7 +55,13 @@ async function findOrCreateOrg(name: string): Promise<{ id: string; name: string
   const existing = await prisma.organization.findFirst({ where: { name } });
   if (existing) return existing;
   try {
-    return await prisma.organization.create({ data: { name } });
+    const org = await prisma.organization.create({ data: { name } });
+    await prisma.orgConfig.upsert({
+      where: { orgId: org.id },
+      create: { orgId: org.id, config: { otpEnabled: true, otpEmail: true, otpLength: 6, otpType: "numeric", sessionExpiry: 900 } },
+      update: {},
+    });
+    return org;
   } catch (err: any) {
     if (err?.code === "P2002") {
       const created = await prisma.organization.findFirst({ where: { name } });
@@ -311,7 +317,6 @@ export async function authRoutes(app: FastifyInstance) {
             : "OTP generated (check server logs - SMTP not configured)",
         emailSent,
         expiresIn: config.otpExpirySeconds,
-        ...(config.isDev ? { devOtp: otp } : {}),
       });
     } catch (err) {
       return sendError(reply, err);
