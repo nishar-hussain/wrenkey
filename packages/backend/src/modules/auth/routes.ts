@@ -1,4 +1,4 @@
-import { FastifyInstance } from "fastify";
+import { FastifyInstance, type FastifyRequest } from "fastify";
 import bcrypt from "bcrypt";
 import {
   generateRegistrationOptions,
@@ -127,6 +127,31 @@ async function getOtpConfig(orgId?: string): Promise<{ otpLength: number; otpTyp
     otpEmail: orgConfig.otpEmail !== false,
     otpSms: orgConfig.otpSms === true,
   };
+}
+
+async function isAuthMethodEnabled(request: FastifyRequest, methodKey: string, email?: string): Promise<boolean> {
+  // Auth Proxy: check proxy config
+  if (request.authProxyOrgId && request.authProxyConfig) {
+    return request.authProxyConfig[methodKey] !== false;
+  }
+  // Try from session (userId set by auth middleware)
+  const userId = (request as any).userId;
+  if (userId) {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { orgId: true } });
+    if (user) {
+      const orgConfig = await getOrgConfig(user.orgId);
+      return orgConfig[methodKey] !== false;
+    }
+  }
+  // Try from email (public endpoint without session)
+  if (email) {
+    const user = await prisma.user.findFirst({ where: { email }, select: { orgId: true } });
+    if (user) {
+      const orgConfig = await getOrgConfig(user.orgId);
+      return orgConfig[methodKey] !== false;
+    }
+  }
+  return true; // default: enabled when no org resolved
 }
 
 function generateOtpConfigurable(length: number, type: string): string {
@@ -694,6 +719,10 @@ export async function authRoutes(app: FastifyInstance) {
       const { email } = request.body as { email: string };
       if (!email) throw new ValidationError("Email required");
 
+      if (!(await isAuthMethodEnabled(request, "passkeyAuth", email))) {
+        throw new ValidationError("Passkey authentication is disabled for this organization");
+      }
+
       const redis = getRedis();
       let org: { id: string; name: string };
       let user: any;
@@ -786,6 +815,10 @@ export async function authRoutes(app: FastifyInstance) {
       const { email } = request.body as { email: string };
       if (!email) throw new ValidationError("Email required");
 
+      if (!(await isAuthMethodEnabled(request, "passkeyAuth", email))) {
+        throw new ValidationError("Passkey authentication is disabled for this organization");
+      }
+
       const user = await prisma.user.findFirst({ where: { email } });
       if (!user) throw new ValidationError("User not found");
 
@@ -845,11 +878,15 @@ export async function authRoutes(app: FastifyInstance) {
       const { address, signature, message, orgName } = request.body as { address: string; signature: string; message: string; orgName?: string };
       if (!address || !signature) throw new ValidationError("Address and signature required");
 
+      const walletEmail = `${address}@wallet.wrankey`;
+
+      if (!(await isAuthMethodEnabled(request, "walletAuth", walletEmail))) {
+        throw new ValidationError("Wallet authentication is disabled for this organization");
+      }
+
       const { verifyMessage } = await import("ethers");
       const recovered = verifyMessage(message || "Sign in to WranKey", signature);
       if (recovered.toLowerCase() !== address.toLowerCase()) throw new ValidationError("Invalid signature");
-
-      const walletEmail = `${address}@wallet.wrankey`;
       let org: { id: string; name: string };
       let user: any;
       let isNewUser = false;

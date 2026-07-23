@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import { WranKeyClient, createClient } from "../client.js";
+import type { AuthConfig } from "../types.js";
 
 interface WranKeyContextValue {
   client: WranKeyClient | null;
@@ -8,6 +9,8 @@ interface WranKeyContextValue {
   user: { id: string; email?: string; role: string } | null;
   login: (token: string, userData: { id: string; email?: string; role: string }) => void;
   logout: () => void;
+  config: AuthConfig | null;
+  configLoading: boolean;
 }
 
 const WranKeyContext = createContext<WranKeyContextValue>({
@@ -17,6 +20,8 @@ const WranKeyContext = createContext<WranKeyContextValue>({
   user: null,
   login: () => {},
   logout: () => {},
+  config: null,
+  configLoading: false,
 });
 
 export function useWranKey() {
@@ -37,6 +42,8 @@ export function WranKeyProvider({
   const [client] = useState(() => createClient({ apiBase, apiKey, configId }));
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [user, setUser] = useState<{ id: string; email?: string; role: string } | null>(null);
+  const [config, setConfig] = useState<AuthConfig | null>(null);
+  const [configLoading, setConfigLoading] = useState(false);
 
   const login = useCallback((token: string, userData: { id: string; email?: string; role: string }) => {
     setSessionToken(token);
@@ -56,6 +63,18 @@ export function WranKeyProvider({
     }
   }, [client]);
 
+  // Fetch auth config on mount
+  useEffect(() => {
+    setConfigLoading(true);
+    client.getAuthConfig().then(cfg => {
+      setConfig(cfg);
+    }).catch(() => {
+      // ignore — return null
+    }).finally(() => {
+      setConfigLoading(false);
+    });
+  }, [client]);
+
   useEffect(() => {
     if (typeof localStorage === "undefined") return;
     const stored = localStorage.getItem("wrankey_session");
@@ -67,7 +86,7 @@ export function WranKeyProvider({
 
   return React.createElement(
     WranKeyContext.Provider,
-    { value: { client, isAuthenticated: !!sessionToken, sessionToken, user, login, logout } },
+    { value: { client, isAuthenticated: !!sessionToken, sessionToken, user, login, logout, config, configLoading } },
     children
   );
 }

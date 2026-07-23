@@ -389,10 +389,10 @@ export default function LoginPage() {
               <div className="space-y-2">
                 <MethodTile method="email" icon={Mail} label="Email" desc="Passwordless login via one-time code" />
                 <MethodTile method="phone" icon={Smartphone} label="Phone" desc="SMS one-time password" />
-                <MethodTile method="passkey" icon={Fingerprint} label="Passkey" desc="Biometric or security key login" />
+                {config?.passkeyAuth !== false && <MethodTile method="passkey" icon={Fingerprint} label="Passkey" desc="Biometric or security key login" />}
                 <MethodTile method="password" icon={Lock} label="Password" desc="Email and password" />
-                <MethodTile method="social" icon={User} label="Social Login" desc="Google, Apple, Discord, more" />
-                <MethodTile method="wallet" icon={Wallet} label="Crypto Wallet" desc="Sign-In With Ethereum" />
+                {config?.socialOAuth !== false && getEnabledSocialProviders().length > 0 && <MethodTile method="social" icon={User} label="Social Login" desc="Google, Apple, Discord, more" />}
+                {config?.walletAuth !== false && <MethodTile method="wallet" icon={Wallet} label="Crypto Wallet" desc="Sign-In With Ethereum" />}
               </div>
               {accounts.length > 0 && (
                 <button type="button" onClick={() => setStep("accounts")} className="text-sm text-muted-foreground hover:text-foreground underline transition-colors text-center w-full">← Back to accounts</button>
