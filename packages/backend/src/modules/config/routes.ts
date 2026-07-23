@@ -78,7 +78,21 @@ export async function configRoutes(app: FastifyInstance) {
     try {
       const body = request.body as Record<string, any> || {};
       const cfg = await prisma.orgConfig.findUnique({ where: { orgId: request.orgId } });
-      const current = cfg ? { ...DEFAULT_CONFIG, ...(cfg.config as any), ...body } : { ...DEFAULT_CONFIG, ...body };
+      const existing = (cfg?.config as any) || {};
+      const current = { ...DEFAULT_CONFIG, ...existing, ...body };
+
+      // Auto-generate configId when auth proxy is enabled
+      if (body.authProxyEnabled === true && !existing.configId) {
+        current.configId = randomUUID();
+      }
+      // Clear configId when auth proxy is disabled
+      if (body.authProxyEnabled === false) {
+        delete current.configId;
+      }
+      // Preserve existing configId if not toggling
+      if (body.authProxyEnabled === undefined && existing.configId) {
+        current.configId = existing.configId;
+      }
 
       const updated = await prisma.orgConfig.upsert({
         where: { orgId: request.orgId },

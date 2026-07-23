@@ -142,6 +142,26 @@ function generateOtpConfigurable(length: number, type: string): string {
 }
 
 export async function authRoutes(app: FastifyInstance) {
+  function applyOrgConfigOverlay(baseConfig: Record<string, any>, oc: Record<string, any>) {
+    if (oc.sessionExpiry !== undefined) baseConfig.sessionExpiry = oc.sessionExpiry;
+    if (oc.otpEnabled !== undefined) baseConfig.otpEnabled = oc.otpEnabled;
+    if (oc.otpLength !== undefined) baseConfig.otpLength = oc.otpLength;
+    if (oc.otpType !== undefined) baseConfig.otpType = oc.otpType;
+    if (oc.otpEmail !== undefined) baseConfig.otpEmail = oc.otpEmail;
+    if (oc.otpSms !== undefined) baseConfig.otpSms = oc.otpSms;
+    if (oc.passkeyAuth !== undefined) baseConfig.passkeyAuth = oc.passkeyAuth;
+    if (oc.walletAuth !== undefined) baseConfig.walletAuth = oc.walletAuth;
+    if (oc.socialOAuth !== undefined) baseConfig.socialOAuth = oc.socialOAuth;
+    if (oc.googleLogin !== undefined) baseConfig.googleLogin = oc.googleLogin;
+    if (oc.appleLogin !== undefined) baseConfig.appleLogin = oc.appleLogin;
+    if (oc.xLogin !== undefined) baseConfig.xLogin = oc.xLogin;
+    if (oc.discordLogin !== undefined) baseConfig.discordLogin = oc.discordLogin;
+    if (oc.redirectUrl !== undefined) baseConfig.redirectUrl = oc.redirectUrl;
+    if (oc.appName !== undefined) baseConfig.appName = oc.appName;
+    if (oc.appLogo !== undefined) baseConfig.appLogo = oc.appLogo;
+    if (oc.requireTokenLookup !== undefined) baseConfig.requireTokenLookup = oc.requireTokenLookup;
+  }
+
   // Public configuration endpoint — returns server-level + org-level auth config
   app.get("/auth/config", async (request, reply) => {
     try {
@@ -166,28 +186,18 @@ export async function authRoutes(app: FastifyInstance) {
         requireTokenLookup: false,
       };
 
+      // Auth Proxy: overlay org-level config from proxy resolution
+      if (request.authProxyOrgId && request.authProxyConfig) {
+        const oc = request.authProxyConfig;
+        applyOrgConfigOverlay(baseConfig, oc);
+      }
+
       // If authenticated, overlay org-level config
       if (request.userId && request.orgId) {
         try {
           const orgConfigRow = await prisma.orgConfig.findUnique({ where: { orgId: request.orgId } });
           const oc = (orgConfigRow?.config as any) || {};
-          if (oc.sessionExpiry !== undefined) baseConfig.sessionExpiry = oc.sessionExpiry;
-          if (oc.otpEnabled !== undefined) baseConfig.otpEnabled = oc.otpEnabled;
-          if (oc.otpLength !== undefined) baseConfig.otpLength = oc.otpLength;
-          if (oc.otpType !== undefined) baseConfig.otpType = oc.otpType;
-          if (oc.otpEmail !== undefined) baseConfig.otpEmail = oc.otpEmail;
-          if (oc.otpSms !== undefined) baseConfig.otpSms = oc.otpSms;
-          if (oc.passkeyAuth !== undefined) baseConfig.passkeyAuth = oc.passkeyAuth;
-          if (oc.walletAuth !== undefined) baseConfig.walletAuth = oc.walletAuth;
-          if (oc.socialOAuth !== undefined) baseConfig.socialOAuth = oc.socialOAuth;
-          if (oc.googleLogin !== undefined) baseConfig.googleLogin = oc.googleLogin;
-          if (oc.appleLogin !== undefined) baseConfig.appleLogin = oc.appleLogin;
-          if (oc.xLogin !== undefined) baseConfig.xLogin = oc.xLogin;
-          if (oc.discordLogin !== undefined) baseConfig.discordLogin = oc.discordLogin;
-          if (oc.redirectUrl !== undefined) baseConfig.redirectUrl = oc.redirectUrl;
-          if (oc.appName !== undefined) baseConfig.appName = oc.appName;
-          if (oc.appLogo !== undefined) baseConfig.appLogo = oc.appLogo;
-          if (oc.requireTokenLookup !== undefined) baseConfig.requireTokenLookup = oc.requireTokenLookup;
+          applyOrgConfigOverlay(baseConfig, oc);
         } catch { /* use server defaults */ }
       }
 
@@ -262,16 +272,29 @@ export async function authRoutes(app: FastifyInstance) {
       const redis = getRedis();
       await checkOtpRateLimit(redis, "email", email);
 
-      // Look up org config for branding + OTP settings
       let branding = { appName: "WranKey", appLogo: "" };
       let otpCfg = { otpLength: 6, otpType: "numeric", otpEnabled: true, otpEmail: true, otpSms: false };
-      try {
-        const user = await prisma.user.findFirst({ where: { email }, select: { orgId: true } });
-        if (user) {
-          branding = await getOrgBranding(user.orgId);
-          otpCfg = await getOtpConfig(user.orgId);
-        }
-      } catch { /* use defaults */ }
+
+      // Auth Proxy: use org config from header resolution
+      if (request.authProxyOrgId && request.authProxyConfig) {
+        const pc = request.authProxyConfig;
+        branding = { appName: pc.appName || "WranKey", appLogo: pc.appLogo || "" };
+        otpCfg = {
+          otpLength: typeof pc.otpLength === "number" ? pc.otpLength : 6,
+          otpType: pc.otpType === "alphanumeric" ? "alphanumeric" : "numeric",
+          otpEnabled: pc.otpEnabled !== false,
+          otpEmail: pc.otpEmail !== false,
+          otpSms: pc.otpSms === true,
+        };
+      } else {
+        try {
+          const user = await prisma.user.findFirst({ where: { email }, select: { orgId: true } });
+          if (user) {
+            branding = await getOrgBranding(user.orgId);
+            otpCfg = await getOtpConfig(user.orgId);
+          }
+        } catch { /* use defaults */ }
+      }
 
       if (!otpCfg.otpEnabled) throw new ValidationError("OTP authentication is disabled for this organization");
       if (!otpCfg.otpEmail) throw new ValidationError("Email OTP is disabled for this organization");
@@ -334,20 +357,37 @@ export async function authRoutes(app: FastifyInstance) {
       if (!storedOtp || storedOtp !== otp) throw new ValidationError("Invalid or expired OTP");
       await redis.del(`${OTP_PREFIX}${email}`);
 
-      const existingUser = await prisma.user.findFirst({ where: { email } });
       let org: { id: string; name: string };
-      if (existingUser) {
-        org = (await prisma.organization.findUnique({ where: { id: existingUser.orgId } }))!;
-      } else {
-        org = await findOrCreateOrg(orgName || humanOrgName(email));
-      }
-      const { user, created: isNewUser } = await findOrCreateUser(org.id, email, { name });
+      let user: any;
+      let isNewUser = false;
 
-      if (isNewUser && tags && tags.length > 0) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { tags },
-        });
+      if (request.authProxyOrgId) {
+        // Auth Proxy mode: create/find user in the proxy org
+        org = { id: request.authProxyOrgId, name: request.authProxyConfig?.appName || "WranKey" };
+        const existingUser = await prisma.user.findFirst({ where: { orgId: request.authProxyOrgId, email } });
+        if (existingUser) {
+          user = existingUser;
+        } else {
+          const userCount = await prisma.user.count({ where: { orgId: request.authProxyOrgId } });
+          user = await prisma.user.create({
+            data: { orgId: request.authProxyOrgId, email, name, role: userCount === 0 ? "ORG_ADMIN" : "DEVELOPER", tags: tags || [] },
+          });
+          isNewUser = true;
+        }
+      } else {
+        const existingUser = await prisma.user.findFirst({ where: { email } });
+        if (existingUser) {
+          org = (await prisma.organization.findUnique({ where: { id: existingUser.orgId } }))!;
+        } else {
+          org = await findOrCreateOrg(orgName || humanOrgName(email));
+        }
+        const result = await findOrCreateUser(org.id, email, { name });
+        user = result.user;
+        isNewUser = result.created;
+
+        if (isNewUser && tags && tags.length > 0) {
+          await prisma.user.update({ where: { id: user.id }, data: { tags } });
+        }
       }
 
       await prisma.authenticator.upsert({
@@ -477,8 +517,15 @@ export async function authRoutes(app: FastifyInstance) {
       let clientId = "";
       let clientSecret = "";
 
-      // Try org-level credentials first
-      if (orgId) {
+      // Auth Proxy: use org-level credentials from proxy config
+      if (request.authProxyOrgId && request.authProxyConfig) {
+        const creds = (request.authProxyConfig.oauthCredentials || []) as Array<{ provider: string; clientId: string; clientSecret: string }>;
+        const match = creds.find((c: any) => c.provider?.toLowerCase() === provider.toLowerCase());
+        if (match) { clientId = match.clientId; clientSecret = match.clientSecret; }
+      }
+
+      // Try request-provided orgId (non-proxy flow)
+      if (!clientId && orgId) {
         try {
           const orgConfigRow = await prisma.orgConfig.findUnique({ where: { orgId }, select: { config: true } });
           const oc = (orgConfigRow?.config as any) || {};
@@ -572,14 +619,33 @@ export async function authRoutes(app: FastifyInstance) {
         throw new ValidationError(`Unsupported OAuth provider: ${provider}`);
       }
 
-      const existingUser = await prisma.user.findFirst({ where: { email } });
       let org: { id: string; name: string };
-      if (existingUser) {
-        org = (await prisma.organization.findUnique({ where: { id: existingUser.orgId } }))!;
+      let user: any;
+      let isNewUser = false;
+
+      if (request.authProxyOrgId) {
+        org = { id: request.authProxyOrgId, name: request.authProxyConfig?.appName || "WranKey" };
+        const existing = await prisma.user.findFirst({ where: { orgId: request.authProxyOrgId, email } });
+        if (existing) {
+          user = existing;
+        } else {
+          const userCount = await prisma.user.count({ where: { orgId: request.authProxyOrgId } });
+          user = await prisma.user.create({
+            data: { orgId: request.authProxyOrgId, email, name, role: userCount === 0 ? "ORG_ADMIN" : "DEVELOPER" },
+          });
+          isNewUser = true;
+        }
       } else {
-        org = await findOrCreateOrg(orgName || `${name || email}'s Org`);
+        const existingUser = await prisma.user.findFirst({ where: { email } });
+        if (existingUser) {
+          org = (await prisma.organization.findUnique({ where: { id: existingUser.orgId } }))!;
+        } else {
+          org = await findOrCreateOrg(orgName || `${name || email}'s Org`);
+        }
+        const result = await findOrCreateUser(org.id, email, { name });
+        user = result.user;
+        isNewUser = result.created;
       }
-      const { user, created: isNewUser } = await findOrCreateUser(org.id, email, { name });
 
       await prisma.authenticator.upsert({
         where: { userId_type: { userId: user.id, type: `OAUTH_${provider.toUpperCase()}` } },
@@ -612,15 +678,26 @@ export async function authRoutes(app: FastifyInstance) {
       if (!email) throw new ValidationError("Email required");
 
       const redis = getRedis();
-      const existingUser = await prisma.user.findFirst({ where: { email } });
       let org: { id: string; name: string };
-      if (existingUser) {
-        org = (await prisma.organization.findUnique({ where: { id: existingUser.orgId } }))!;
+      let user: any;
+
+      if (request.authProxyOrgId) {
+        org = { id: request.authProxyOrgId, name: request.authProxyConfig?.appName || "WranKey" };
+        user = await prisma.user.findFirst({ where: { orgId: request.authProxyOrgId, email } });
+        if (!user) {
+          const userCount = await prisma.user.count({ where: { orgId: request.authProxyOrgId } });
+          user = await prisma.user.create({ data: { orgId: request.authProxyOrgId, email, role: userCount === 0 ? "ORG_ADMIN" : "DEVELOPER" } });
+        }
       } else {
-        org = await findOrCreateOrg(`${email}'s Org`);
+        const existingUser = await prisma.user.findFirst({ where: { email } });
+        if (existingUser) {
+          org = (await prisma.organization.findUnique({ where: { id: existingUser.orgId } }))!;
+          user = existingUser;
+        } else {
+          org = await findOrCreateOrg(`${email}'s Org`);
+          user = await prisma.user.create({ data: { orgId: org.id, email, role: "DEVELOPER" } });
+        }
       }
-      let user = existingUser;
-      if (!user) user = await prisma.user.create({ data: { orgId: org.id, email, role: "DEVELOPER" } });
 
       const options = await generateRegistrationOptions({
         rpName: RP_NAME, rpID: RP_ID, userName: email,
@@ -756,14 +833,33 @@ export async function authRoutes(app: FastifyInstance) {
       if (recovered.toLowerCase() !== address.toLowerCase()) throw new ValidationError("Invalid signature");
 
       const walletEmail = `${address}@wallet.wrankey`;
-      const existingUser = await prisma.user.findFirst({ where: { email: walletEmail } });
       let org: { id: string; name: string };
-      if (existingUser) {
-        org = (await prisma.organization.findUnique({ where: { id: existingUser.orgId } }))!;
+      let user: any;
+      let isNewUser = false;
+
+      if (request.authProxyOrgId) {
+        org = { id: request.authProxyOrgId, name: request.authProxyConfig?.appName || "WranKey" };
+        const existing = await prisma.user.findFirst({ where: { orgId: request.authProxyOrgId, email: walletEmail } });
+        if (existing) {
+          user = existing;
+        } else {
+          const userCount = await prisma.user.count({ where: { orgId: request.authProxyOrgId } });
+          user = await prisma.user.create({
+            data: { orgId: request.authProxyOrgId, email: walletEmail, name: address.slice(0, 12), role: userCount === 0 ? "ORG_ADMIN" : "DEVELOPER" },
+          });
+          isNewUser = true;
+        }
       } else {
-        org = await findOrCreateOrg(orgName || `${address.slice(0, 8)}'s Org`);
+        const existingUser = await prisma.user.findFirst({ where: { email: walletEmail } });
+        if (existingUser) {
+          org = (await prisma.organization.findUnique({ where: { id: existingUser.orgId } }))!;
+        } else {
+          org = await findOrCreateOrg(orgName || `${address.slice(0, 8)}'s Org`);
+        }
+        const result = await findOrCreateUser(org.id, walletEmail, { name: address.slice(0, 12) });
+        user = result.user;
+        isNewUser = result.created;
       }
-      const { user, created: isNewUser } = await findOrCreateUser(org.id, walletEmail, { name: address.slice(0, 12) });
 
       await prisma.authenticator.upsert({
         where: { userId_type: { userId: user.id, type: "WALLET" } },
@@ -796,12 +892,27 @@ export async function authRoutes(app: FastifyInstance) {
       if (!email || !password) throw new ValidationError("Email and password required");
       if (password.length < 8) throw new ValidationError("Password must be at least 8 characters");
 
-      const existing = await prisma.user.findFirst({ where: { email } });
+      const existing = await prisma.user.findFirst({
+        where: request.authProxyOrgId ? { orgId: request.authProxyOrgId, email } : { email }
+      });
       if (existing) throw new ValidationError("User already exists");
 
       const passwordHash = await bcrypt.hash(password, 12);
-      const org = await findOrCreateOrg(name || humanOrgName(email));
-      const { user } = await findOrCreateUser(org.id, email, { name, role: "ORG_ADMIN" });
+      let org: { id: string; name: string };
+      let user: any;
+      let role = "ORG_ADMIN";
+
+      if (request.authProxyOrgId) {
+        org = { id: request.authProxyOrgId, name: request.authProxyConfig?.appName || "WranKey" };
+        const userCount = await prisma.user.count({ where: { orgId: request.authProxyOrgId } });
+        user = await prisma.user.create({
+          data: { orgId: request.authProxyOrgId, email, name, role: userCount === 0 ? "ORG_ADMIN" : "DEVELOPER" },
+        });
+      } else {
+        org = await findOrCreateOrg(name || humanOrgName(email));
+        const result = await findOrCreateUser(org.id, email, { name, role: "ORG_ADMIN" });
+        user = result.user;
+      }
 
       await prisma.authenticator.create({ data: { userId: user.id, type: "PASSWORD", credentialData: { hash: passwordHash }, verified: true } });
 

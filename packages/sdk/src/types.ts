@@ -3,6 +3,7 @@ export interface WranKeyConfig {
   orgId?: string;
   sessionToken?: string;
   apiKey?: string;
+  configId?: string;
 }
 
 export interface AuthConfig {

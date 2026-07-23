@@ -32,11 +32,13 @@ export class WranKeyClient {
   private apiBase: string;
   private sessionToken: string | null = null;
   private apiKey: string | null = null;
+  private configId: string | null = null;
 
   constructor(config: WranKeyConfig) {
     this.apiBase = config.apiBase.replace(/\/$/, "");
     this.sessionToken = config.sessionToken || null;
     this.apiKey = config.apiKey || null;
+    this.configId = config.configId || null;
   }
 
   setSessionToken(token: string) {
@@ -58,6 +60,9 @@ export class WranKeyClient {
     }
     if (this.apiKey) {
       headers["X-Api-Key"] = this.apiKey;
+    }
+    if (this.configId) {
+      headers["X-Auth-Proxy-Config-Id"] = this.configId;
     }
 
     const res = await fetch(`${this.apiBase}/api/v1${path}`, {

@@ -27,12 +27,14 @@ export function WranKeyProvider({
   children,
   apiBase,
   apiKey,
+  configId,
 }: {
   children: ReactNode;
   apiBase: string;
   apiKey?: string;
+  configId?: string;
 }) {
-  const [client] = useState(() => createClient({ apiBase, apiKey }));
+  const [client] = useState(() => createClient({ apiBase, apiKey, configId }));
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [user, setUser] = useState<{ id: string; email?: string; role: string } | null>(null);
 

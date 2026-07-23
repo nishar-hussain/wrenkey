@@ -8,6 +8,7 @@ import { config } from "./config.js";
 import { AppError } from "./utils/errors.js";
 import prisma from "./db.js";
 import { authMiddleware } from "./middleware/auth.js";
+import { authProxyMiddleware } from "./middleware/auth-proxy.js";
 import { securityHeaders } from "./middleware/security.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { orgRoutes } from "./modules/org/routes.js";
@@ -126,6 +127,13 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
     "/api/v1/auth/signup/initiate", "/api/v1/auth/signup/verify",
     "/api/v1/auth/signup/register-options", "/api/v1/auth/signup/confirm",
   ];
+
+  app.addHook("onRequest", async (request, reply) => {
+    // Auth Proxy: resolve org from X-Auth-Proxy-Config-Id header before auth
+    if (request.headers["x-auth-proxy-config-id"]) {
+      await authProxyMiddleware(request, reply);
+    }
+  });
 
   app.addHook("onRequest", async (request, reply) => {
     if (request.method === "OPTIONS") return;
