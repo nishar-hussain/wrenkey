@@ -197,7 +197,17 @@ export async function transactionRoutes(app: FastifyInstance) {
         wallet: { id: walletId, ownerId: wallet.ownerId, ownerType: wallet.ownerType },
         activity: { resource: "WALLET", action: "SIGN", type: "SIGN_TRANSACTION" },
         credential: { type: request.auth?.type === "api_key" ? "API_KEY" : "EMAIL" },
-        eth: { tx: { to } },
+        eth: {
+          tx: {
+            to,
+            data: data || undefined,
+            ...(decodedFunction ? {
+              function_name: decodedFunction.functionName,
+              function_signature: decodedFunction.signature,
+              contract_call_args: decodedFunction.args,
+            } : {}),
+          },
+        },
         timestamp: Date.now(),
       };
 

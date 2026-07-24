@@ -38,7 +38,7 @@ export interface EvaluationContext {
   activity?: { resource?: string; action?: string; type?: string; kind?: string };
   credential?: { type?: string; id?: string };
   credentials?: Array<{ type?: string; id?: string }>;
-  eth?: { tx?: { to?: string; data?: string; value?: number; chain_id?: number; function_name?: string; function_signature?: string; from?: string } };
+  eth?: { tx?: { to?: string; data?: string; value?: number; chain_id?: number; function_name?: string; function_signature?: string; from?: string; contract_call_args?: Record<string, string> } };
   contractInterface?: { functions?: Array<{ name: string; signature: string }> };
   timestamp?: number;
 }
@@ -54,6 +54,23 @@ function compareValues(a: any, b: any): boolean {
   if (typeof a === "number" && typeof b === "number") return a === b;
   if (typeof a === "boolean" && typeof b === "boolean") return a === b;
   return String(a) === String(b);
+}
+
+function compareLargeNumbers(a: any, b: any): number {
+  const aNum = Number(a);
+  const bNum = Number(b);
+  if (Number.isSafeInteger(aNum) && Number.isSafeInteger(bNum)) {
+    return aNum - bNum;
+  }
+  try {
+    const aBig = BigInt(typeof a === "string" ? a : String(a));
+    const bBig = BigInt(typeof b === "string" ? b : String(b));
+    if (aBig < bBig) return -1;
+    if (aBig > bBig) return 1;
+    return 0;
+  } catch {
+    return aNum - bNum;
+  }
 }
 
 function isSafeRegex(pattern: string): boolean {
@@ -128,7 +145,7 @@ export function evaluateCel(expression: string, context: EvaluationContext): any
   let pos = 0;
 
   function tokenize(str: string): string[] {
-    const regex = /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|\b[a-zA-Z_][a-zA-Z0-9_]*\b|==|!=|>=|<=|>|<|&&|\|\||[(),\.]/g;
+    const regex = /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|\d+|\b[a-zA-Z_][a-zA-Z0-9_]*\b|==|!=|>=|<=|>|<|&&|\|\||[\[\]\(\),\.]/g;
     const matches = [];
     let match;
     while ((match = regex.exec(str)) !== null) {
@@ -183,10 +200,10 @@ export function evaluateCel(expression: string, context: EvaluationContext): any
       const right = parseExpression(ctx);
       if (op === "==") return compareValues(left, right);
       if (op === "!=") return !compareValues(left, right);
-      if (op === ">=") return Number(left) >= Number(right);
-      if (op === "<=") return Number(left) <= Number(right);
-      if (op === ">") return Number(left) > Number(right);
-      if (op === "<") return Number(left) < Number(right);
+      if (op === ">=") return compareLargeNumbers(left, right) >= 0;
+      if (op === "<=") return compareLargeNumbers(left, right) <= 0;
+      if (op === ">") return compareLargeNumbers(left, right) > 0;
+      if (op === "<") return compareLargeNumbers(left, right) < 0;
     }
     return left;
   }
@@ -215,11 +232,18 @@ export function evaluateCel(expression: string, context: EvaluationContext): any
     consume();
     let val = resolveValue(token, ctx);
 
-    while (pos < tokens.length && (peek() === "(" || peek() === ".")) {
-      if (peek() === "(") {
+    while (pos < tokens.length && (peek() === "(" || peek() === "." || peek() === "[")) {
+      if (peek() === "[") {
+        consume();
+        const keyToken = consume(); // quoted string 'key' or "key"
+        consume("]");
+        const key = keyToken.startsWith("'") || keyToken.startsWith('"')
+          ? keyToken.slice(1, -1)
+          : keyToken;
+        val = val?.[key];
+      } else if (peek() === "(") {
         consume();
         consume(")");
-        // empty call
       } else {
         consume();
         const method = consume();
