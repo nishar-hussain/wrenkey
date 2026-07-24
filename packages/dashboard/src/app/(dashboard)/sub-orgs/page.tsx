@@ -26,7 +26,7 @@ interface SubOrg {
 
 export default function SubOrgsPage() {
   const router = useRouter();
-  const { isAuthenticated, token, login, org } = useAuth();
+  const { isAuthenticated, token, login, org, user } = useAuth();
   const { addToast } = useToast();
   const [subOrgs, setSubOrgs] = useState<SubOrg[]>([]);
   const [total, setTotal] = useState(0);
@@ -99,7 +99,7 @@ export default function SubOrgsPage() {
     try {
       const res: any = await apiFetch(`/sub-orgs/${subOrg.id}/impersonate`, { method: "POST", token: token! });
       localStorage.setItem("wrankey_parent_token", token!);
-      localStorage.setItem("wrankey_parent_user", JSON.stringify(org));
+      localStorage.setItem("wrankey_parent_user", JSON.stringify(user));
       localStorage.setItem("wrankey_parent_org", JSON.stringify(org));
       localStorage.setItem("wrankey_parent_org_name", org?.name || "");
       login(res.sessionToken, { id: res.user.id, email: res.user.email, role: res.user.role }, { id: res.org.id, name: res.org.name });

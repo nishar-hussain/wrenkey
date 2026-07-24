@@ -30,8 +30,38 @@ export interface AuthConfig {
 export interface Organization {
   id: string;
   name: string;
+  parentOrgId?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SubOrg {
+  id: string;
+  name: string;
+  rootUserId?: string;
+  rootUserEmail?: string;
+  userCount: number;
+  walletCount: number;
+  createdAt: string;
+}
+
+export interface SubOrgDetail {
+  id: string;
+  name: string;
+  rootUser: { id: string; email: string; name: string } | null;
+  userCount: number;
+  walletCount: number;
+  policyCount: number;
+  createdAt: string;
+  parentOrgId: string;
+}
+
+export interface ImpersonateResponse {
+  sessionToken: string;
+  user: { id: string; email: string; role: string };
+  org: { id: string; name: string };
+  impersonating: boolean;
+  expiresAt: string;
 }
 
 export interface User {

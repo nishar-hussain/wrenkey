@@ -177,7 +177,7 @@ export async function subOrgRoutes(app: FastifyInstance) {
         data: { userId: rootUser.id, token, type: "READ_WRITE", expiresAt: new Date(Date.now() + config.sessionExpirySeconds * 1000) },
       });
 
-      await createAuditLog(request.orgId, "SUBORG_UPDATE", { subOrgId: id, action: "IMPERSONATE" }, request.userId, request);
+      await createAuditLog(request.orgId, "SUBORG_IMPERSONATE", { subOrgId: id }, request.userId, request);
 
       return sendSuccess(reply, {
         sessionToken: token,
@@ -207,6 +207,13 @@ export async function subOrgRoutes(app: FastifyInstance) {
     try {
       const { id } = request.params as { id: string };
       await verifyParentOrg(request, id);
+
+      // Prevent orphaning: check if this sub-org has its own children
+      const childCount = await prisma.organization.count({ where: { parentOrgId: id } });
+      if (childCount > 0) {
+        throw new ValidationError(`Cannot delete a sub-organization that has ${childCount} child organization(s). Delete those first.`);
+      }
+
       await prisma.organization.delete({ where: { id } });
       await createAuditLog(request.orgId, "SUBORG_DELETE", { subOrgId: id }, request.userId, request);
       return sendSuccess(reply, { message: "Sub-organization deleted" });

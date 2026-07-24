@@ -27,4 +27,7 @@ export type {
   WvcBootProof,
   WvcKeyCeremony,
   WvcInvokeResult,
+  SubOrg,
+  SubOrgDetail,
+  ImpersonateResponse,
 } from "./types.js";

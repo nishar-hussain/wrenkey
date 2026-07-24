@@ -26,6 +26,9 @@ import type {
   WvcAppProof,
   WvcKeyCeremony,
   WvcInvokeResult,
+  SubOrg,
+  SubOrgDetail,
+  ImpersonateResponse,
 } from "./types.js";
 
 export class WranKeyClient {
@@ -427,6 +430,46 @@ export class WranKeyClient {
 
   async seedChains(): Promise<{ message: string; chains: Chain[] }> {
     return this.request("POST", "/chains/seed");
+  }
+
+  // ─── Sub-Organizations ─────────────────────────────
+
+  async createSubOrg(data: { name: string; rootUserEmail?: string }): Promise<SubOrg> {
+    return this.request("POST", "/sub-orgs", data);
+  }
+
+  async listSubOrgs(limit = 50, offset = 0): Promise<PaginatedResponse<SubOrg>> {
+    return this.request("GET", `/sub-orgs?limit=${limit}&offset=${offset}`);
+  }
+
+  async getSubOrg(id: string): Promise<SubOrgDetail> {
+    return this.request("GET", `/sub-orgs/${id}/settings`);
+  }
+
+  async getSubOrgWallets(id: string, limit = 20, offset = 0): Promise<PaginatedResponse<Wallet>> {
+    return this.request("GET", `/sub-orgs/${id}/wallets?limit=${limit}&offset=${offset}`);
+  }
+
+  async getSubOrgUsers(id: string, limit = 20, offset = 0): Promise<PaginatedResponse<User>> {
+    return this.request("GET", `/sub-orgs/${id}/users?limit=${limit}&offset=${offset}`);
+  }
+
+  async getSubOrgPolicies(id: string, limit = 20, offset = 0): Promise<PaginatedResponse<Policy>> {
+    return this.request("GET", `/sub-orgs/${id}/policies?limit=${limit}&offset=${offset}`);
+  }
+
+  async impersonateSubOrg(id: string): Promise<ImpersonateResponse> {
+    const res = await this.request<ImpersonateResponse>("POST", `/sub-orgs/${id}/impersonate`);
+    this.sessionToken = res.sessionToken;
+    return res;
+  }
+
+  async renameSubOrg(id: string, name: string): Promise<SubOrg> {
+    return this.request("PATCH", `/sub-orgs/${id}`, { name });
+  }
+
+  async deleteSubOrg(id: string): Promise<{ message: string }> {
+    return this.request("DELETE", `/sub-orgs/${id}`);
   }
 
   // ─── Spending Limits ───────────────────────────────
