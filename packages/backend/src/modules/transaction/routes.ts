@@ -32,7 +32,11 @@ import {
   isValidStellarAddress,
   resolveNetworkPassphrase,
   signStellarMessage,
+  keypairFromSecret,
 } from "../../utils/stellar.js";
+import {
+  TransactionBuilder,
+} from "@stellar/stellar-sdk";
 
 function parseTxStatus(txStatus: string): "PENDING" | "SIGNED" | "BROADCAST" | "CONFIRMED" | "FAILED" | "CANCELLED" | "REPLACED" | "RETRY" {
   return txStatus as any;
@@ -915,6 +919,77 @@ export async function transactionRoutes(app: FastifyInstance) {
         chain: targetAccount.chain.name,
       }, 201);
     } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // ─── Stellar: sign an arbitrary unsigned envelope XDR ──────────────────────
+  // This endpoint is the minimal touch surface for external apps (e.g. Bullet)
+  // that need a Stellar wallet to *sign* a pre-built Soroban deposit/claim
+  // transaction. The app builds the envelope, calls this endpoint to sign, then
+  // submits the signed envelope to Soroban RPC itself. WranKey handles key
+  // management + signing; the app handles all Soroban contract logic.
+  app.post("/transactions/stellar/sign-xdr", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { walletId, chain: chainName, unsignedXdr, networkPassphrase } = request.body as {
+        walletId: string; chain?: string; unsignedXdr: string; networkPassphrase: string;
+      };
+      if (!walletId || !unsignedXdr || !networkPassphrase) {
+        throw new ValidationError("walletId, unsignedXdr, and networkPassphrase are required");
+      }
+
+      const wallet = await prisma.wallet.findFirst({
+        where: { id: walletId, orgId: request.orgId },
+        include: { accounts: { include: { chain: true } } },
+      });
+      if (!wallet) throw new NotFoundError("Wallet");
+      if (wallet.status === "FROZEN") throw new ForbiddenError("Wallet is frozen");
+
+      const targetAccount = chainName
+        ? wallet.accounts.find((a) => a.chain.name === chainName)
+        : wallet.accounts[0];
+      if (!targetAccount) throw new NotFoundError("Account for chain");
+      if (!isStellarChain(targetAccount.chain)) {
+        throw new ValidationError("This endpoint only supports Stellar chains — use /transactions/sign for EVM transactions");
+      }
+      if (isWvcWallet(wallet.encryptedSeed)) {
+        throw new ValidationError("WVC enclave signing is not supported for Stellar chains");
+      }
+
+      const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
+      const derived = deriveStellarAccount(mnemonic, targetAccount.index, targetAccount.chain.derivationPath);
+
+      if (derived.address !== targetAccount.address) {
+        throw new AppError(500, "Derived Stellar address does not match the stored account address");
+      }
+
+      // Reconstruct the unsigned envelope, sign it, re-serialize.
+      const tx = TransactionBuilder.fromXDR(unsignedXdr, networkPassphrase);
+      const kp = keypairFromSecret(derived.secret);
+      tx.sign(kp);
+      const signedXdr = tx.toXDR();
+
+      await createAuditLog(
+        request.orgId,
+        "TX_SIGN_XDR",
+        { walletId, address: derived.address, chain: targetAccount.chain.name },
+        request.userId,
+        request,
+      );
+
+      return sendSuccess(reply, {
+        signedXdr,
+        address: derived.address,
+        chain: targetAccount.chain.name,
+      }, 201);
+    } catch (err: any) {
+      // Stellar SDK errors can be verbose — surface the useful part.
+      const message = err?.message?.includes("is invalid")
+        ? "Invalid unsigned XDR envelope — check the transaction envelope and network passphrase"
+        : err?.message;
+      if (message && message !== err?.message) {
+        return sendError(reply, new ValidationError(message));
+      }
       return sendError(reply, err);
     }
   });
