@@ -23,10 +23,13 @@ interface PrivateKeyDetail {
   status: string;
   createdAt: string;
   wallet: { name: string };
-  addresses: Array<{ id: string; address: string; chain: { name: string; chainId: number } }>;
+  addresses: Array<{ id: string; address: string; chain: { name: string; chainId: number | null } }>;
 }
 
-const CHAIN_OPTIONS = ["sepolia", "ethereum", "polygon", "arbitrum", "optimism", "base"];
+function prettyChainName(chain: string): string {
+  if (chain.startsWith("stellar-")) return "Stellar " + chain.slice("stellar-".length);
+  return chain.charAt(0).toUpperCase() + chain.slice(1);
+}
 
 export default function PrivateKeyDetailPage() {
   const params = useParams();
@@ -144,7 +147,7 @@ export default function PrivateKeyDetailPage() {
     {
       key: "chain",
       header: "Asset Type",
-      render: (a: any) => <span className="text-sm font-medium">{a.chain.name.charAt(0).toUpperCase() + a.chain.name.slice(1)}</span>,
+      render: (a: any) => <span className="text-sm font-medium">{prettyChainName(a.chain.name)}</span>,
     },
     {
       key: "address",

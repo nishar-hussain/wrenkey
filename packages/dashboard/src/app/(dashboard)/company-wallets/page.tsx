@@ -24,14 +24,24 @@ interface CompanyWallet {
   createdAt: string;
 }
 
-const CHAIN_OPTIONS = ["sepolia", "ethereum", "polygon", "arbitrum", "optimism", "base"];
+const CHAIN_OPTIONS = ["sepolia", "ethereum", "polygon", "arbitrum", "optimism", "base", "stellar-testnet", "stellar-pubnet"];
+
+const STELLAR_CHAINS = new Set(["stellar-testnet", "stellar-pubnet"]);
+function isStellarChain(chain: string): boolean { return STELLAR_CHAINS.has(chain); }
+function prettyChainName(chain: string): string {
+  if (chain.startsWith("stellar-")) return "Stellar " + chain.slice("stellar-".length);
+  return chain.charAt(0).toUpperCase() + chain.slice(1);
+}
+function stripIndex(path: string): string { return path.replace(/\/\d+'?$/, ""); }
 
 function getCoinTypeForChain(chain: string): string {
-  const map: Record<string, string> = { ethereum: "60", sepolia: "60", polygon: "60", arbitrum: "60", optimism: "60", base: "60" };
+  const map: Record<string, string> = { ethereum: "60", sepolia: "60", polygon: "60", arbitrum: "60", optimism: "60", base: "60", "stellar-testnet": "148", "stellar-pubnet": "148" };
   return map[chain] || "60";
 }
 
 function generateDerivationPath(chain: string, derivation: string, index: number): string {
+  // Stellar uses ed25519 (SLIP-0010) — every level must be hardened. SEP-0005 path.
+  if (isStellarChain(chain)) return `m/44'/148'/0'/${index}'`;
   const coinType = getCoinTypeForChain(chain);
   switch (derivation) {
     case "BIP44": return `m/44'/${coinType}'/0'/0/${index}`;
@@ -163,7 +173,7 @@ export default function CompanyWalletsPage() {
   };
 
   const handleFinalCreate = () => { resetCreate(); addToast("Wallet created", "success"); fetchWallets(); };
-  const handleAddAnother = () => { setCreateStep(2); setChooseChain("sepolia"); setShowAdvanced(false); setChooseDerivation("BIP44"); setChooseDerivationPath(generateDerivationPath("sepolia", "BIP44", 0).replace(/\/\d+$/, "")); };
+  const handleAddAnother = () => { setCreateStep(2); setChooseChain("sepolia"); setShowAdvanced(false); setChooseDerivation("BIP44"); setChooseDerivationPath(stripIndex(generateDerivationPath("sepolia", "BIP44", 0))); };
 
   const handleRemoveAccount = async (accountId: string, index: number) => {
     try {
@@ -337,8 +347,8 @@ export default function CompanyWalletsPage() {
           <div className="space-y-4">
             <div className="space-y-1">
               <label className="text-sm font-medium">Select account type</label>
-              <select value={chooseChain} onChange={(e) => { setChooseChain(e.target.value); setChooseDerivationPath(generateDerivationPath(e.target.value, chooseDerivation, 0).replace(/\/\d+$/, "")); }} className="w-full border rounded-md px-3 py-2 text-sm">
-                {CHAIN_OPTIONS.map((c) => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+              <select value={chooseChain} onChange={(e) => { setChooseChain(e.target.value); setChooseDerivationPath(stripIndex(generateDerivationPath(e.target.value, chooseDerivation, 0))); }} className="w-full border rounded-md px-3 py-2 text-sm">
+                {CHAIN_OPTIONS.map((c) => <option key={c} value={c}>{prettyChainName(c)}</option>)}
               </select>
             </div>
             <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700">
@@ -346,14 +356,16 @@ export default function CompanyWalletsPage() {
             </button>
             {showAdvanced && (
               <div className="space-y-3 p-3 bg-slate-50 rounded-md border border-slate-100">
-                <div className="space-y-1"><label className="text-xs font-medium text-slate-500">Curve</label><Input value="SECP256K1" readOnly className="bg-white text-sm font-mono" /></div>
+                <div className="space-y-1"><label className="text-xs font-medium text-slate-500">Curve</label><Input value={isStellarChain(chooseChain) ? "ED25519 (SLIP-10)" : "SECP256K1"} readOnly className="bg-white text-sm font-mono" /></div>
+                {!isStellarChain(chooseChain) && (
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-slate-500">Derivation</label>
-                  <select value={chooseDerivation} onChange={(e) => { setChooseDerivation(e.target.value); setChooseDerivationPath(generateDerivationPath(chooseChain, e.target.value, 0).replace(/\/\d+$/, "")); }} className="w-full border rounded-md px-3 py-2 text-sm bg-white">
+                  <select value={chooseDerivation} onChange={(e) => { setChooseDerivation(e.target.value); setChooseDerivationPath(stripIndex(generateDerivationPath(chooseChain, e.target.value, 0))); }} className="w-full border rounded-md px-3 py-2 text-sm bg-white">
                     <option value="BIP44">BIP44</option><option value="BIP32">BIP32</option><option value="Legacy">Legacy</option>
                   </select>
                 </div>
-                <div className="space-y-1"><label className="text-xs font-medium text-slate-500">Path</label><Input value={chooseDerivationPath} onChange={(e) => setChooseDerivationPath(e.target.value)} placeholder="m/44'/60'/0'/0" className="bg-white text-sm font-mono" /></div>
+                )}
+                <div className="space-y-1"><label className="text-xs font-medium text-slate-500">Path</label><Input value={chooseDerivationPath} onChange={(e) => setChooseDerivationPath(e.target.value)} placeholder={isStellarChain(chooseChain) ? "m/44'/148'/0'" : "m/44'/60'/0'/0"} className="bg-white text-sm font-mono" />{isStellarChain(chooseChain) && <p className="text-[10px] text-slate-400">Stellar uses SEP-0005 hardened ed25519 derivation.</p>}</div>
               </div>
             )}
             <Button onClick={handleStep2Continue} disabled={stepLoading} className="w-full">{stepLoading ? "Deriving..." : "Continue"}</Button>
@@ -366,7 +378,7 @@ export default function CompanyWalletsPage() {
                 {derivedAccounts.map((acc, i) => (
                   <div key={i} className="p-3 bg-slate-50 rounded-md flex items-start justify-between">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{acc.chain.charAt(0).toUpperCase() + acc.chain.slice(1)}</p>
+                      <p className="text-sm font-medium">{prettyChainName(acc.chain)}</p>
                       <p className="text-xs font-mono text-slate-500 mt-0.5">{acc.derivationPath}</p>
                       <p className="text-xs font-mono text-slate-400 mt-0.5 truncate">{acc.address}</p>
                     </div>
@@ -391,7 +403,7 @@ export default function CompanyWalletsPage() {
           <div className="space-y-1">
             <label className="text-sm font-medium">Asset Addresses</label>
             <select value={createPkChain} onChange={(e) => setCreatePkChain(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm">
-              {CHAIN_OPTIONS.map((c) => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+              {CHAIN_OPTIONS.map((c) => <option key={c} value={c}>{prettyChainName(c)}</option>)}
             </select>
           </div>
           <Button onClick={handleCreatePk} disabled={createPkLoading} className="w-full">{createPkLoading ? "Creating..." : "Continue"}</Button>

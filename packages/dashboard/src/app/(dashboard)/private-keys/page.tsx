@@ -27,7 +27,12 @@ interface PrivateKeyEntry {
   addresses: Array<{ address: string; chain: { name: string } }>;
 }
 
-const CHAIN_OPTIONS = ["sepolia", "ethereum", "polygon", "arbitrum", "optimism", "base"];
+const CHAIN_OPTIONS = ["sepolia", "ethereum", "polygon", "arbitrum", "optimism", "base", "stellar-testnet", "stellar-pubnet"];
+
+function prettyChainName(chain: string): string {
+  if (chain.startsWith("stellar-")) return "Stellar " + chain.slice("stellar-".length);
+  return chain.charAt(0).toUpperCase() + chain.slice(1);
+}
 
 export default function PrivateKeysPage() {
   const router = useRouter();
@@ -225,7 +230,7 @@ export default function PrivateKeysPage() {
               className="w-full border rounded-md px-3 py-2 text-sm"
             >
               {CHAIN_OPTIONS.map((c) => (
-                <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                <option key={c} value={c}>{prettyChainName(c)}</option>
               ))}
             </select>
           </div>
