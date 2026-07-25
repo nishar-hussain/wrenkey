@@ -16,7 +16,8 @@
  * tested end-to-end without AWS Nitro hardware.
  */
 
-import { createHash, generateKeyPairSync, createSign, randomBytes } from "crypto";
+import { createHash, generateKeyPairSync, createSign, randomBytes, createPrivateKey } from "crypto";
+import { Wallet } from "ethers";
 import { ForbiddenError, ValidationError } from "../utils/errors.js";
 import { config } from "../config.js";
 import { shamirSplit, eciesEncrypt } from "./wvc-crypto.js";
@@ -71,8 +72,8 @@ function generateQuorumKey(): QuorumKeyState {
   });
   const pubDerHex = Buffer.from(publicKey).toString("hex");
   // Extract the 32-byte private key scalar from the PKCS8 DER
-  const privKeyObj = require("crypto").createPrivateKey({ key: privateKey, format: "pem" });
-  const privDer = require("crypto").createPrivateKey({ key: privateKey, format: "pem" }).export({ format: "der", type: "pkcs8" }) as Buffer;
+  const privKeyObj = createPrivateKey({ key: privateKey, format: "pem" });
+  const privDer = createPrivateKey({ key: privateKey, format: "pem" }).export({ format: "der", type: "pkcs8" }) as Buffer;
   // The private key scalar is at offset 36 in PKCS8 for P-256 (after the algorithm OIDs)
   // But safer: use the raw export
   const privKeyBytes = extractPrivateKeyBytes(privateKey as string);
@@ -87,7 +88,7 @@ function generateQuorumKey(): QuorumKeyState {
 
 /** Extract the 32-byte private key scalar from a PEM private key. */
 function extractPrivateKeyBytes(pemPrivateKey: string): Uint8Array {
-  const keyObj = require("crypto").createPrivateKey({ key: pemPrivateKey, format: "pem" });
+  const keyObj = createPrivateKey({ key: pemPrivateKey, format: "pem" });
   // Export as SEC1 DER, which contains the raw private key
   const sec1Der = keyObj.export({ format: "der", type: "sec1" }) as Buffer;
   // In SEC1 DER for P-256: SEQUENCE { INTEGER 1, OCTET STRING (32 bytes), [1] BIT STRING (public key) }
@@ -336,7 +337,7 @@ export async function invokeLocalDeployment(
 function buildDemoResult(deploymentId: string, request: InvokeRequest): Record<string, unknown> {
   if (request.payloadType === "generate_seed") {
     const seedHash = createHash("sha256").update(`${deploymentId}:${Date.now()}:${Math.random()}`).digest("hex");
-    const randomWallet = require("ethers").Wallet.createRandom();
+    const randomWallet = Wallet.createRandom();
     return {
       seedId: `local-seed-${seedHash.slice(0, 16)}`,
       derivedAddress: randomWallet.address,

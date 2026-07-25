@@ -137,12 +137,21 @@ model Wallet {
 model Chain {
   id               String   @id @default(uuid())
   name             String   @unique
-  chainId          Int      @unique @map("chain_id")
+  /// EVM numeric chain id. Nullable for non-EVM chains — Stellar uses the
+  /// `networkPassphrase` instead of a numeric chain id.
+  chainId          Int?     @unique @map("chain_id")
   rpcUrl           String   @map("rpc_url")
   nativeCurrency   String   @default("ETH") @map("native_currency")
   symbol           String   @default("ETH")
   blockExplorerUrl String?  @map("block_explorer_url")
   derivationPath   String   @default("m/44'/60'/0'/0") @map("derivation_path")
+  /// Chain family: "evm" (default) or "stellar". Drives which SDK and
+  /// key-derivation path the wallet/transaction routes use for this chain.
+  family           String   @default("evm")
+  /// Stellar-only: Horizon REST API URL (e.g. https://horizon-testnet.stellar.org).
+  horizonUrl       String?  @map("horizon_url")
+  /// Stellar-only: network passphrase (e.g. "Test SDF Network ; September 2015").
+  networkPassphrase String?  @map("network_passphrase")
   active           Boolean  @default(true)
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
@@ -282,6 +291,12 @@ model Transaction {
   error                String?
   riskScore            Int?      @map("risk_score")
   sponsored            Boolean   @default(false)
+  /// Stellar: on-chain sequence number used for this transaction (parity with EVM `nonce`).
+  sequence             String?   @map("sequence")
+  /// Stellar: optional transaction memo text.
+  memo                 String?
+  /// Stellar: signed transaction envelope, base64 XDR (parity with EVM `signedTx`).
+  envelopeXdr          String?   @map("envelope_xdr")
   createdAt            DateTime  @default(now()) @map("created_at")
   confirmedAt          DateTime? @map("confirmed_at")
 

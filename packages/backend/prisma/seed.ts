@@ -12,18 +12,20 @@ async function main() {
   const baseRpc = process.env.BASE_RPC_URL || "https://mainnet.base.org";
 
   const chains = [
-    { name: "sepolia", chainId: 11155111, rpcUrl: sepRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://sepolia.etherscan.io", active: true },
-    { name: "ethereum", chainId: 1, rpcUrl: ethRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://etherscan.io", active: true },
-    { name: "polygon", chainId: 137, rpcUrl: polyRpc, nativeCurrency: "MATIC", symbol: "POL", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://polygonscan.com", active: true },
-    { name: "arbitrum", chainId: 42161, rpcUrl: arbRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://arbiscan.io", active: true },
-    { name: "optimism", chainId: 10, rpcUrl: optRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://optimistic.etherscan.io", active: true },
-    { name: "base", chainId: 8453, rpcUrl: baseRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://basescan.org", active: true },
+    { name: "sepolia", chainId: 11155111, rpcUrl: sepRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://sepolia.etherscan.io", family: "evm", horizonUrl: null, networkPassphrase: null, active: true },
+    { name: "ethereum", chainId: 1, rpcUrl: ethRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://etherscan.io", family: "evm", horizonUrl: null, networkPassphrase: null, active: true },
+    { name: "polygon", chainId: 137, rpcUrl: polyRpc, nativeCurrency: "MATIC", symbol: "POL", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://polygonscan.com", family: "evm", horizonUrl: null, networkPassphrase: null, active: true },
+    { name: "arbitrum", chainId: 42161, rpcUrl: arbRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://arbiscan.io", family: "evm", horizonUrl: null, networkPassphrase: null, active: true },
+    { name: "optimism", chainId: 10, rpcUrl: optRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://optimistic.etherscan.io", family: "evm", horizonUrl: null, networkPassphrase: null, active: true },
+    { name: "base", chainId: 8453, rpcUrl: baseRpc, nativeCurrency: "ETH", symbol: "ETH", derivationPath: "m/44'/60'/0'/0", blockExplorerUrl: "https://basescan.org", family: "evm", horizonUrl: null, networkPassphrase: null, active: true },
+    { name: "stellar-testnet", chainId: null, rpcUrl: process.env.STELLAR_TESTNET_HORIZON_URL || "https://horizon-testnet.stellar.org", nativeCurrency: "XLM", symbol: "XLM", derivationPath: "m/44'/148'/0'", blockExplorerUrl: "https://stellar.expert/explorer/testnet", family: "stellar", horizonUrl: process.env.STELLAR_TESTNET_HORIZON_URL || "https://horizon-testnet.stellar.org", networkPassphrase: process.env.STELLAR_TESTNET_PASSPHRASE || "Test SDF Network ; September 2015", active: true },
+    { name: "stellar-pubnet", chainId: null, rpcUrl: process.env.STELLAR_PUBNET_HORIZON_URL || "https://horizon.stellar.org", nativeCurrency: "XLM", symbol: "XLM", derivationPath: "m/44'/148'/0'", blockExplorerUrl: "https://stellar.expert/explorer/public", family: "stellar", horizonUrl: process.env.STELLAR_PUBNET_HORIZON_URL || "https://horizon.stellar.org", networkPassphrase: process.env.STELLAR_PUBNET_PASSPHRASE || "Public Global Stellar Network ; September 2015", active: true },
   ];
 
   for (const c of chains) {
     await prisma.chain.upsert({
       where: { name: c.name },
-      update: { rpcUrl: c.rpcUrl, chainId: c.chainId, blockExplorerUrl: c.blockExplorerUrl, active: c.active },
+      update: { rpcUrl: c.rpcUrl, chainId: c.chainId, blockExplorerUrl: c.blockExplorerUrl, family: c.family, horizonUrl: c.horizonUrl, networkPassphrase: c.networkPassphrase, active: c.active },
       create: c,
     });
   }

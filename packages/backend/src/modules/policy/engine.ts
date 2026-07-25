@@ -187,7 +187,7 @@ export function evaluateCel(expression: string, context: EvaluationContext): any
   }
 
   function parseComparison(ctx: any): any {
-    let left = parseExpression(ctx);
+    const left = parseExpression(ctx);
     const op = peek();
     if (op === "in") {
       consume();

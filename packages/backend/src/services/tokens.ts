@@ -54,7 +54,7 @@ const KNOWN_TOKENS: Record<number, TokenInfo[]> = {
 export async function getTokenBalances(
   walletAddress: string,
   rpcUrl: string,
-  chainId: number,
+  chainId?: number | null,
   customTokens?: string[]
 ): Promise<TokenBalance[]> {
   const provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -62,7 +62,7 @@ export async function getTokenBalances(
 
   const tokens = customTokens
     ? customTokens.map((addr) => ({ address: addr, name: addr, symbol: "???", decimals: 18 }))
-    : KNOWN_TOKENS[chainId] || [];
+    : KNOWN_TOKENS[chainId ?? -1] || [];
 
   for (const token of tokens) {
     try {

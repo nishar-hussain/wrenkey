@@ -14,14 +14,39 @@ import {
   encryptSeedWithPassphrase,
   getGasPrice,
 } from "../../utils/enclave.js";
-import { getChainByName, getDefaultChain } from "../../services/chain.js";
+import { getChainByName, getDefaultChain, isStellarChain } from "../../services/chain.js";
 import { getTokenBalances } from "../../services/tokens.js";
+import {
+  deriveStellarAccount,
+  getStellarBalance,
+  getStellarFeeEstimate,
+  STROOPS_PER_XLM,
+} from "../../utils/stellar.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
 import { notifyWalletCreated } from "../../services/notifications.js";
 import { isWvcWalletSigningEnabled, isWvcWallet, wvcGenerateSeed } from "../../services/wvc-wallet-integration.js";
 import { config } from "../../config.js";
 
 export async function walletRoutes(app: FastifyInstance) {
+  /**
+   * Derive the first address for a wallet account, branching on chain family.
+   * Stellar keys are ed25519 (SLIP-0010, hardened index); EVM keys are
+   * secp256k1 (BIP-44). Both share the same BIP-39 mnemonic stored on the wallet.
+   */
+  function deriveWalletAccountAddress(
+    mnemonic: string,
+    index: number,
+    chainInfo: { derivationPath: string; family: string },
+  ): { address: string; derivationPath: string } {
+    const fullPath = isStellarChain(chainInfo)
+      ? `${chainInfo.derivationPath}/${index}'`
+      : `${chainInfo.derivationPath}/${index}`;
+    const address = isStellarChain(chainInfo)
+      ? deriveStellarAccount(mnemonic, index, chainInfo.derivationPath).address
+      : deriveAccount(mnemonic, index, chainInfo.derivationPath).address;
+    return { address, derivationPath: fullPath };
+  }
+
   app.post("/wallets", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { name, ownerType, ownerId, tags, chain, skipInitialAccount } = request.body as {
@@ -38,6 +63,9 @@ export async function walletRoutes(app: FastifyInstance) {
         if (!skipInitialAccount) {
           const chainInfo = chain ? (await getChainByName(chain).catch(() => null)) || await getDefaultChain() : await getDefaultChain();
           if (!chainInfo) throw new ValidationError("Invalid or no active chain found");
+          if (isStellarChain(chainInfo)) {
+            throw new ValidationError("WVC enclave signing is not supported for Stellar chains — unset WVC_WALLET_SIGNER_DEPLOYMENT_ID or use an EVM chain");
+          }
           accountsCreate.push({
             chainId: chainInfo.id,
             address: derivedAddress || `0x${seedId.slice(0, 40)}`,
@@ -86,11 +114,10 @@ export async function walletRoutes(app: FastifyInstance) {
       if (!skipInitialAccount) {
         const chainInfo = chain ? (await getChainByName(chain).catch(() => null)) || await getDefaultChain() : await getDefaultChain();
         if (!chainInfo) throw new ValidationError("Invalid or no active chain found");
-        const fullPath = `${chainInfo.derivationPath}/0`;
-        const hdNode = deriveAccount(mnemonic, 0, chainInfo.derivationPath);
+        const { address, derivationPath: fullPath } = deriveWalletAccountAddress(mnemonic, 0, chainInfo);
         accountsCreate.push({
           chainId: chainInfo.id,
-          address: hdNode.address,
+          address,
           derivationPath: fullPath,
           index: 0,
         });
@@ -148,20 +175,19 @@ export async function walletRoutes(app: FastifyInstance) {
       if (!chainInfo) throw new ValidationError("Invalid or no active chain found");
 
       const encryptedSeed = encryptSeedForStorage(mnemonic);
-      const fullPath = `${chainInfo.derivationPath}/0`;
-      const hdNode = deriveAccount(mnemonic, 0, chainInfo.derivationPath);
+      const { address: derivedAddress, derivationPath: fullPath } = deriveWalletAccountAddress(mnemonic, 0, chainInfo);
 
       const wallet = await prisma.wallet.create({
         data: {
           orgId: request.orgId, ownerType: ownerType || "USER",
           ownerId: ownerId || request.userId!, userId: request.userId, name, encryptedSeed,
-          accounts: { create: { chainId: chainInfo.id, address: hdNode.address, derivationPath: fullPath, index: 0 } },
+          accounts: { create: { chainId: chainInfo.id, address: derivedAddress, derivationPath: fullPath, index: 0 } },
         },
         include: { accounts: true },
       });
 
       await createAuditLog(request.orgId, "WALLET_IMPORT", { walletId: wallet.id, name, chain: chainInfo.name }, request.userId, request);
-      triggerWebhookEvents(request.orgId, "wallet.imported", { walletId: wallet.id, name, address: hdNode.address, chain: chainInfo.name });
+      triggerWebhookEvents(request.orgId, "wallet.imported", { walletId: wallet.id, name, address: derivedAddress, chain: chainInfo.name });
       notifyWalletCreated(request.orgId, name, wallet.id).catch(() => {});
 
       return sendSuccess(reply, {
@@ -297,12 +323,15 @@ export async function walletRoutes(app: FastifyInstance) {
         derivationPath = chainInfo.derivationPath;
       }
 
-      const fullPath = `${derivationPath}/${accountIndex}`;
-      const hdNode = deriveAccount(mnemonic, accountIndex, derivationPath);
+      const isStellar = isStellarChain(chainInfo);
+      const fullPath = isStellar ? `${derivationPath}/${accountIndex}'` : `${derivationPath}/${accountIndex}`;
+      const address = isStellar
+        ? deriveStellarAccount(mnemonic, accountIndex, derivationPath).address
+        : deriveAccount(mnemonic, accountIndex, derivationPath).address;
 
       const account = await prisma.walletAccount.create({
         data: {
-          walletId: id, chainId: chainInfo.id, address: hdNode.address,
+          walletId: id, chainId: chainInfo.id, address,
           derivationPath: fullPath, index: accountIndex,
         },
       });
@@ -540,6 +569,13 @@ export async function walletRoutes(app: FastifyInstance) {
       // + a freshly derived address. Rotating in-process would silently downgrade
       // a WVC-managed wallet to a locally-held seed, breaking the enclave model.
       if (isWvcWallet(wallet.encryptedSeed)) {
+        // The enclave only produces EVM (secp256k1) keys — refuse Stellar accounts.
+        for (const a of wallet.accounts) {
+          const accChain = await prisma.chain.findUnique({ where: { id: a.chainId } });
+          if (isStellarChain(accChain)) {
+            throw new ValidationError("WVC enclave signing is not supported for Stellar chains — remove the Stellar account or disable WVC_WALLET_SIGNER_DEPLOYMENT_ID");
+          }
+        }
         if (wallet.accounts.length > 1) {
           throw new ValidationError(
             "Cannot rotate a multi-account WVC-managed wallet — the enclave exposes only the primary derived address. Remove extra accounts before rotating.",
@@ -578,11 +614,14 @@ export async function walletRoutes(app: FastifyInstance) {
       for (const account of wallet.accounts) {
         const chainInfo = await prisma.chain.findUnique({ where: { id: account.chainId } });
         const derivationPath = chainInfo?.derivationPath || "m/44'/60'/0'/0";
-        const hdNode = deriveAccount(mnemonic, account.index, derivationPath);
+        const isStellar = isStellarChain(chainInfo);
+        const address = isStellar
+          ? deriveStellarAccount(mnemonic, account.index, derivationPath).address
+          : deriveAccount(mnemonic, account.index, derivationPath).address;
         newAccounts.push({
           chainId: account.chainId,
-          address: hdNode.address,
-          derivationPath: `${derivationPath}/${account.index}`,
+          address,
+          derivationPath: isStellar ? `${derivationPath}/${account.index}'` : `${derivationPath}/${account.index}`,
           index: account.index,
         });
       }
@@ -628,6 +667,20 @@ export async function walletRoutes(app: FastifyInstance) {
       const { ethers } = await import("ethers");
       const balances = await Promise.all(
         targetAccounts.map(async (account) => {
+          if (isStellarChain(account.chain)) {
+            const stellarBal = await getStellarBalance(account.address, account.chain.horizonUrl || account.chain.rpcUrl);
+            const stroops = Math.round(parseFloat(stellarBal.nativeBalance) * STROOPS_PER_XLM);
+            return {
+              chainId: account.chainId,
+              chain: account.chain.name,
+              address: account.address,
+              balance: stellarBal.nativeBalance,
+              balanceWei: String(stroops),
+              balanceStroops: String(stroops),
+              symbol: account.chain.symbol,
+              trustlines: stellarBal.trustlines,
+            };
+          }
           const provider = new ethers.JsonRpcProvider(account.chain.rpcUrl);
           const balance = await provider.getBalance(account.address);
           return {
@@ -669,14 +722,31 @@ export async function walletRoutes(app: FastifyInstance) {
 
       const tokenBalances = await Promise.all(
         targetAccounts.map(async (account) => {
-          const knownBalances = await getTokenBalances(account.address, account.chain.rpcUrl, account.chain.chainId);
-          
+          // Stellar has no ERC-20 contracts; trustlines to issued assets are the
+          // equivalent. Present them in the same token-balance shape.
+          if (isStellarChain(account.chain)) {
+            const stellarBal = await getStellarBalance(account.address, account.chain.horizonUrl || account.chain.rpcUrl);
+            const tokens = stellarBal.trustlines.map((tl) => ({
+              token: { address: `${tl.code}:${tl.issuer}`, name: tl.code, symbol: tl.code, decimals: 7 },
+              balance: tl.balance,
+              balanceFormatted: tl.balance,
+            }));
+            return {
+              address: account.address,
+              chain: account.chain.name,
+              chainId: account.chain.chainId,
+              tokens,
+            };
+          }
+
+          const knownBalances = await getTokenBalances(account.address, account.chain.rpcUrl, account.chain.chainId ?? undefined);
+
           const customTokens = (wallet.tags || [])
             .filter((tag) => tag.startsWith(`custom-token:${account.chain.chainId}:`))
             .map((tag) => tag.split(":")[2]);
 
           const customBalances = customTokens.length > 0
-            ? await getTokenBalances(account.address, account.chain.rpcUrl, account.chain.chainId, customTokens)
+            ? await getTokenBalances(account.address, account.chain.rpcUrl, account.chain.chainId ?? undefined, customTokens)
             : [];
 
           const knownAddresses = new Set(knownBalances.map((tb) => tb.token.address.toLowerCase()));
@@ -717,6 +787,19 @@ export async function walletRoutes(app: FastifyInstance) {
         : wallet.accounts[0];
 
       if (!targetAccount) throw new NotFoundError("Account");
+
+      if (isStellarChain(targetAccount.chain)) {
+        const fee = await getStellarFeeEstimate(targetAccount.chain.horizonUrl || targetAccount.chain.rpcUrl);
+        return sendSuccess(reply, {
+          chain: targetAccount.chain.name,
+          slow: fee.suggestedFeeStroops,
+          standard: fee.suggestedFeeStroops,
+          fast: fee.suggestedFeeStroops,
+          feeStroops: fee.suggestedFeeStroops,
+          estimatedFeeXlm: fee.estimatedFeeXlm,
+          currency: "XLM",
+        });
+      }
 
       const gasPrices = await getGasPrice(targetAccount.chain.rpcUrl);
 

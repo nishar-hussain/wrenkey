@@ -954,7 +954,7 @@ export async function authRoutes(app: FastifyInstance) {
       const passwordHash = await bcrypt.hash(password, 12);
       let org: { id: string; name: string };
       let user: any;
-      let role = "ORG_ADMIN";
+      const role = "ORG_ADMIN";
 
       if (request.authProxyOrgId) {
         org = { id: request.authProxyOrgId, name: request.authProxyConfig?.appName || "WranKey" };

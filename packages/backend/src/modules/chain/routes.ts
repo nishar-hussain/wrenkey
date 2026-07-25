@@ -3,7 +3,7 @@ import prisma from "../../db.js";
 import { authMiddleware, adminMiddleware } from "../../middleware/auth.js";
 import { sendSuccess, sendError, ValidationError, NotFoundError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
-import { getAllChains, seedChains, invalidateChainCache } from "../../services/chain.js";
+import { getAllChains, seedChains, invalidateChainCache, CHAIN_FAMILY_EVM, CHAIN_FAMILY_STELLAR } from "../../services/chain.js";
 import { parsePagination } from "../../utils/pagination.js";
 
 export async function chainRoutes(app: FastifyInstance) {
@@ -20,13 +20,33 @@ export async function chainRoutes(app: FastifyInstance) {
 
   app.post("/chains", { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
     try {
-      const { name, chainId, rpcUrl, nativeCurrency, symbol, blockExplorerUrl, derivationPath } = request.body as {
-        name: string; chainId: number; rpcUrl: string; nativeCurrency?: string; symbol?: string; blockExplorerUrl?: string; derivationPath?: string;
+      const { name, chainId, rpcUrl, nativeCurrency, symbol, blockExplorerUrl, derivationPath, family, horizonUrl, networkPassphrase } = request.body as {
+        name: string; chainId?: number | null; rpcUrl: string; nativeCurrency?: string; symbol?: string;
+        blockExplorerUrl?: string; derivationPath?: string; family?: string; horizonUrl?: string; networkPassphrase?: string;
       };
-      if (!name || chainId === undefined || !rpcUrl) throw new ValidationError("name, chainId, and rpcUrl required");
+      if (!name || !rpcUrl) throw new ValidationError("name and rpcUrl required");
+      const resolvedFamily = family || CHAIN_FAMILY_EVM;
+      // EVM chains require a numeric chain id; Stellar chains use a network passphrase instead.
+      if (resolvedFamily === CHAIN_FAMILY_EVM && (chainId === undefined || chainId === null)) {
+        throw new ValidationError("chainId is required for EVM chains");
+      }
+      if (resolvedFamily === CHAIN_FAMILY_STELLAR && !networkPassphrase) {
+        throw new ValidationError("networkPassphrase is required for Stellar chains");
+      }
 
       const chain = await prisma.chain.create({
-        data: { name, chainId, rpcUrl, nativeCurrency: nativeCurrency || "ETH", symbol: symbol || "ETH", blockExplorerUrl, derivationPath: derivationPath || "m/44'/60'/0'/0" },
+        data: {
+          name,
+          chainId: chainId ?? null,
+          rpcUrl,
+          nativeCurrency: nativeCurrency || (resolvedFamily === CHAIN_FAMILY_STELLAR ? "XLM" : "ETH"),
+          symbol: symbol || (resolvedFamily === CHAIN_FAMILY_STELLAR ? "XLM" : "ETH"),
+          blockExplorerUrl,
+          derivationPath: derivationPath || (resolvedFamily === CHAIN_FAMILY_STELLAR ? "m/44'/148'/0'" : "m/44'/60'/0'/0"),
+          family: resolvedFamily,
+          horizonUrl: horizonUrl || null,
+          networkPassphrase: networkPassphrase || null,
+        },
       });
 
       invalidateChainCache();

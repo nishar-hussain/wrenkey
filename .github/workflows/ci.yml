@@ -40,6 +40,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run db:generate
+      - run: npm run db:push
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wrankey_test
       - run: npm run lint
       - run: npx tsc --noEmit -p packages/backend/tsconfig.json
       - run: npx tsc --noEmit -p packages/dashboard/tsconfig.json

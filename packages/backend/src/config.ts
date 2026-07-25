@@ -27,6 +27,15 @@ export const config = {
   defaultRpcUrl: process.env.SEPOLIA_RPC_URL || process.env.ARC_RPC_URL || "https://rpc.sepolia.org",
   defaultChainId: parseInt(process.env.SEPOLIA_CHAIN_ID || process.env.ARC_CHAIN_ID || "11155111", 10),
   defaultChainName: "sepolia",
+  stellar: {
+    testnetHorizonUrl: process.env.STELLAR_TESTNET_HORIZON_URL || "https://horizon-testnet.stellar.org",
+    pubnetHorizonUrl: process.env.STELLAR_PUBNET_HORIZON_URL || "https://horizon.stellar.org",
+    testnetExplorerUrl: "https://stellar.expert/explorer/testnet",
+    pubnetExplorerUrl: "https://stellar.expert/explorer/public",
+    // Network passphrases are immutable protocol constants; allow env override only for local sandboxes.
+    testnetPassphrase: process.env.STELLAR_TESTNET_PASSPHRASE || "Test SDF Network ; September 2015",
+    pubnetPassphrase: process.env.STELLAR_PUBNET_PASSPHRASE || "Public Global Stellar Network ; September 2015",
+  },
   sessionExpirySeconds: parseInt(process.env.SESSION_EXPIRY_SECONDS || (isDev ? String(30 * 24 * 3600) : "3600"), 10),
   apiKeyExpiryDays: parseInt(process.env.API_KEY_EXPIRY_DAYS || "365", 10),
   otpExpirySeconds: parseInt(process.env.OTP_EXPIRY_SECONDS || "300", 10),

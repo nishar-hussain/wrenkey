@@ -15,13 +15,24 @@ import {
   getGasPrice,
 } from "../../utils/enclave.js";
 import { evaluatePolicies, EvaluationContext } from "../policy/engine.js";
-import { getChainById } from "../../services/chain.js";
+import { getChainById, isStellarChain, requireEvmChainId } from "../../services/chain.js";
 import { acquireNonceLock, releaseNonceLock, getNextNonce } from "../../services/nonce.js";
 import { assessTransactionRisk, validateSpendingLimits } from "../../services/risk.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
 import { notifyLargeTransaction, notifyTransactionFailed, notifyPolicyDenial } from "../../services/notifications.js";
 import { parsePagination } from "../../utils/pagination.js";
 import { isWvcWallet, signTxForWallet } from "../../services/wvc-wallet-integration.js";
+import {
+  deriveStellarAccount,
+  signStellarPayment,
+  broadcastStellarTransaction,
+  getStellarTransactionStatus,
+  getStellarSequence,
+  getStellarFeeEstimate,
+  isValidStellarAddress,
+  resolveNetworkPassphrase,
+  signStellarMessage,
+} from "../../utils/stellar.js";
 
 function parseTxStatus(txStatus: string): "PENDING" | "SIGNED" | "BROADCAST" | "CONFIRMED" | "FAILED" | "CANCELLED" | "REPLACED" | "RETRY" {
   return txStatus as any;
@@ -71,6 +82,17 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       const chainInfo = await getChainById(targetAccount.chainId);
       const numericValue = parseFloat(value);
+
+      // ─── Stellar path: sign + broadcast a Stellar payment envelope ─────────
+      if (isStellarChain(chainInfo)) {
+        return await signStellarTransactionFlow({
+          request, reply, wallet, targetAccount, chainInfo, numericValue,
+          to, value, data, isSponsored, isAdmin: request.auth.role === "ORG_ADMIN",
+        });
+      }
+
+      // EVM chains require a numeric chain id for transaction building.
+      const evmChainId = requireEvmChainId(chainInfo);
 
       // ─── Resolve gas params (EIP-1559) ───────────────────────────────────
       // Always fetch fresh fee data from the RPC. Never sign with zero gas.
@@ -236,7 +258,7 @@ export async function transactionRoutes(app: FastifyInstance) {
         }
 
         const tx: ethers.TransactionRequest = {
-          to, value: ethers.parseEther(value), chainId: chainInfo.chainId,
+          to, value: ethers.parseEther(value), chainId: evmChainId,
           nonce: consensusNonce,
           gasLimit: BigInt(resolvedGasLimit),
           maxFeePerGas: BigInt(resolvedMaxFeePerGas),
@@ -327,7 +349,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       ]);
 
       const tx: ethers.TransactionRequest = {
-        to, value: ethers.parseEther(value), chainId: chainInfo.chainId,
+        to, value: ethers.parseEther(value), chainId: evmChainId,
         nonce,
         gasLimit: BigInt(resolvedGasLimit),
         maxFeePerGas: BigInt(resolvedMaxFeePerGas),
@@ -440,6 +462,34 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       const chainInfo = await getChainById(targetAccount.chainId);
 
+      // Stellar has no eth_call; "simulate" validates addresses + the destination's
+      // funding status (determines whether a createAccount op is required) and
+      // returns a per-op fee estimate.
+      if (isStellarChain(chainInfo)) {
+        if (!isValidStellarAddress(to)) {
+          return sendSuccess(reply, { success: false, gasUsed: "0", returnData: "", error: `Invalid Stellar destination address: ${to}` });
+        }
+        const horizonUrl = chainInfo.horizonUrl || chainInfo.rpcUrl;
+        let destinationFunded = true;
+        try {
+          await getStellarSequence(to, horizonUrl);
+        } catch {
+          destinationFunded = false;
+        }
+        const fee = await getStellarFeeEstimate(horizonUrl);
+        await createAuditLog(request.orgId, "TX_SIMULATE", { walletId, to, value, success: true, family: "stellar" }, request.userId, request);
+        return sendSuccess(reply, {
+          success: true,
+          gasUsed: "1",
+          returnData: "",
+          family: "stellar",
+          destinationFunded,
+          operation: destinationFunded ? "payment" : "createAccount",
+          feeStroops: fee.suggestedFeeStroops,
+          estimatedFeeXlm: fee.estimatedFeeXlm,
+        });
+      }
+
       const tx: ethers.TransactionRequest = {
         to,
         from: targetAccount.address,
@@ -471,7 +521,9 @@ export async function transactionRoutes(app: FastifyInstance) {
         try {
           const account = await prisma.walletAccount.findUnique({ where: { id: tx.accountId }, include: { chain: true } });
           if (account) {
-            const { status } = await getTransactionStatus(tx.txHash, account.chain.rpcUrl);
+            const status = isStellarChain(account.chain)
+              ? (await getStellarTransactionStatus(tx.txHash, account.chain.horizonUrl || account.chain.rpcUrl)).status
+              : (await getTransactionStatus(tx.txHash, account.chain.rpcUrl)).status;
             if (status === "CONFIRMED" && String(tx.status) !== "CONFIRMED") {
               await prisma.transaction.update({
                 where: { id }, data: { status: "CONFIRMED", confirmedAt: new Date() },
@@ -534,6 +586,7 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       account = await prisma.walletAccount.findUnique({ where: { id: tx.accountId }, include: { chain: true } });
       if (!account) throw new NotFoundError("Account");
+      if (isStellarChain(account.chain)) throw new ValidationError("Stellar transactions are final once submitted — retry is not applicable");
 
       const retryCount = await prisma.transaction.count({ where: { replacementFor: id } });
       if (retryCount >= config.txRetry.maxRetries) throw new ValidationError("Max retries exceeded");
@@ -548,7 +601,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       const txData: ethers.TransactionRequest = {
         to: tx.to,
         value: ethers.parseEther(tx.value),
-        chainId: account.chain.chainId,
+        chainId: requireEvmChainId(account.chain),
         nonce: tx.nonce ?? nonce,
         gasLimit: tx.gasLimit ? BigInt(tx.gasLimit) : undefined,
         maxFeePerGas: tx.maxFeePerGas ? BigInt(tx.maxFeePerGas) : undefined,
@@ -597,6 +650,7 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       const account = await prisma.walletAccount.findUnique({ where: { id: tx.accountId }, include: { chain: true } });
       if (!account) throw new NotFoundError("Account");
+      if (isStellarChain(account.chain)) throw new ValidationError("Stellar transactions are final once submitted — cancel is not applicable");
       lockedAccount = account;
 
       const wallet = await prisma.wallet.findFirst({ where: { id: account.walletId, orgId: request.orgId } });
@@ -608,7 +662,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       const cancelTx: ethers.TransactionRequest = {
         to: account.address,
         value: 0n,
-        chainId: account.chain.chainId,
+        chainId: requireEvmChainId(account.chain),
         nonce: cancelNonce,
       };
 
@@ -655,6 +709,7 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       const account = await prisma.walletAccount.findUnique({ where: { id: tx.accountId }, include: { chain: true } });
       if (!account) throw new NotFoundError("Account");
+      if (isStellarChain(account.chain)) throw new ValidationError("Stellar transactions are final once submitted — speed-up is not applicable");
 
       const wallet = await prisma.wallet.findFirst({ where: { id: account.walletId, orgId: request.orgId } });
       if (!wallet) throw new NotFoundError("Wallet");
@@ -670,7 +725,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       const txData: ethers.TransactionRequest = {
         to: tx.to,
         value: ethers.parseEther(tx.value),
-        chainId: account.chain.chainId,
+        chainId: requireEvmChainId(account.chain),
         nonce: tx.nonce!,
         gasLimit: tx.gasLimit ? BigInt(tx.gasLimit) : undefined,
         maxFeePerGas: newGas,
@@ -724,6 +779,12 @@ export async function transactionRoutes(app: FastifyInstance) {
         ? (await prisma.chain.findUnique({ where: { name: chainName } }))?.rpcUrl || account.chain.rpcUrl
         : account.chain.rpcUrl;
 
+      // Stellar uses on-chain sequence numbers instead of EVM nonces.
+      if (isStellarChain(account.chain)) {
+        const sequence = await getStellarSequence(address, account.chain.horizonUrl || rpcUrl);
+        return sendSuccess(reply, { address, nonce: Number(sequence), sequence, chain: account.chain.name, family: "stellar" });
+      }
+
       const nonce = await getNextNonce(address, rpcUrl);
 
       return sendSuccess(reply, { address, nonce, chain: account.chain.name });
@@ -734,9 +795,27 @@ export async function transactionRoutes(app: FastifyInstance) {
 
   app.post("/transactions/estimate-fee", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
-      const { to, value, data, chain: chainName } = request.body as { to: string; value: string; data?: string; chain?: string };
+      const { to, value, data: _data, chain: chainName } = request.body as { to: string; value: string; data?: string; chain?: string };
 
       if (!to) throw new ValidationError("to is required");
+
+      if (chainName) {
+        const chainInfo = await prisma.chain.findUnique({ where: { name: chainName } });
+        if (chainInfo && isStellarChain(chainInfo)) {
+          const fee = await getStellarFeeEstimate(chainInfo.horizonUrl || chainInfo.rpcUrl);
+          return sendSuccess(reply, {
+            gasLimit: "1",
+            gasPrice: fee.suggestedFeeStroops,
+            estimatedFee: fee.estimatedFeeXlm,
+            estimatedFeeWei: fee.suggestedFeeStroops,
+            feeStroops: fee.suggestedFeeStroops,
+            chain: chainInfo.name,
+            chainId: null,
+            currency: chainInfo.symbol,
+            family: "stellar",
+          });
+        }
+      }
 
       let rpcUrl = config.defaultRpcUrl;
       let feeChainId = config.defaultChainId;
@@ -747,7 +826,7 @@ export async function transactionRoutes(app: FastifyInstance) {
           const chainInfo = await prisma.chain.findUnique({ where: { name: chainName } });
           if (chainInfo) {
             rpcUrl = chainInfo.rpcUrl;
-            feeChainId = chainInfo.chainId;
+            feeChainId = chainInfo.chainId ?? config.defaultChainId;
             chainSymbol = chainInfo.symbol;
           }
         } catch {}
@@ -755,7 +834,7 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       const provider = new ethers.JsonRpcProvider(rpcUrl);
       const tx: ethers.TransactionRequest = {
-        to, value: value ? ethers.parseEther(value) : 0n, data: data || undefined,
+        to, value: value ? ethers.parseEther(value) : 0n, data: _data || undefined,
       };
       const gasLimit = await provider.estimateGas(tx);
       const feeData = await provider.getFeeData();
@@ -804,6 +883,19 @@ export async function transactionRoutes(app: FastifyInstance) {
       }
 
       const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
+
+      // Stellar: sign with ed25519 over the raw message bytes (no EIP-191 prefix).
+      if (isStellarChain(targetAccount.chain)) {
+        const stellarAccount = deriveStellarAccount(mnemonic, targetAccount.index, targetAccount.chain.derivationPath);
+        const signature = signStellarMessage(stellarAccount.secret, message);
+        await createAuditLog(
+          request.orgId, "WALLET_SIGN_MESSAGE",
+          { walletId, address: targetAccount.address, chain: targetAccount.chain.name, messageLength: message.length, family: "stellar" },
+          request.userId, request,
+        );
+        return sendSuccess(reply, { signature, address: targetAccount.address, chain: targetAccount.chain.name, family: "stellar" }, 201);
+      }
+
       const derived = deriveAccount(mnemonic, targetAccount.index, targetAccount.chain.derivationPath);
 
       // Sign message using ethers.js
@@ -826,4 +918,186 @@ export async function transactionRoutes(app: FastifyInstance) {
       return sendError(reply, err);
     }
   });
+}
+
+// ─── Stellar sign+confirm flow (additive branch off the EVM sign route) ───────
+async function signStellarTransactionFlow(args: {
+  request: any; reply: any; wallet: any; targetAccount: any; chainInfo: any;
+  numericValue: number; to: string; value: string; data?: string; isSponsored: boolean; isAdmin: boolean;
+}): Promise<any> {
+  const { request, reply, wallet, targetAccount, chainInfo, numericValue, to, value, data, isSponsored, isAdmin } = args;
+
+  if (isWvcWallet(wallet.encryptedSeed)) {
+    throw new ValidationError("WVC enclave signing is not supported for Stellar chains");
+  }
+  if (!chainInfo.horizonUrl) {
+    throw new AppError(502, `Chain "${chainInfo.name}" has no Horizon URL configured`);
+  }
+  if (!isValidStellarAddress(to)) {
+    throw new ValidationError(`Invalid Stellar destination address: ${to}`);
+  }
+
+  const horizonUrl = chainInfo.horizonUrl;
+  const networkPassphrase = chainInfo.networkPassphrase || resolveNetworkPassphrase(null, horizonUrl);
+  const memo = typeof data === "string" && data.length > 0 ? data.slice(0, 28) : undefined;
+
+  // Pre-send balance check (account must be funded to submit any Stellar tx).
+  try {
+    await getStellarSequence(targetAccount.address, horizonUrl);
+  } catch {
+    throw new AppError(402, `Stellar source account ${targetAccount.address} is not funded on ${chainInfo.name}. Fund it with at least the base reserve before sending.`);
+  }
+
+  // Spending limits
+  const spendingCheck = await validateSpendingLimits(request.orgId!, wallet.id, chainInfo.id, numericValue, to);
+  if (!spendingCheck.allowed) {
+    throw new ForbiddenError(spendingCheck.reason || "Transaction blocked by spending limits");
+  }
+
+  const dbUser = request.userId ? await prisma.user.findUnique({ where: { id: request.userId } }) : null;
+  const userContext = dbUser ? { id: dbUser.id, role: dbUser.role, tags: dbUser.tags || [] } : undefined;
+
+  const riskContext: EvaluationContext = {
+    params: { walletId: wallet.id, accountId: targetAccount.id, to, value: numericValue, chain: chainInfo.name },
+    user: userContext as any,
+    wallet: { id: wallet.id, ownerId: wallet.ownerId, ownerType: wallet.ownerType },
+    activity: { resource: "WALLET", action: "SIGN", type: "SIGN_TRANSACTION" },
+    credential: { type: request.auth?.type === "api_key" ? "API_KEY" : "EMAIL" },
+    stellar: { to, value: numericValue, ...(memo ? { memo } : {}) },
+    timestamp: Date.now(),
+  } as any;
+
+  const risk = await assessTransactionRisk(riskContext, wallet.id);
+
+  const policies = await prisma.policy.findMany({ where: { orgId: request.orgId, active: true }, orderBy: { priority: "desc" } });
+  const policyContext: EvaluationContext = {
+    params: { walletId: wallet.id, accountId: targetAccount.id, to, value: numericValue, chain: chainInfo.name },
+    user: userContext as any,
+    wallet: { id: wallet.id, ownerId: wallet.ownerId, ownerType: wallet.ownerType },
+    activity: { resource: "WALLET", action: "SIGN", type: "SIGN_TRANSACTION" },
+    credential: { type: request.auth?.type === "api_key" ? "API_KEY" : "EMAIL" },
+    stellar: { to, value: numericValue, ...(memo ? { memo } : {}) },
+    timestamp: Date.now(),
+  } as any;
+  const policyResult = evaluatePolicies(
+    policies.map((p: any) => ({ effect: p.effect as any, conditions: p.conditions as any, consensus: p.consensus as any })),
+    policyContext, isAdmin,
+  );
+
+  await createAuditLog(request.orgId!, "POLICY_EVAL", {
+    walletId: wallet.id, to, value, allowed: policyResult.allowed, reason: policyResult.reason, riskScore: risk.score,
+  }, request.userId, request as any);
+
+  if (!policyResult.allowed) {
+    await createAuditLog(request.orgId!, "POLICY_DENY", { walletId: wallet.id, to, value, reason: policyResult.reason }, request.userId, request as any);
+    triggerWebhookEvents(request.orgId!, "policy.triggered", { walletId: wallet.id, to, value, allowed: false, reason: policyResult.reason });
+    notifyPolicyDenial(request.orgId!, policyResult.reason || "Policy denied", to, value, chainInfo.name).catch(() => {});
+    return sendSuccess(reply, { allowed: false, requiresConsensus: policyResult.requiresConsensus, reason: policyResult.reason, riskScore: risk.score, riskFlags: risk.flags }, 200);
+  }
+
+  const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
+  const derived = deriveStellarAccount(mnemonic, targetAccount.index, targetAccount.chain.derivationPath);
+  if (derived.address !== targetAccount.address) {
+    throw new AppError(500, "Derived Stellar address does not match the stored account address — the wallet seed or derivation path is inconsistent");
+  }
+
+  // Consensus path: sign but hold broadcast pending approval.
+  if (policyResult.requiresConsensus && !isAdmin) {
+    const signResult = await signStellarPayment({
+      secret: derived.secret, fromAddress: targetAccount.address, to, amount: value,
+      networkPassphrase, horizonUrl, memo,
+    });
+    const transaction = await prisma.transaction.create({
+      data: {
+        accountId: targetAccount.id, orgId: request.orgId, chain: chainInfo.name,
+        to, value, sequence: signResult.sequence, memo, envelopeXdr: signResult.envelopeXdr,
+        signedTx: signResult.envelopeXdr, status: "SIGNED", riskScore: risk.score, sponsored: isSponsored,
+      },
+    });
+
+    const orgConfig = await prisma.orgConfig.findUnique({ where: { orgId: request.orgId } });
+    const quorumThreshold = (orgConfig?.config as any)?.rootQuorumThreshold || 2;
+
+    const approval = await prisma.approvalRequest.create({
+      data: {
+        orgId: request.orgId, actionType: "TRANSACTION", targetId: transaction.id, transactionId: transaction.id,
+        requestedBy: request.userId!, requiredApprovals: quorumThreshold,
+      },
+    });
+
+    await createAuditLog(request.orgId!, "APPROVAL_REQUEST", { transactionId: transaction.id, approvalId: approval.id }, request.userId, request as any);
+    triggerWebhookEvents(request.orgId!, "transaction.submitted", { transactionId: transaction.id, requiresConsensus: true, approvalId: approval.id, walletId: wallet.id, to, value });
+    triggerWebhookEvents(request.orgId!, "approval.requested", { approvalId: approval.id, actionType: "TRANSACTION", transactionId: transaction.id, requestedBy: request.userId, requiredApprovals: approval.requiredApprovals });
+
+    return sendSuccess(reply, {
+      transactionId: transaction.id, status: "AWAITING_APPROVAL", requiresConsensus: true, approvalId: approval.id,
+      riskScore: risk.score, riskFlags: risk.flags, createdAccount: signResult.createdAccount,
+    }, 201);
+  }
+
+  // Direct sign + broadcast path
+  const lockId = await acquireNonceLock(targetAccount.address);
+  let signedEnvelope: { envelopeXdr: string; sequence: string; createdAccount: boolean };
+  try {
+    signedEnvelope = await signStellarPayment({
+      secret: derived.secret, fromAddress: targetAccount.address, to, amount: value,
+      networkPassphrase, horizonUrl, memo,
+    });
+  } finally {
+    if (lockId) await releaseNonceLock(targetAccount.address, lockId).catch(() => {});
+  }
+
+  const transaction = await prisma.transaction.create({
+    data: {
+      accountId: targetAccount.id, orgId: request.orgId, chain: chainInfo.name,
+      to, value, sequence: signedEnvelope.sequence, memo, envelopeXdr: signedEnvelope.envelopeXdr,
+      signedTx: signedEnvelope.envelopeXdr, status: "SIGNED", riskScore: risk.score, sponsored: isSponsored,
+    },
+  });
+
+  await createAuditLog(request.orgId!, "TX_SIGN", { transactionId: transaction.id, walletId: wallet.id, to, value, sequence: signedEnvelope.sequence, riskScore: risk.score }, request.userId, request as any);
+
+  try {
+    const { hash } = await broadcastStellarTransaction(signedEnvelope.envelopeXdr, networkPassphrase, horizonUrl);
+    await prisma.transaction.update({ where: { id: transaction.id }, data: { txHash: hash, status: "BROADCAST" } });
+
+    await createAuditLog(request.orgId!, "TX_BROADCAST", { transactionId: transaction.id, txHash: hash }, request.userId, request as any);
+    triggerWebhookEvents(request.orgId!, "transaction.submitted", { transactionId: transaction.id, txHash: hash, walletId: wallet.id, to, value, sequence: signedEnvelope.sequence });
+
+    if (risk.flags.length > 0 || numericValue > parseFloat(config.gasSponsorship.maxSponsorAmount || "1.0")) {
+      notifyLargeTransaction(request.orgId!, hash, value, chainInfo.name, to).catch(() => {});
+    }
+
+    let confirmed = false;
+    try {
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const st = await getStellarTransactionStatus(hash, horizonUrl);
+        if (st.status === "CONFIRMED") {
+          confirmed = true;
+          await prisma.transaction.update({ where: { id: transaction.id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+          triggerWebhookEvents(request.orgId!, "transaction.confirmed", { transactionId: transaction.id, txHash: hash });
+          break;
+        }
+        if (st.status === "FAILED") {
+          await prisma.transaction.update({ where: { id: transaction.id }, data: { status: "FAILED", error: "Transaction failed on-chain" } });
+          return sendError(reply, new AppError(400, `Stellar transaction failed on-chain. Check: ${chainInfo.blockExplorerUrl}/tx/${hash}`));
+        }
+      }
+    } catch { /* confirmation poll failed — tx still submitted */ }
+
+    return sendSuccess(reply, {
+      transactionId: transaction.id, txHash: hash,
+      status: confirmed ? "CONFIRMED" : "BROADCAST", confirmed,
+      to, value, sequence: signedEnvelope.sequence, chain: chainInfo.name,
+      riskScore: risk.score, riskFlags: risk.flags,
+      createdAccount: signedEnvelope.createdAccount,
+      explorerUrl: chainInfo.blockExplorerUrl ? `${chainInfo.blockExplorerUrl}/tx/${hash}` : undefined,
+    }, 201);
+  } catch (broadcastErr: any) {
+    await prisma.transaction.update({ where: { id: transaction.id }, data: { status: "FAILED", error: broadcastErr.message } });
+    triggerWebhookEvents(request.orgId!, "transaction.failed", { transactionId: transaction.id, error: broadcastErr.message });
+    notifyTransactionFailed(request.orgId!, transaction.id, broadcastErr.message, chainInfo.name).catch(() => {});
+    throw broadcastErr;
+  }
 }
