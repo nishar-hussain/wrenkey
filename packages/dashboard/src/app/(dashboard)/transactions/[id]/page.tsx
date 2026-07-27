@@ -18,6 +18,8 @@ interface TxDetail {
   to: string;
   value: string;
   nonce?: number;
+  sequence?: string;
+  memo?: string;
   gasLimit?: string;
   maxFeePerGas?: string;
   maxPriorityFeePerGas?: string;
@@ -30,6 +32,13 @@ interface TxDetail {
   sponsored: boolean;
   wvcManaged?: boolean;
   devMode?: boolean;
+  account?: {
+    chain?: {
+      name: string;
+      symbol?: string;
+      family?: string;
+    };
+  };
   appProof?: {
     ephemeralPubkey: string;
     payloadHash: string;
@@ -60,16 +69,27 @@ export default function TransactionDetailPage() {
       setTx(res);
     } catch (err: any) {
       addToast(err.message || "Failed to load transaction", "error");
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, [token, txId]);
 
   useEffect(() => {
-    if (!isAuthenticated) { router.push("/login"); return; }
+    if (!isAuthenticated) {
+      router.push("/login");
+      return;
+    }
     fetchTx();
   }, [isAuthenticated, fetchTx, router]);
 
   if (!isAuthenticated) return null;
-  if (loading) return <div className="space-y-3"><Skeleton className="h-8 w-64" /><Skeleton className="h-48 w-full" /></div>;
+  if (loading)
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    );
   if (!tx) return <p className="text-sm text-slate-500">Transaction not found.</p>;
 
   const canRetry = ["FAILED", "PENDING"].includes(tx.status);
@@ -87,12 +107,24 @@ export default function TransactionDetailPage() {
       else fetchTx();
     } catch (err: any) {
       addToast(err.message || `Failed to ${action} transaction`, "error");
-    } finally { setActionLoading(null); }
+    } finally {
+      setActionLoading(null);
+    }
   };
+
+  const isStellar =
+    tx.account?.chain?.family === "stellar" ||
+    tx.chain?.toLowerCase().includes("stellar") ||
+    tx.to?.startsWith("G");
+
+  const symbol = tx.account?.chain?.symbol || (isStellar ? "XLM" : "ETH");
 
   return (
     <div>
-      <button onClick={() => router.push("/transactions")} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4">
+      <button
+        onClick={() => router.push("/transactions")}
+        className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4"
+      >
         <ArrowLeft className="h-4 w-4" /> Back to transactions
       </button>
 
@@ -123,95 +155,139 @@ export default function TransactionDetailPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Tx Hash</p>
-          <p className="text-sm font-mono mt-1 break-all">{tx.txHash || "—"}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Chain</p>
-          <p className="text-sm mt-1 capitalize">{tx.chain}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">To</p>
-          <p className="text-sm font-mono mt-1 break-all">{tx.to}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Value</p>
-          <p className="text-sm mt-1">{tx.value} ETH {tx.sponsored && <span className="text-xs text-green-600 ml-1">(sponsored)</span>}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Nonce</p>
-          <p className="text-sm mt-1">{tx.nonce ?? "—"}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Gas Limit</p>
-          <p className="text-sm mt-1">{tx.gasLimit || "—"}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Max Fee Per Gas</p>
-          <p className="text-sm mt-1 font-mono">{tx.maxFeePerGas || "—"}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Risk Score</p>
-          <p className="text-sm mt-1">{tx.riskScore ?? "—"}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Created</p>
-          <p className="text-sm mt-1">{new Date(tx.createdAt).toLocaleString()}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Confirmed</p>
-          <p className="text-sm mt-1">{tx.confirmedAt ? new Date(tx.confirmedAt).toLocaleString() : "—"}</p>
-        </CardContent></Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">Tx Hash</p>
+            <p className="text-sm font-mono mt-1 break-all">{tx.txHash || "—"}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">Chain</p>
+            <p className="text-sm mt-1 capitalize">{tx.chain}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">To</p>
+            <p className="text-sm font-mono mt-1 break-all">{tx.to}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">Value</p>
+            <p className="text-sm mt-1">
+              {tx.value} {symbol} {tx.sponsored && <span className="text-xs text-green-600 ml-1">(sponsored)</span>}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">{isStellar ? "Sequence" : "Nonce"}</p>
+            <p className="text-sm mt-1">{tx.sequence || (tx.nonce ?? "—")}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">Gas Limit</p>
+            <p className="text-sm mt-1">{isStellar ? "—" : tx.gasLimit || "—"}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">Max Fee Per Gas</p>
+            <p className="text-sm mt-1 font-mono">{isStellar ? "—" : tx.maxFeePerGas || "—"}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">Risk Score</p>
+            <p className="text-sm mt-1">{tx.riskScore ?? "—"}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">Created</p>
+            <p className="text-sm mt-1">{new Date(tx.createdAt).toLocaleString()}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">Confirmed</p>
+            <p className="text-sm mt-1">{tx.confirmedAt ? new Date(tx.confirmedAt).toLocaleString() : "—"}</p>
+          </CardContent>
+        </Card>
       </div>
 
       {tx.error && (
-        <Card className="mt-4 border-red-200"><CardContent className="p-4">
-          <p className="text-xs text-red-400 uppercase tracking-wide mb-1">Error</p>
-          <p className="text-sm text-red-600 font-mono break-all">{tx.error}</p>
-        </CardContent></Card>
+        <Card className="mt-4 border-red-200">
+          <CardContent className="p-4">
+            <p className="text-xs text-red-400 uppercase tracking-wide mb-1">Error</p>
+            <p className="text-sm text-red-600 font-mono break-all">{tx.error}</p>
+          </CardContent>
+        </Card>
       )}
 
       {tx.wvcManaged && tx.appProof && (
-        <Card className="mt-4 border-green-200"><CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <p className="text-xs text-green-500 uppercase tracking-wide font-semibold">
-              {tx.devMode ? "WVC Dev App Proof" : "WVC App Proof"}
-            </p>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${tx.devMode ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"}`}>
-              {tx.appProof.proofFormatVersion}
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div>
-              <p className="text-slate-400">Ephemeral Pubkey</p>
-              <p className="font-mono text-slate-700 mt-0.5 break-all">{tx.appProof.ephemeralPubkey.slice(0, 32)}...</p>
+        <Card className="mt-4 border-green-200">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <p className="text-xs text-green-500 uppercase tracking-wide font-semibold">
+                {tx.devMode ? "WVC Dev App Proof" : "WVC App Proof"}
+              </p>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded ${
+                  tx.devMode ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"
+                }`}
+              >
+                {tx.appProof.proofFormatVersion}
+              </span>
             </div>
-            <div>
-              <p className="text-slate-400">Payload Type</p>
-              <p className="text-slate-700 mt-0.5">{tx.appProof.payloadType}</p>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <p className="text-slate-400">Ephemeral Pubkey</p>
+                <p className="font-mono text-slate-700 mt-0.5 break-all">
+                  {tx.appProof.ephemeralPubkey.slice(0, 32)}...
+                </p>
+              </div>
+              <div>
+                <p className="text-slate-400">Payload Type</p>
+                <p className="text-slate-700 mt-0.5">{tx.appProof.payloadType}</p>
+              </div>
+              <div>
+                <p className="text-slate-400">Payload Hash</p>
+                <p className="font-mono text-slate-700 mt-0.5 break-all">{tx.appProof.payloadHash.slice(0, 32)}...</p>
+              </div>
+              <div>
+                <p className="text-slate-400">Signature</p>
+                <p className="font-mono text-slate-700 mt-0.5 break-all">{tx.appProof.signature.slice(0, 32)}...</p>
+              </div>
             </div>
-            <div>
-              <p className="text-slate-400">Payload Hash</p>
-              <p className="font-mono text-slate-700 mt-0.5 break-all">{tx.appProof.payloadHash.slice(0, 32)}...</p>
-            </div>
-            <div>
-              <p className="text-slate-400">Signature</p>
-              <p className="font-mono text-slate-700 mt-0.5 break-all">{tx.appProof.signature.slice(0, 32)}...</p>
-            </div>
-          </div>
-          <details className="mt-3">
-            <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600">Attestation Doc</summary>
-            <pre className="text-xs font-mono bg-slate-50 p-2 rounded mt-1 max-h-32 overflow-y-auto break-all">{typeof tx.appProof.attestationDoc === "string" ? tx.appProof.attestationDoc.slice(0, 500) : JSON.stringify(tx.appProof.attestationDoc, null, 2)}</pre>
-          </details>
-        </CardContent></Card>
+            <details className="mt-3">
+              <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600">
+                Attestation Doc
+              </summary>
+              <pre className="text-xs font-mono bg-slate-50 p-2 rounded mt-1 max-h-32 overflow-y-auto break-all">
+                {typeof tx.appProof.attestationDoc === "string"
+                  ? tx.appProof.attestationDoc.slice(0, 500)
+                  : JSON.stringify(tx.appProof.attestationDoc, null, 2)}
+              </pre>
+            </details>
+          </CardContent>
+        </Card>
       )}
 
-      {tx.data && (
-        <Card className="mt-4"><CardContent className="p-4">
-          <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Transaction Data</p>
-          <pre className="text-xs font-mono bg-slate-50 dark:bg-slate-800 p-3 rounded max-h-48 overflow-y-auto break-all">{tx.data}</pre>
-        </CardContent></Card>
+      {(tx.memo || tx.data) && (
+        <Card className="mt-4">
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">
+              {isStellar ? "Memo" : "Transaction Data"}
+            </p>
+            <pre className="text-xs font-mono bg-slate-50 dark:bg-slate-800 p-3 rounded max-h-48 overflow-y-auto break-all">
+              {tx.memo || tx.data}
+            </pre>
+          </CardContent>
+        </Card>
       )}
 
       {tx.replacementFor && (

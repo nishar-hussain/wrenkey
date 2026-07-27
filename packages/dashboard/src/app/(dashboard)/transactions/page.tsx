@@ -131,7 +131,7 @@ export default function TransactionsPage() {
   const columns = [
     { key: "txHash", header: "Tx Hash", render: (tx: Transaction) => tx.txHash ? <span className="font-mono text-xs">{tx.txHash.slice(0, 12)}...</span> : "-" },
     { key: "to", header: "To", render: (tx: Transaction) => <span className="font-mono text-xs">{tx.to.slice(0, 12)}...</span> },
-    { key: "value", header: "Value", render: (tx: Transaction) => tx.value },
+    { key: "value", header: "Value", render: (tx: Transaction) => `${tx.value} ${tx.chain?.toLowerCase().includes("stellar") ? "XLM" : "ETH"}` },
     { key: "chain", header: "Chain" },
     { key: "status", header: "Status", render: (tx: Transaction) => <StatusBadge status={tx.status} /> },
     { key: "createdAt", header: "Date", render: (tx: Transaction) => new Date(tx.createdAt).toLocaleDateString() },

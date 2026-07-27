@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
 import { ArrowLeft, Activity, FileCheck, Server, ShieldCheck, Cpu, Copy } from "lucide-react";
@@ -38,7 +38,9 @@ interface Manifest {
   deploymentId?: string;
 }
 
-export default function DeploymentDetailPage({ params }: { params: { id: string } }) {
+export default function DeploymentDetailPage() {
+  const routeParams = useParams();
+  const id = routeParams.id as string;
   const { isAuthenticated, token } = useAuth();
   const router = useRouter();
   const [deployment, setDeployment] = useState<Deployment | null>(null);
@@ -47,14 +49,14 @@ export default function DeploymentDetailPage({ params }: { params: { id: string 
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
-    if (!token) return;
+    if (!token || !id) return;
     try {
-      const dep = await apiFetch<Deployment>(`/wvc/deployments/${params.id}`, { token });
+      const dep = await apiFetch<Deployment>(`/wvc/deployments/${id}`, { token });
       setDeployment(dep);
 
       if (dep.bootProofs?.length > 0) {
         // Fetch app proofs
-        const proofs = await apiFetch<{ data: any[] }>(`/wvc/deployments/${params.id}/app-proofs?limit=10`, { token });
+        const proofs = await apiFetch<{ data: any[] }>(`/wvc/deployments/${id}/app-proofs?limit=10`, { token });
         setAppProofs(proofs.data || []);
       }
     } catch (err) {
@@ -62,7 +64,7 @@ export default function DeploymentDetailPage({ params }: { params: { id: string 
     } finally {
       setLoading(false);
     }
-  }, [token, params.id]);
+  }, [token, id]);
 
   useEffect(() => {
     if (!isAuthenticated) { router.push("/login"); return; }

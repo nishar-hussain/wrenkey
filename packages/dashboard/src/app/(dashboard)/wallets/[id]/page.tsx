@@ -77,7 +77,7 @@ function copyToClipboard(text: string, addToast: (msg: string, type: "success" |
   );
 }
 
-const CHAIN_OPTIONS = ["sepolia", "ethereum", "polygon", "arbitrum", "optimism", "base"];
+const CHAIN_OPTIONS = ["sepolia", "ethereum", "polygon", "arbitrum", "optimism", "base", "stellar-testnet", "stellar-pubnet"];
 
 export default function WalletDetailPage() {
   const params = useParams();
