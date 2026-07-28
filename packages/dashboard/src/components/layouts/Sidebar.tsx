@@ -8,7 +8,7 @@ import { useAuth } from "@/components/providers/Providers";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Building2, Settings, UsersRound, Tag, Shield, Activity, CreditCard, Webhook, Wallet, Wrench, Layers, Cloud,
-  Menu, X, FileCode, Send, Key, Bot, CheckCircle, Lock, DollarSign, ChevronDown,
+  Menu, X, FileCode, Send, Key, Bot, Lock, ChevronDown,
 } from "lucide-react";
 
 const mainNav = [
@@ -19,9 +19,7 @@ const mainNav = [
 ];
 
 const walletChildren = [
-  { href: "/spending-limits", label: "Spending Limits", icon: DollarSign },
   { href: "/private-keys", label: "Private Keys", icon: Lock },
-  { href: "/approvals", label: "Approvals", icon: CheckCircle },
 ];
 
 const developerChildren = [
