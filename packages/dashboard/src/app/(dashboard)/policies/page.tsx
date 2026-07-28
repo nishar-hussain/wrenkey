@@ -41,6 +41,7 @@ export default function PoliciesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [policyName, setPolicyName] = useState("");
+  const [policyDescription, setPolicyDescription] = useState("");
   const [policyActive, setPolicyActive] = useState(true);
   const [policyJson, setPolicyJson] = useState("");
   const [saving, setSaving] = useState(false);
@@ -62,6 +63,7 @@ export default function PoliciesPage() {
 
   const resetForm = () => {
     setPolicyName("");
+    setPolicyDescription("");
     setPolicyActive(true);
     setPolicyJson("");
     setEditingId(null);
@@ -102,7 +104,7 @@ export default function PoliciesPage() {
         consensus: parsed.consensus || "ANY",
         conditions: {
           condition: parsed.condition || "",
-          description: parsed.description || "",
+          description: policyDescription.trim(),
           isTurnkey: true,
         },
       };
@@ -221,6 +223,11 @@ export default function PoliciesPage() {
           <div className="space-y-1">
             <label className="text-sm font-medium">Name</label>
             <Input value={policyName} onChange={e => setPolicyName(e.target.value)} placeholder="e.g. Treasury Spending Limit" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Description</label>
+            <Input value={policyDescription} onChange={e => setPolicyDescription(e.target.value)} placeholder="Human-readable summary (optional)" />
           </div>
 
           <div className="space-y-1">
