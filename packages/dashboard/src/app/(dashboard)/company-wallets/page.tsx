@@ -179,7 +179,19 @@ export default function CompanyWalletsPage() {
     finally { setStepLoading(false); }
   };
 
-  const handleFinalCreate = () => { setCreatedWalletId(""); resetCreate(); addToast("Wallet created", "success"); fetchWallets(); };
+  const handleFinalCreate = () => {
+    setCreatedWalletId("");
+    setShowCreate(false);
+    setCreateStep(1);
+    setNewName("");
+    setChooseChain("sepolia");
+    setDerivedAccounts([]);
+    setShowAdvanced(false);
+    setChooseDerivation("BIP44");
+    setChooseDerivationPath("m/44'/60'/0'/0");
+    addToast("Wallet created", "success");
+    fetchWallets();
+  };
   const handleAddAnother = () => { setCreateStep(2); setChooseChain("sepolia"); setShowAdvanced(false); setChooseDerivation("BIP44"); setChooseDerivationPath(stripIndex(generateDerivationPath("sepolia", "BIP44", 0))); };
 
   const handleRemoveAccount = async (accountId: string, index: number) => {

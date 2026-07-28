@@ -216,8 +216,15 @@ export default function WalletsPage() {
   };
 
   const handleFinalCreate = () => {
-    setCreatedWalletId(""); // mark complete so resetCreate doesn't delete
-    resetCreate();
+    setCreatedWalletId("");
+    setShowCreate(false);
+    setCreateStep(1);
+    setNewName("");
+    setChooseChain("sepolia");
+    setDerivedAccounts([]);
+    setShowAdvanced(false);
+    setChooseDerivation("BIP44");
+    setChooseDerivationPath("m/44'/60'/0'/0");
     addToast("Wallet created", "success");
     fetchWallets();
   };
