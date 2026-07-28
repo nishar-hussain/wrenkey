@@ -26,6 +26,7 @@ import { triggerWebhookEvents } from "../webhook/routes.js";
 import { notifyWalletCreated } from "../../services/notifications.js";
 import { isWvcWalletSigningEnabled, isWvcWallet, wvcGenerateSeed } from "../../services/wvc-wallet-integration.js";
 import { config } from "../../config.js";
+import { getUserSubOrgId } from "../../utils/sub-org.js";
 
 export async function walletRoutes(app: FastifyInstance) {
   /**
@@ -54,9 +55,15 @@ export async function walletRoutes(app: FastifyInstance) {
       };
       if (!name) throw new ValidationError("Wallet name is required");
 
+      // Resolve the effective orgId: USER wallets go into the user's sub-org;
+      // ORG wallets stay in the current (parent) org.
+      const resolvedOrgId = ownerType === "ORG"
+        ? request.orgId!
+        : (await getUserSubOrgId(request.userId!, request.orgId!)) || request.orgId!;
+
       // ─── WVC path: seed generation through the enclave (PRD §25.1) ──────────
       if (isWvcWalletSigningEnabled()) {
-        const { seedId, derivedAddress, appProof, devMode } = await wvcGenerateSeed(request.orgId!);
+        const { seedId, derivedAddress, appProof, devMode } = await wvcGenerateSeed(resolvedOrgId);
         const encryptedSeed = `wvc:${seedId}`;
 
         const accountsCreate: any[] = [];
@@ -76,7 +83,7 @@ export async function walletRoutes(app: FastifyInstance) {
 
         const wallet = await prisma.wallet.create({
           data: {
-            orgId: request.orgId,
+            orgId: resolvedOrgId,
             ownerType: ownerType || "USER",
             ownerId: ownerId || request.userId!,
             userId: request.userId,
@@ -125,7 +132,7 @@ export async function walletRoutes(app: FastifyInstance) {
 
       const wallet = await prisma.wallet.create({
         data: {
-          orgId: request.orgId,
+          orgId: resolvedOrgId,
           ownerType: ownerType || "USER",
           ownerId: ownerId || request.userId!,
           userId: request.userId,
@@ -138,7 +145,7 @@ export async function walletRoutes(app: FastifyInstance) {
       });
 
       await createAuditLog(request.orgId, "WALLET_CREATE", { walletId: wallet.id, name, ...(accountsCreate.length > 0 ? { address: accountsCreate[0].address, chain: chain || "default" } : {}) }, request.userId, request);
-      triggerWebhookEvents(request.orgId, "wallet.created", { walletId: wallet.id, name, ownerType: wallet.ownerType, ownerId: wallet.ownerId });
+      triggerWebhookEvents(resolvedOrgId, "wallet.created", { walletId: wallet.id, name, ownerType: wallet.ownerType, ownerId: wallet.ownerId });
       notifyWalletCreated(request.orgId, name, wallet.id).catch(() => {});
 
       return sendSuccess(reply, {
@@ -204,9 +211,22 @@ export async function walletRoutes(app: FastifyInstance) {
       const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
       const { status, search, ownerType } = request.query as { status?: string; search?: string; ownerType?: string };
 
-      const where: any = { orgId: request.orgId };
+      // USER wallets only appear when explicitly requested or when inside their sub-org.
+      // ORG wallets belong to the current org.
+      // Default (no ownerType): show all wallets in the current org scope.
+      const where: any = {};
+      if (ownerType === "USER") {
+        const subOrgId = await getUserSubOrgId(request.userId!, request.orgId!);
+        where.orgId = subOrgId || request.orgId;
+        where.ownerType = "USER";
+      } else if (ownerType === "ORG") {
+        where.orgId = request.orgId;
+        where.ownerType = "ORG";
+      } else {
+        where.orgId = request.orgId;
+      }
+
       if (status) where.status = status;
-      if (ownerType) where.ownerType = ownerType;
       if (search) {
         where.OR = [
           { name: { contains: search, mode: "insensitive" } },

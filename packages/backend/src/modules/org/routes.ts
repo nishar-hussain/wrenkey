@@ -113,6 +113,24 @@ export async function orgRoutes(app: FastifyInstance) {
 
       await createAuditLog(request.orgId, "USER_CREATE", { userId: user.id, email }, request.userId, request);
 
+      // Auto-create a sub-org for this user's personal wallets
+      try {
+        const subOrgName = email
+          ? `${email.split("@")[0]} - Wallet`
+          : `user-${user.id.slice(0, 8)} - Wallet`;
+        const subOrg = await prisma.organization.create({
+          data: { name: subOrgName, parentOrgId: request.orgId },
+        });
+        // Make this user the ORG_ADMIN of their sub-org
+        await prisma.user.create({
+          data: { orgId: subOrg.id, email, name, role: "ORG_ADMIN", tags: tags || [] },
+        });
+        await createAuditLog(request.orgId, "SUBORG_CREATE", { subOrgId: subOrg.id, name: subOrgName, forUser: user.id }, request.userId, request);
+      } catch (subOrgErr: any) {
+        // Non-blocking: user creation succeeds even if sub-org fails
+        console.warn(`[users.create] Failed to auto-create sub-org for user ${email}: ${subOrgErr?.message || subOrgErr}`);
+      }
+
       // Generate invitation token and store in Redis (best-effort — a Redis
       // outage must not block user creation; the invite link is simply skipped).
       const inviteToken = randomBytes(32).toString("hex");

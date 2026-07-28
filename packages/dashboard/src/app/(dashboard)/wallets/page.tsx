@@ -423,7 +423,12 @@ export default function WalletsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Wallets</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Wallets</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Company wallets belong to this org. User wallets live in <a href="/sub-orgs" className="text-brand-600 hover:underline font-medium">Sub-Orgs</a> — each user gets their own sub-org container.
+          </p>
+        </div>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => { setShowImport(true); setImportName(""); setImportMnemonic(""); setImportChain("sepolia"); }}>
             Import

@@ -13,9 +13,8 @@ import {
 
 const mainNav = [
   { href: "/", label: "Home", icon: LayoutDashboard },
-  { href: "/wallets", label: "Wallets", icon: Wallet },
-  { href: "/transactions", label: "Transactions", icon: Send },
   { href: "/company-wallets", label: "Company Wallets", icon: Building2 },
+  { href: "/transactions", label: "Transactions", icon: Send },
 ];
 
 const developerChildren = [

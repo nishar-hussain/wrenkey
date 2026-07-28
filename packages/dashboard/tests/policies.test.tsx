@@ -352,7 +352,8 @@ describe("Policies Page", () => {
       const postCall = mockApiFetch.mock.calls.find(
         (c: any[]) => c[0] === "/policies" && c[1]?.method === "POST"
       );
-      const body = JSON.parse(postCall[1].body);
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body);
       expect(body.name).toBe("My Policy");
       expect(body.effect).toBe("EFFECT_ALLOW");
       expect(body.consensus).toBe("ANY");

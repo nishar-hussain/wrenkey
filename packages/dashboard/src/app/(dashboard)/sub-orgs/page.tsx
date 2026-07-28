@@ -116,7 +116,7 @@ export default function SubOrgsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Sub-Orgs</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Manage sub-organizations — each with isolated wallets, users, and policies under your parent organization.</p>
+          <p className="text-sm text-slate-500 mt-0.5">Each sub-org is a user container with their own isolated wallets, users, and policies. User wallets live here.</p>
         </div>
         <Button onClick={() => { setShowCreate(true); setNewName(""); setNewEmail(""); }}>
           <Plus className="w-4 h-4 mr-1.5" /> New Sub-Org

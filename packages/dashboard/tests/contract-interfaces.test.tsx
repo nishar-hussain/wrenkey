@@ -299,7 +299,8 @@ describe("Contract Interfaces Page", () => {
       const postCall = mockApiFetch.mock.calls.find(
         (c: any[]) => c[0] === "/contract-interfaces" && c[1]?.method === "POST"
       );
-      const body = JSON.parse(postCall[1].body);
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body);
       expect(body.name).toBe("My Contract");
       expect(body.address).toBe("0x123");
       expect(body.chainType).toBe("stellar-testnet");
