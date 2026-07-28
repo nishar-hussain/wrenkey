@@ -146,6 +146,7 @@ export default function WalletsPage() {
   }, [isAuthenticated, fetchWallets, router]);
 
   const resetCreate = () => {
+    const walletToDelete = createdWalletId;
     setShowCreate(false);
     setCreateStep(1);
     setNewName("");
@@ -155,6 +156,14 @@ export default function WalletsPage() {
     setShowAdvanced(false);
     setChooseDerivation("BIP44");
     setChooseDerivationPath("m/44'/60'/0'/0");
+
+    // If a wallet was created but the user cancelled before completing
+    // the flow, delete it so no orphaned wallet appears.
+    if (walletToDelete) {
+      apiFetch(`/wallets/${walletToDelete}`, { method: "DELETE", token: token! })
+        .then(() => fetchWallets())
+        .catch(() => {});
+    }
   };
 
   const openCreate = (ownerType: "USER" | "ORG") => {
@@ -207,6 +216,7 @@ export default function WalletsPage() {
   };
 
   const handleFinalCreate = () => {
+    setCreatedWalletId(""); // mark complete so resetCreate doesn't delete
     resetCreate();
     addToast("Wallet created", "success");
     fetchWallets();

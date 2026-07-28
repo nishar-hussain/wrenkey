@@ -131,6 +131,7 @@ export default function CompanyWalletsPage() {
 
   // Wallet creation
   const resetCreate = () => {
+    const walletToDelete = createdWalletId;
     setShowCreate(false);
     setCreateStep(1);
     setNewName("");
@@ -140,6 +141,12 @@ export default function CompanyWalletsPage() {
     setShowAdvanced(false);
     setChooseDerivation("BIP44");
     setChooseDerivationPath("m/44'/60'/0'/0");
+
+    if (walletToDelete) {
+      apiFetch(`/wallets/${walletToDelete}`, { method: "DELETE", token: token! })
+        .then(() => fetchWallets())
+        .catch(() => {});
+    }
   };
 
   const handleStep1Create = async () => {
@@ -172,7 +179,7 @@ export default function CompanyWalletsPage() {
     finally { setStepLoading(false); }
   };
 
-  const handleFinalCreate = () => { resetCreate(); addToast("Wallet created", "success"); fetchWallets(); };
+  const handleFinalCreate = () => { setCreatedWalletId(""); resetCreate(); addToast("Wallet created", "success"); fetchWallets(); };
   const handleAddAnother = () => { setCreateStep(2); setChooseChain("sepolia"); setShowAdvanced(false); setChooseDerivation("BIP44"); setChooseDerivationPath(stripIndex(generateDerivationPath("sepolia", "BIP44", 0))); };
 
   const handleRemoveAccount = async (accountId: string, index: number) => {
