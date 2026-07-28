@@ -57,8 +57,7 @@ export default function ContractInterfacesPage() {
   const [ifaceName, setIfaceName] = useState("");
   const [ifaceNotes, setIfaceNotes] = useState("");
   const [ifaceAddress, setIfaceAddress] = useState("");
-  const [ifaceType, setIfaceType] = useState("custom");
-  const [chainType, setChainType] = useState("ethereum");
+  const [chainType, setChainType] = useState("stellar-testnet");
   const [ifaceAbi, setIfaceAbi] = useState("");
   const [abiPreview, setAbiPreview] = useState<Array<{ name: string; inputs: Array<{ name: string; type: string }> }>>([]);
   const [saving, setSaving] = useState(false);
@@ -85,7 +84,7 @@ export default function ContractInterfacesPage() {
 
   const resetForm = () => {
     setIfaceName(""); setIfaceNotes(""); setIfaceAddress("");
-    setIfaceType("custom"); setChainType("ethereum"); setIfaceAbi(""); setAbiPreview([]);
+    setChainType("stellar-testnet"); setIfaceAbi(""); setAbiPreview([]);
     setEditingId(null);
   };
 
@@ -107,7 +106,6 @@ export default function ContractInterfacesPage() {
     setIfaceName(iface.name);
     setIfaceNotes(iface.notes || "");
     setIfaceAddress(iface.address || "");
-    setIfaceType(iface.interfaceType || "custom");
     const abiStr = typeof iface.abi === "string" ? iface.abi : JSON.stringify(iface.abi || [], null, 2);
     setIfaceAbi(abiStr);
     handleAbiChange(abiStr);
@@ -122,7 +120,6 @@ export default function ContractInterfacesPage() {
         name: ifaceName.trim(),
         notes: ifaceNotes.trim(),
         address: ifaceAddress.trim(),
-        interfaceType: ifaceType,
         chainType: chainType,
         abi: ifaceAbi.trim(),
       };
@@ -179,13 +176,14 @@ export default function ContractInterfacesPage() {
         </button>
       </div>
     ) : <span className="text-xs text-slate-400">—</span> },
-    { key: "type", header: "Chain / Type", render: (i: ContractInterface) => (
+    { key: "type", header: "Chain", render: (i: ContractInterface) => (
       <div className="flex items-center gap-1 flex-wrap">
-        <span className={`inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${(i.chainType || "ethereum") === "ethereum" ? "bg-sky-50 text-sky-700 border-sky-100" : "bg-violet-50 text-violet-700 border-violet-100"}`}>
-          {(i.chainType || "ethereum").toUpperCase()}
-        </span>
-        <span className={`inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${i.interfaceType === "erc20" ? "bg-blue-50 text-blue-700 border-blue-100" : i.interfaceType === "erc721" ? "bg-violet-50 text-violet-700 border-violet-100" : i.interfaceType === "erc1155" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-slate-50 text-slate-600 border-slate-200"}`}>
-          {i.interfaceType?.toUpperCase()}
+        <span className={`inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
+          i.chainType === "stellar-testnet"
+            ? "bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/30"
+            : "bg-sky-50 text-sky-700 border-sky-100 dark:bg-sky-950/30 dark:text-sky-400 dark:border-sky-900/30"
+        }`}>
+          {i.chainType === "stellar-testnet" ? "Stellar Testnet" : (i.chainType || "sepolia").toUpperCase()}
         </span>
       </div>
     )},
@@ -241,7 +239,7 @@ export default function ContractInterfacesPage() {
 
       <Modal open={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingId ? "Edit Contract Interface" : "New Smart Contract Interface"}>
         <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
-          <p className="text-sm text-slate-500">Upload a contract ABI to decode transaction calldata into human-readable function calls.</p>
+          <p className="text-sm text-slate-500">Upload a contract ABI for Stellar or EVM smart contracts.</p>
 
           <div className="space-y-1">
             <label className="text-sm font-medium">Name</label>
@@ -260,30 +258,19 @@ export default function ContractInterfacesPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium">Interface Type</label>
-            <select value={ifaceType} onChange={e => setIfaceType(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-slate-900">
-              <option value="custom">Custom</option>
-              <option value="erc20">ERC-20</option>
-              <option value="erc721">ERC-721</option>
-              <option value="erc1155">ERC-1155</option>
-            </select>
-          </div>
-
-          <div className="space-y-1">
             <label className="text-sm font-medium">Blockchain</label>
             <select value={chainType} onChange={e => setChainType(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-slate-900">
-              <option value="ethereum">Ethereum / EVM</option>
-              <option value="solana">Solana</option>
+              <option value="stellar-testnet">Stellar Testnet</option>
+              <option value="sepolia">Sepolia</option>
             </select>
-            <p className="text-[10px] text-slate-400">{chainType === "ethereum" ? "Uses ABI format for EVM smart contracts" : "Uses Anchor IDL format for Solana programs"}</p>
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium">{chainType === "ethereum" ? "ABI JSON" : "IDL JSON"}</label>
+            <label className="text-sm font-medium">ABI JSON</label>
             <textarea
               value={ifaceAbi}
               onChange={e => handleAbiChange(e.target.value)}
-              placeholder={chainType === "ethereum" ? '[{"type":"function","name":"transfer","inputs":[{"name":"recipient","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[]}]' : '{"instructions":[{"name":"transfer","accounts":[{"name":"from","isMut":true,"isSigner":true}],"args":[{"name":"amount","type":"u64"}]}]}'}
+              placeholder='[{"type":"function","name":"transfer","inputs":[{"name":"recipient","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[]}]'
               rows={8}
               className="w-full border rounded-md px-3 py-2 text-xs font-mono resize-none bg-slate-50 dark:bg-slate-800"
             />
