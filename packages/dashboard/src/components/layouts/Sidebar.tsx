@@ -8,7 +8,7 @@ import { useAuth } from "@/components/providers/Providers";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Building2, Settings, UsersRound, Tag, Shield, Activity, CreditCard, Webhook, Wallet, Wrench, Layers, Cloud,
-  Menu, X, FileCode, Send, Key, Bot, Lock, ChevronDown,
+  Menu, X, FileCode, Send, Key, Bot, ChevronDown,
 } from "lucide-react";
 
 const mainNav = [
@@ -16,10 +16,6 @@ const mainNav = [
   { href: "/wallets", label: "Wallets", icon: Wallet },
   { href: "/transactions", label: "Transactions", icon: Send },
   { href: "/company-wallets", label: "Company Wallets", icon: Building2 },
-];
-
-const walletChildren = [
-  { href: "/private-keys", label: "Private Keys", icon: Lock },
 ];
 
 const developerChildren = [
@@ -48,7 +44,6 @@ export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [orgOpen, setOrgOpen] = useState(false);
   const [embeddedOpen, setEmbeddedOpen] = useState(false);
-  const [walletOpen, setWalletOpen] = useState(false);
   const [developerOpen, setDeveloperOpen] = useState(false);
 
   if (!isAuthenticated) return null;
@@ -86,9 +81,6 @@ export function Sidebar() {
       <div className="flex-1 overflow-y-auto py-4 px-3">
         <div className="space-y-0.5">
           {mainNav.map(item => <NavItem key={item.href} {...item} />)}
-
-          <SectionHeader label="Wallet & Security" icon={Lock} open={walletOpen} onClick={() => setWalletOpen(!walletOpen)} />
-          {walletOpen && walletChildren.map(item => <NavItem key={item.href} {...item} indent />)}
 
           <SectionHeader label="Developer" icon={Bot} open={developerOpen} onClick={() => setDeveloperOpen(!developerOpen)} />
           {developerOpen && developerChildren.map(item => <NavItem key={item.href} {...item} indent />)}
