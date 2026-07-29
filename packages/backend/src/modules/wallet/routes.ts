@@ -26,7 +26,7 @@ import { triggerWebhookEvents } from "../webhook/routes.js";
 import { notifyWalletCreated } from "../../services/notifications.js";
 import { isWvcWalletSigningEnabled, isWvcWallet, wvcGenerateSeed } from "../../services/wvc-wallet-integration.js";
 import { config } from "../../config.js";
-import { getUserSubOrgId } from "../../utils/sub-org.js";
+import { getUserSubOrgId, ensureUserSubOrg } from "../../utils/sub-org.js";
 
 export async function walletRoutes(app: FastifyInstance) {
   /**
@@ -55,11 +55,11 @@ export async function walletRoutes(app: FastifyInstance) {
       };
       if (!name) throw new ValidationError("Wallet name is required");
 
-      // Resolve the effective orgId: USER wallets go into the user's sub-org;
-      // ORG wallets stay in the current (parent) org.
+      // Resolve the effective orgId: USER wallets go into the user's sub-org
+      // (auto-created if it doesn't exist). ORG wallets stay in the current org.
       const resolvedOrgId = ownerType === "ORG"
         ? request.orgId!
-        : (await getUserSubOrgId(request.userId!, request.orgId!)) || request.orgId!;
+        : (await ensureUserSubOrg(request.userId!, request.orgId!)) || request.orgId!;
 
       // ─── WVC path: seed generation through the enclave (PRD §25.1) ──────────
       if (isWvcWalletSigningEnabled()) {

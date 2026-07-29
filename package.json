@@ -23,7 +23,7 @@
     "node": ">=20.0.0"
   },
   "devDependencies": {
-    "concurrently": "^10.0.3"
+    "concurrently": "^10.0.4"
   },
   "dependencies": {
     "@metamask/keyring-controller": "^27.1.0"

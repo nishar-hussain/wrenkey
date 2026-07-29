@@ -50,3 +50,42 @@ export async function isUserSubOrgAdmin(
   const subOrgId = await getUserSubOrgId(userId, parentOrgId);
   return subOrgId !== null;
 }
+
+/**
+ * Ensure the user has a sub-org under the parent org. Creates one if missing.
+ * Returns the sub-org ID (existing or newly created).
+ */
+export async function ensureUserSubOrg(
+  userId: string,
+  parentOrgId: string,
+): Promise<string | null> {
+  const existing = await getUserSubOrgId(userId, parentOrgId);
+  if (existing) return existing;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true, tags: true },
+  });
+
+  if (!user) return null;
+
+  const emailPrefix = user.email?.split("@")[0] || user.id.slice(0, 8);
+  const subOrg = await prisma.organization.create({
+    data: {
+      name: `${emailPrefix} - Wallet`,
+      parentOrgId,
+    },
+  });
+
+  await prisma.user.create({
+    data: {
+      orgId: subOrg.id,
+      email: user.email,
+      name: user.name,
+      role: "ORG_ADMIN",
+      tags: user.tags || [],
+    },
+  });
+
+  return subOrg.id;
+}

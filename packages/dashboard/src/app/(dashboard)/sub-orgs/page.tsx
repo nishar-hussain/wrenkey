@@ -12,7 +12,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Layers, Plus, Copy, Trash2, Pencil, ExternalLink, ChevronRight, ArrowRight } from "lucide-react";
+import { Layers, Copy, Trash2, Pencil, ExternalLink, ChevronRight, ArrowRight } from "lucide-react";
 
 interface SubOrg {
   id: string;
@@ -34,11 +34,9 @@ export default function SubOrgsPage() {
   const [limit, setLimit] = useState(20);
   const [offset, setOffset] = useState(0);
 
-  const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [editSubOrg, setEditSubOrg] = useState<SubOrg | null>(null);
   const [newName, setNewName] = useState("");
-  const [newEmail, setNewEmail] = useState("");
   const [saveLoading, setSaveLoading] = useState(false);
   const [impersonateId, setImpersonateId] = useState<string | null>(null);
 
@@ -57,16 +55,6 @@ export default function SubOrgsPage() {
   }, [token, limit, offset]);
 
   useEffect(() => { if (!isAuthenticated) { router.push("/login"); return; } fetchSubOrgs(); }, [isAuthenticated, fetchSubOrgs, router]);
-
-  const createSubOrg = async () => {
-    if (!newName.trim()) { addToast("Name required", "error"); return; }
-    setSaveLoading(true);
-    try {
-      await apiFetch("/sub-orgs", { method: "POST", body: JSON.stringify({ name: newName, rootUserEmail: newEmail || undefined }), token: token! });
-      setShowCreate(false); setNewName(""); setNewEmail("");
-      addToast("Sub-organization created", "success"); fetchSubOrgs();
-    } catch (err: any) { addToast(err.message || "Failed", "error"); } finally { setSaveLoading(false); }
-  };
 
   const renameSubOrg = async () => {
     if (!editSubOrg || !newName.trim()) return;
@@ -118,9 +106,6 @@ export default function SubOrgsPage() {
           <h1 className="text-2xl font-bold">Sub-Orgs</h1>
           <p className="text-sm text-slate-500 mt-0.5">Each sub-org is a user container with their own isolated wallets, users, and policies. User wallets live here.</p>
         </div>
-        <Button onClick={() => { setShowCreate(true); setNewName(""); setNewEmail(""); }}>
-          <Plus className="w-4 h-4 mr-1.5" /> New Sub-Org
-        </Button>
       </div>
 
       {/* Go to Sub-Org ID */}
@@ -184,15 +169,6 @@ export default function SubOrgsPage() {
           )}
         </CardContent>
       </Card>
-
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create Sub-Organization">
-        <div className="space-y-4">
-          <p className="text-sm text-slate-500">Create an isolated workspace for a customer or team. Each sub-org has its own wallets, users, and policies.</p>
-          <div className="space-y-1"><label className="text-sm font-medium">Name</label><Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Alice's Company" /></div>
-          <div className="space-y-1"><label className="text-sm font-medium">Root User Email (optional)</label><Input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="admin@company.com" /></div>
-          <div className="flex gap-2"><Button variant="secondary" onClick={() => setShowCreate(false)} className="flex-1">Cancel</Button><Button onClick={createSubOrg} disabled={saveLoading} className="flex-1">{saveLoading ? "Creating..." : "Create"}</Button></div>
-        </div>
-      </Modal>
 
       <Modal open={showEdit} onClose={() => setShowEdit(false)} title="Rename Sub-Organization">
         <div className="space-y-4">
