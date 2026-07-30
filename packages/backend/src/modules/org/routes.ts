@@ -116,18 +116,13 @@ export async function orgRoutes(app: FastifyInstance) {
       // Auto-create a sub-org for this user's personal wallets
       try {
         const subOrgName = email
-          ? `${email.split("@")[0]} - Wallet`
-          : `user-${user.id.slice(0, 8)} - Wallet`;
-        const subOrg = await prisma.organization.create({
+          ? email.split("@")[0]
+          : `user-${user.id.slice(0, 8)}`;
+        await prisma.organization.create({
           data: { name: subOrgName, parentOrgId: request.orgId },
         });
-        // Make this user the ORG_ADMIN of their sub-org
-        await prisma.user.create({
-          data: { orgId: subOrg.id, email, name, role: "ORG_ADMIN", tags: tags || [] },
-        });
-        await createAuditLog(request.orgId, "SUBORG_CREATE", { subOrgId: subOrg.id, name: subOrgName, forUser: user.id }, request.userId, request);
+        await createAuditLog(request.orgId, "SUBORG_CREATE", { subOrgName, forUser: user.id }, request.userId, request);
       } catch (subOrgErr: any) {
-        // Non-blocking: user creation succeeds even if sub-org fails
         console.warn(`[users.create] Failed to auto-create sub-org for user ${email}: ${subOrgErr?.message || subOrgErr}`);
       }
 

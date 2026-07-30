@@ -8,7 +8,7 @@ import {
 } from "@simplewebauthn/server";
 import prisma from "../../db.js";
 import { config } from "../../config.js";
-import { sendSuccess, sendError, ValidationError, AppError } from "../../utils/errors.js";
+import { sendSuccess, sendError, ValidationError, NotFoundError, AppError } from "../../utils/errors.js";
 import { createAuditLog } from "../../utils/audit.js";
 import { getRedis } from "../../redis.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
@@ -391,7 +391,7 @@ export async function authRoutes(app: FastifyInstance) {
   // Email OTP Verify
   app.post("/auth/email/verify", async (request, reply) => {
     try {
-      const { email, otp, orgName, name, tags } = request.body as { email: string; otp: string; orgName?: string; name?: string; tags?: string[] };
+      const { email, otp, orgName, orgId, name, tags } = request.body as { email: string; otp: string; orgName?: string; orgId?: string; name?: string; tags?: string[] };
       if (!email || !otp) throw new ValidationError("Email and OTP required");
 
       const redis = getRedis();
@@ -416,6 +416,37 @@ export async function authRoutes(app: FastifyInstance) {
           });
           isNewUser = true;
         }
+      } else if (orgId) {
+        // Embedded wallet / application flow: scope the user to a Sub-Org
+        // under the Root Organization. This creates a clean isolation layer
+        // where every user owns one Sub-Org with their own wallets and keys.
+        const rootOrg = await prisma.organization.findUnique({ where: { id: orgId } });
+        if (!rootOrg) throw new NotFoundError("Root organization");
+
+        const emailPrefix = email.split("@")[0];
+        const subOrgName = emailPrefix;
+
+        let subOrg = await prisma.organization.findFirst({
+          where: { name: subOrgName, parentOrgId: orgId },
+        });
+        if (!subOrg) {
+          subOrg = await prisma.organization.create({
+            data: { name: subOrgName, parentOrgId: orgId },
+          });
+        }
+
+        const existingUser = await prisma.user.findFirst({
+          where: { orgId: subOrg.id, email },
+        });
+        if (existingUser) {
+          user = existingUser;
+        } else {
+          user = await prisma.user.create({
+            data: { orgId: subOrg.id, email, name, role: "ORG_ADMIN", tags: tags || [] },
+          });
+          isNewUser = true;
+        }
+        org = { id: subOrg.id, name: subOrg.name };
       } else {
         const existingUser = await prisma.user.findFirst({ where: { email } });
         if (existingUser) {
@@ -454,12 +485,29 @@ export async function authRoutes(app: FastifyInstance) {
       await createAuditLog(org.id, "LOGIN", { method: "EMAIL" }, user.id, request);
       triggerWebhookEvents(org.id, "user.login", { userId: user.id, email, method: "EMAIL" });
 
+      // Look up existing wallet in the user's org (for embedded flow)
+      let walletRes: { walletId?: string; address?: string; chain?: string } = {};
+      try {
+        const existingWallet = await prisma.wallet.findFirst({
+          where: { orgId: org.id, ownerType: "USER" },
+          include: { accounts: { select: { address: true, chain: { select: { chainId: true } } } } },
+        });
+        if (existingWallet) {
+          walletRes = {
+            walletId: existingWallet.id,
+            address: existingWallet.accounts[0]?.address,
+            chain: existingWallet.accounts[0]?.chain?.chainId ? String(existingWallet.accounts[0].chain.chainId) : undefined,
+          };
+        }
+      } catch { /* non-blocking */ }
+
       return sendSuccess(reply, {
         sessionToken: token,
         user: { id: user.id, email: user.email, role: user.role },
         org: { id: org.id, name: org.name },
         isNewUser,
         expiresAt: session.expiresAt,
+        ...walletRes,
       }, 201);
     } catch (err) {
       return sendError(reply, err);

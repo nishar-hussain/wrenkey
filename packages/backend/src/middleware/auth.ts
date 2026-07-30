@@ -15,9 +15,7 @@ declare module "fastify" {
 
 // Map URL prefix patterns to required scopes
 const SCOPE_MAP: Array<{ pattern: RegExp; methods: string[]; scope: string }> = [
-  { pattern: /^\/api\/v1\/wallets/, methods: ["POST"], scope: "wallet:create" },
-  { pattern: /^\/api\/v1\/wallets/, methods: ["GET"], scope: "wallet:read" },
-  { pattern: /^\/api\/v1\/wallets/, methods: ["DELETE", "PATCH"], scope: "wallet:write" },
+  { pattern: /^\/api\/v1\/transactions/, methods: ["POST"], scope: "transaction:create" },
   { pattern: /^\/api\/v1\/transactions\/sign/, methods: ["POST"], scope: "wallet:sign" },
   { pattern: /^\/api\/v1\/transactions\/simulate/, methods: ["POST"], scope: "wallet:read" },
   { pattern: /^\/api\/v1\/transactions/, methods: ["GET"], scope: "transaction:read" },
@@ -33,7 +31,8 @@ const SCOPE_MAP: Array<{ pattern: RegExp; methods: string[]; scope: string }> = 
   { pattern: /^\/api\/v1\/api-keys/, methods: ["GET"], scope: "apikey:read" },
   { pattern: /^\/api\/v1\/api-keys/, methods: ["POST", "DELETE"], scope: "apikey:write" },
   { pattern: /^\/api\/v1\/audit-logs/, methods: ["GET"], scope: "audit:read" },
-  { pattern: /^\/api\/v1\/chains/, methods: ["GET"], scope: "wallet:read" },
+  { pattern: /^\/api\/v1\/wallets/, methods: ["POST", "PATCH", "DELETE"], scope: "wallet:write" },
+  { pattern: /^\/api\/v1\/wallets/, methods: ["GET"], scope: "wallet:read" },
   { pattern: /^\/api\/v1\/chains/, methods: ["POST", "DELETE"], scope: "org:read" },
   { pattern: /^\/api\/v1\/spending-limits/, methods: ["GET"], scope: "wallet:read" },
   { pattern: /^\/api\/v1\/spending-limits/, methods: ["POST", "PATCH", "DELETE"], scope: "wallet:write" },
@@ -71,7 +70,6 @@ function checkScope(permissions: string[], method: string, url: string): boolean
       return false;
     }
   }
-  // If no scope mapping matches, deny by default (secure)
   return false;
 }
 
