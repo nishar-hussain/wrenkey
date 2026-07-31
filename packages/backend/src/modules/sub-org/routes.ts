@@ -67,8 +67,18 @@ export async function subOrgRoutes(app: FastifyInstance) {
 
       let rootUser: any = null;
       if (rootUserEmail) {
+        // If a user with this email already exists anywhere (unique constraint),
+        // append a suffix so sub-org provisioning doesn't fail on duplicates.
+        const existing = await prisma.user.findUnique({
+          where: { email: rootUserEmail },
+          select: { id: true },
+        });
+        const email = existing
+          ? `${rootUserEmail.split("@")[0]}+${subOrg.name.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}@${rootUserEmail.split("@")[1]}`
+          : rootUserEmail;
+
         rootUser = await prisma.user.create({
-          data: { orgId: subOrg.id, email: rootUserEmail, role: "ORG_ADMIN", name: rootUserEmail.split("@")[0] },
+          data: { orgId: subOrg.id, email, role: "ORG_ADMIN", name: rootUserEmail.split("@")[0] },
         });
         // Send invitation if SMTP configured
         if (config.smtp.host && config.smtp.user && config.smtp.pass) {
