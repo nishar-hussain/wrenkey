@@ -6,7 +6,7 @@ import { createAuditLog } from "../../utils/audit.js";
 import { parsePagination } from "../../utils/pagination.js";
 import { signToken } from "../../utils/jwt.js";
 import { config } from "../../config.js";
-import { provisionSubOrgWallet } from "../../services/sub-org-wallet.js";
+import { provisionSubOrgWallet, provisionSubOrgStandaloneKey } from "../../services/sub-org-wallet.js";
 
 async function verifyParentOrg(request: any, subOrgId: string): Promise<any> {
   const subOrg = await prisma.organization.findFirst({ where: { id: subOrgId, parentOrgId: request.orgId } });
@@ -101,10 +101,15 @@ export async function subOrgRoutes(app: FastifyInstance) {
         }
 
         // Auto-provision an embedded wallet for the sub-org's root user.
-        // Generates a BIP-39 HD wallet and derives EVM + Stellar accounts.
+        // keyType: "hd" = BIP-39 mnemonic (default), "standalone" = single keypair.
+        const keyType = (request.body as any).keyType === "standalone" ? "standalone" : "hd";
         let provisionedWallet: any = null;
         try {
-          provisionedWallet = await provisionSubOrgWallet(subOrg.id, rootUser.id, `${name.trim()} Wallet`);
+          if (keyType === "standalone") {
+            provisionedWallet = await provisionSubOrgStandaloneKey(subOrg.id, rootUser.id, "ED25519", `${name.trim()} Key`);
+          } else {
+            provisionedWallet = await provisionSubOrgWallet(subOrg.id, rootUser.id, `${name.trim()} Wallet`);
+          }
         } catch (e) {
           console.error("[SubOrg] Wallet provisioning failed:", e instanceof Error ? e.message : e);
         }
@@ -314,7 +319,7 @@ export async function subOrgRoutes(app: FastifyInstance) {
     } catch (err) { return sendError(reply, err); }
   });
 
-  // Sign a message using a sub-org's wallet (for embedded wallet flows like Bullet).
+  // Sign a message using a sub-org's wallet or standalone key (for embedded wallet flows).
   // Accepts X-Api-Key auth (API keys from the parent org can sign for sub-orgs).
   app.post("/sub-orgs/:id/sign-message", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
@@ -323,48 +328,82 @@ export async function subOrgRoutes(app: FastifyInstance) {
 
       if (!message) throw new ValidationError("Message required");
 
-      // API key from parent org can sign for child sub-orgs
       const subOrg = request.auth.type === "api_key"
         ? await prisma.organization.findFirst({ where: { id, parentOrgId: request.orgId } })
         : await verifyParentOrg(request, id);
 
-      if (!subOrg) throw new NotFoundError("Sub-organization not found or not a child of your organization");
+      if (!subOrg) throw new NotFoundError("Sub-organization not found");
 
-      // Find the wallet provisioned for this sub-org
-      const wallet = await prisma.wallet.findFirst({
-        where: { orgId: id },
-        orderBy: { createdAt: "asc" },
+      // Check for standalone private key first
+      const standaloneKey = await prisma.privateKey.findFirst({
+        where: { orgId: id, tags: { has: "standalone-key" } },
+        orderBy: { createdAt: "desc" },
       });
-      if (!wallet) throw new NotFoundError("No wallet found in sub-organization");
 
-      // Find the Stellar account
-      const account = await prisma.walletAccount.findFirst({
-        where: { walletId: wallet.id, address: { startsWith: "G" } },
-      });
-      if (!account) throw new NotFoundError("No Stellar account found in sub-org wallet");
+      let signature: string;
+      let address: string;
 
-      // Decrypt wallet seed and derive Stellar keypair, then sign
-      const { decryptSeedFromStorage } = await import("../../utils/enclave.js");
-      const { deriveStellarAccount, signStellarMessage } = await import("../../utils/stellar.js");
-      const { getChainByName } = await import("../../services/chain.js");
+      if (standaloneKey) {
+        // Standalone key — sign directly with the stored key
+        const { decrypt } = await import("../../utils/crypto.js");
+        const secret = decrypt(standaloneKey.encryptedPrivateKey);
 
-      const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
-      const chainInfo = await getChainByName(chain || "stellar-testnet");
-      const stellarAccount = deriveStellarAccount(mnemonic, 0, chainInfo.derivationPath);
-      const signature = signStellarMessage(stellarAccount.secret, message);
+        if (standaloneKey.curve === "ED25519") {
+          const { Keypair: StellarKeypair } = await import("@stellar/stellar-sdk");
+          const kp = StellarKeypair.fromSecret(secret);
+          signature = Buffer.from(kp.sign(Buffer.from(message, "utf8"))).toString("hex");
+          address = kp.publicKey();
+        } else {
+          const { ethers } = await import("ethers");
+          const wallet = new ethers.Wallet(secret);
+          signature = await wallet.signMessage(message);
+          address = wallet.address;
+        }
+      } else {
+        // HD wallet — find the wallet and sign through the mnemonic
+        const wallet = await prisma.wallet.findFirst({
+          where: { orgId: id, tags: { has: "sub-org-managed" } },
+          orderBy: { createdAt: "asc" },
+        });
+        if (!wallet) throw new NotFoundError("No wallet found in sub-organization");
+
+        const isStellar = chain === "stellar-testnet" || chain === "stellar-pubnet";
+        const account = await prisma.walletAccount.findFirst({
+          where: {
+            walletId: wallet.id,
+            ...(isStellar
+              ? { address: { startsWith: "G" } }
+              : { address: { startsWith: "0x" } }),
+          },
+        });
+        if (!account) throw new NotFoundError("No account found in sub-org wallet");
+
+        const { decryptSeedFromStorage } = await import("../../utils/enclave.js");
+        const { deriveStellarAccount, signStellarMessage } = await import("../../utils/stellar.js");
+        const { getChainByName } = await import("../../services/chain.js");
+        const { signMessage } = await import("../../utils/enclave.js");
+
+        const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
+
+        if (isStellar) {
+          const chainInfo = await getChainByName(chain || "stellar-testnet");
+          const stellarAccount = deriveStellarAccount(mnemonic, 0, chainInfo.derivationPath);
+          signature = signStellarMessage(stellarAccount.secret, message);
+        } else {
+          signature = await signMessage(mnemonic, message);
+        }
+        address = account.address;
+      }
 
       await createAuditLog(
         request.orgId,
         "WALLET_SIGN_MESSAGE",
-        { subOrgId: id, walletId: wallet.id, address: account.address },
+        { subOrgId: id, address },
         request.userId,
         request,
       );
 
-      return sendSuccess(reply, {
-        signature,
-        address: account.address,
-      });
+      return sendSuccess(reply, { signature, address });
     } catch (err) { return sendError(reply, err); }
   });
 }
