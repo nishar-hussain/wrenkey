@@ -6,6 +6,7 @@ import { createAuditLog } from "../../utils/audit.js";
 import { parsePagination } from "../../utils/pagination.js";
 import { signToken } from "../../utils/jwt.js";
 import { config } from "../../config.js";
+import { provisionSubOrgWallet } from "../../services/sub-org-wallet.js";
 
 async function verifyParentOrg(request: any, subOrgId: string): Promise<any> {
   const subOrg = await prisma.organization.findFirst({ where: { id: subOrgId, parentOrgId: request.orgId } });
@@ -87,10 +88,31 @@ export async function subOrgRoutes(app: FastifyInstance) {
             });
           } catch { /* email optional */ }
         }
+
+        // Auto-provision an embedded wallet for the sub-org's root user.
+        // Generates a BIP-39 HD wallet and derives EVM + Stellar accounts.
+        let provisionedWallet: any = null;
+        try {
+          provisionedWallet = await provisionSubOrgWallet(subOrg.id, rootUser.id, `${name.trim()} Wallet`);
+        } catch (e) {
+          console.error("[SubOrg] Wallet provisioning failed:", e instanceof Error ? e.message : e);
+        }
+
+        await createAuditLog(request.orgId, "SUBORG_CREATE", { subOrgId: subOrg.id, name, parentOrgId: request.orgId, walletId: provisionedWallet?.walletId, walletAddresses: provisionedWallet?.accounts?.map((a: any) => ({ chainId: a.chainId, address: a.address })) }, request.userId, request);
+        return sendSuccess(reply, {
+          ...subOrg,
+          rootUserId: rootUser?.id,
+          rootUserEmail: rootUser?.email,
+          wallet: provisionedWallet ? {
+            walletId: provisionedWallet.walletId,
+            name: provisionedWallet.name,
+            accounts: provisionedWallet.accounts,
+          } : null,
+        }, 201);
       }
 
       await createAuditLog(request.orgId, "SUBORG_CREATE", { subOrgId: subOrg.id, name, parentOrgId: request.orgId }, request.userId, request);
-      return sendSuccess(reply, { ...subOrg, rootUserId: rootUser?.id, rootUserEmail: rootUser?.email }, 201);
+      return sendSuccess(reply, { ...subOrg, rootUserId: null, rootUserEmail: null, wallet: null }, 201);
     } catch (err) {
       return sendError(reply, err);
     }
@@ -101,17 +123,29 @@ export async function subOrgRoutes(app: FastifyInstance) {
     try {
       const { id } = request.params as { id: string };
       const subOrg = await verifyParentOrg(request, id);
-      const [rootUser, userCount, walletCount, policyCount] = await Promise.all([
+      const [rootUser, userCount, walletCount, policyCount, wallets] = await Promise.all([
         prisma.user.findFirst({ where: { orgId: id, role: "ORG_ADMIN" }, select: { id: true, email: true, name: true } }),
         prisma.user.count({ where: { orgId: id } }),
         prisma.wallet.count({ where: { orgId: id } }),
         prisma.policy.count({ where: { orgId: id } }),
+        prisma.wallet.findMany({
+          where: { orgId: id },
+          include: { accounts: { select: { id: true, chainId: true, address: true, derivationPath: true, index: true } } },
+          orderBy: { createdAt: "asc" },
+        }),
       ]);
       return sendSuccess(reply, {
         id: subOrg.id, name: subOrg.name, createdAt: subOrg.createdAt,
         rootUser: rootUser || null,
         userCount, walletCount, policyCount,
         parentOrgId: subOrg.parentOrgId,
+        wallets: wallets.map(w => ({
+          walletId: w.id,
+          name: w.name,
+          status: w.status,
+          tags: w.tags,
+          accounts: w.accounts,
+        })),
       });
     } catch (err) { return sendError(reply, err); }
   });
