@@ -76,6 +76,7 @@ function checkScope(permissions: string[], method: string, url: string): boolean
 export async function authMiddleware(request: FastifyRequest, _reply: FastifyReply) {
   const authHeader = request.headers.authorization;
   const apiKeyHeader = request.headers["x-api-key"] as string | undefined;
+  const stampHeader = request.headers["x-stamp"] as string | undefined;
 
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
@@ -97,6 +98,66 @@ export async function authMiddleware(request: FastifyRequest, _reply: FastifyRep
     } catch (err: any) {
       if (err instanceof UnauthorizedError) throw err;
       throw new UnauthorizedError("Invalid or expired session token");
+    }
+  }
+
+  // Signature-based auth: X-Stamp header (for CLI-generated API keys).
+  // The stamp is a JSON string: { publicKey, signature, payload }
+  // The signature is a DER-encoded ECDSA signature over the request body.
+  if (stampHeader) {
+    try {
+      const stamp = JSON.parse(stampHeader) as { publicKey: string; signature: string; payload: string };
+      if (!stamp.publicKey || !stamp.signature || !stamp.payload) {
+        throw new UnauthorizedError("Invalid stamp format");
+      }
+
+      // Look up the API key by public key
+      const apiKey = await prisma.apiKey.findFirst({
+        where: {
+          publicKey: stamp.publicKey,
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: new Date() } },
+          ],
+        },
+      });
+      if (!apiKey) throw new UnauthorizedError("Invalid API key (public key not found)");
+
+      // Verify the signature
+      const { verifyApiKeySignature } = await import("../utils/crypto.js");
+      const valid = verifyApiKeySignature(stamp.publicKey, stamp.payload, stamp.signature);
+      if (!valid) throw new UnauthorizedError("Invalid signature");
+
+      // Check IP restrictions
+      if (apiKey.allowedIps && apiKey.allowedIps.length > 0) {
+        if (!apiKey.allowedIps.includes(request.ip)) {
+          throw new ForbiddenError("IP not allowed for this API key");
+        }
+      }
+
+      // Enforce API key permissions
+      if (!checkScope(apiKey.permissions, request.method, request.url)) {
+        throw new ForbiddenError(`API key lacks permission for ${request.method} ${request.url}`);
+      }
+
+      request.auth = {
+        sub: apiKey.id,
+        orgId: apiKey.orgId,
+        role: "API_KEY",
+        type: "api_key",
+      };
+      request.orgId = apiKey.orgId;
+      request.permissions = apiKey.permissions;
+
+      if (apiKey.name?.startsWith("Agent Key:")) {
+        import("../modules/webhook/routes.js").then(({ triggerWebhookEvents }) => {
+          triggerWebhookEvents(apiKey.orgId, "agent.login", { apiKeyId: apiKey.id, keyPrefix: apiKey.keyPrefix }).catch(() => {});
+        }).catch(() => {});
+      }
+      return;
+    } catch (err: any) {
+      if (err instanceof UnauthorizedError || err instanceof ForbiddenError) throw err;
+      throw new UnauthorizedError("Invalid stamp authentication");
     }
   }
 

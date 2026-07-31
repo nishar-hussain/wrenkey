@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes, createHash, pbkdf2Sync } from "crypto";
+import { createCipheriv, createDecipheriv, randomBytes, createHash, pbkdf2Sync, createECDH, createVerify, createPublicKey } from "crypto";
 import { config } from "../config.js";
 
 const ALGORITHM = "aes-256-gcm";
@@ -45,4 +45,71 @@ export function hashSha256(data: string): string {
 
 export function generateRandomToken(): string {
   return randomBytes(32).toString("hex");
+}
+
+// ─── secp256k1 keypair generation for API key authentication ─────────────
+
+export interface ApiKeyPair {
+  publicKey: string;
+  privateKey: string;
+}
+
+/**
+ * Generate a secp256k1 keypair for API key authentication.
+ * The public key is compressed (33 bytes, hex → 66 chars, starts with 02/03).
+ * The private key is 32 bytes hex (64 chars).
+ */
+export function generateApiKeyPair(): ApiKeyPair {
+  const ec = createECDH("secp256k1");
+  ec.generateKeys();
+  const privateKey = ec.getPrivateKey().toString("hex").padStart(64, "0");
+  const publicKeyBuf = ec.getPublicKey();
+  // Convert to compressed format (33 bytes)
+  const prefix = publicKeyBuf[64] % 2 === 0 ? 0x02 : 0x03;
+  const compressed = Buffer.concat([Buffer.from([prefix]), publicKeyBuf.subarray(1, 33)]);
+  const publicKey = compressed.toString("hex");
+  return { publicKey, privateKey };
+}
+
+/**
+ * Verify an ECDSA signature over a payload using a compressed public key.
+ * Used by the X-Stamp auth mechanism for CLI-generated API keys.
+ */
+export function verifyApiKeySignature(publicKeyHex: string, payload: string, signatureDer: string): boolean {
+  try {
+    const compressed = Buffer.from(publicKeyHex, "hex");
+    if (compressed.length !== 33) return false;
+
+    // Convert compressed public key to a KeyObject via JWK
+    const derKey = compressedToDer(compressed);
+    const keyObject = createPublicKey({
+      key: derKey,
+      format: "der",
+      type: "spki",
+    });
+
+    const verifier = createVerify("SHA256");
+    verifier.update(payload);
+    return verifier.verify(keyObject, Buffer.from(signatureDer, "hex"));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Convert a compressed public key to DER-encoded SPKI format for Node crypto.
+ */
+function compressedToDer(compressed: Buffer): Buffer {
+  // OID for secp256k1: 1.3.132.0.10
+  const oid = Buffer.from([0x06, 0x05, 0x2b, 0x81, 0x04, 0x00, 0x0a]);
+  // AlgorithmIdentifier: ecPublicKey + secp256k1 OID
+  const algId = Buffer.concat([Buffer.from([0x30, 0x07, 0x06, 0x02, 0x2b, 0x81, 0x04]), oid]);
+  // Public key BIT STRING (prepend 0x00 for no unused bits)
+  const bitStringContent = Buffer.concat([Buffer.from([0x00]), compressed]);
+  const bitStringHeader = Buffer.from([0x03, bitStringContent.length]);
+  const bitString = Buffer.concat([bitStringHeader, bitStringContent]);
+  // SPKI structure: SEQUENCE { AlgorithmIdentifier, BIT STRING }
+  const content = Buffer.concat([algId, bitString]);
+  const header = Buffer.from([0x30, content.length]);
+  return Buffer.concat([header, content]);
 }

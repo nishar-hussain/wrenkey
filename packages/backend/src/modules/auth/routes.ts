@@ -14,7 +14,7 @@ import { getRedis } from "../../redis.js";
 import { triggerWebhookEvents } from "../webhook/routes.js";
 import { parsePagination } from "../../utils/pagination.js";
 import { signToken, verifyToken } from "../../utils/jwt.js";
-import { hashSha256, generateRandomToken } from "../../utils/crypto.js";
+import { hashSha256, generateRandomToken, generateApiKeyPair } from "../../utils/crypto.js";
 
 function validateEmail(email: string) {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -1140,24 +1140,55 @@ export async function authRoutes(app: FastifyInstance) {
       });
       if (!session) throw new AppError(401, "Session expired or revoked", "SESSION_EXPIRED");
 
-      const { name, permissions, allowedIps } = request.body as { name: string; permissions?: string[]; allowedIps?: string[] };
+      const { name, permissions, allowedIps, publicKey: providedPublicKey } = request.body as {
+        name: string; permissions?: string[]; allowedIps?: string[]; publicKey?: string;
+      };
       if (!name) throw new ValidationError("Name required");
 
-      const rawKey = `wrankey_${generateRandomToken()}`;
-      const keyHash = hashSha256(rawKey);
-      const keyPrefix = rawKey.slice(0, 12);
+      let publicKey: string | null = null;
+      let privateKey: string | null = null;
+      let keyHash: string;
+      let keyPrefix: string;
+
+      if (providedPublicKey) {
+        // Advanced mode: user provides their own public key (generated via CLI).
+        // The private key stays with the user; we store only the public key for
+        // signature verification. A random hash is stored for backwards compat.
+        publicKey = providedPublicKey;
+        const randomSecret = generateRandomToken();
+        keyHash = hashSha256(randomSecret);
+        keyPrefix = `cli_${publicKey.slice(0, 8)}`;
+      } else {
+        // Normal mode: generate a secp256k1 keypair.
+        const pair = generateApiKeyPair();
+        publicKey = pair.publicKey;
+        privateKey = pair.privateKey;
+        keyHash = hashSha256(privateKey);
+        keyPrefix = `wrankey_${privateKey.slice(0, 4)}`;
+      }
 
       const apiKey = await prisma.apiKey.create({
         data: {
           orgId: payload.orgId, name, keyHash, keyPrefix,
+          publicKey,
           permissions: permissions || ["*"],
           allowedIps: allowedIps || [],
           expiresAt: new Date(Date.now() + config.apiKeyExpiryDays * 86400 * 1000),
         },
       });
 
-      await createAuditLog(payload.orgId, "API_KEY_CREATE", { keyId: apiKey.id, name }, payload.sub, request);
-      return sendSuccess(reply, { id: apiKey.id, name: apiKey.name, keyPrefix, apiKey: rawKey, permissions: apiKey.permissions, expiresAt: apiKey.expiresAt }, 201);
+      await createAuditLog(payload.orgId, "API_KEY_CREATE", { keyId: apiKey.id, name, advanced: !!providedPublicKey }, payload.sub, request);
+      return sendSuccess(reply, {
+        id: apiKey.id,
+        name: apiKey.name,
+        keyPrefix,
+        publicKey,
+        privateKey,
+        apiKey: privateKey,
+        permissions: apiKey.permissions,
+        expiresAt: apiKey.expiresAt,
+        advanced: !!providedPublicKey,
+      }, 201);
     } catch (err) {
       return sendError(reply, err);
     }
@@ -1181,7 +1212,7 @@ export async function authRoutes(app: FastifyInstance) {
       const [data, total] = await Promise.all([
         prisma.apiKey.findMany({
           where: { orgId: payload.orgId },
-          select: { id: true, name: true, keyPrefix: true, permissions: true, allowedIps: true, expiresAt: true, createdAt: true },
+          select: { id: true, name: true, keyPrefix: true, publicKey: true, permissions: true, allowedIps: true, expiresAt: true, createdAt: true },
           orderBy: { createdAt: "desc" }, take: limit, skip: offset,
         }),
         prisma.apiKey.count({ where: { orgId: payload.orgId } }),

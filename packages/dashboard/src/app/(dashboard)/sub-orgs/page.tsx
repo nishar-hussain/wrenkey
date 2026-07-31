@@ -12,7 +12,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Layers, Copy, Trash2, Pencil, ExternalLink, ChevronRight, ArrowRight } from "lucide-react";
+import { Layers, Copy, Trash2, Pencil, ChevronRight, ArrowRight } from "lucide-react";
 
 interface SubOrg {
   id: string;
@@ -26,7 +26,7 @@ interface SubOrg {
 
 export default function SubOrgsPage() {
   const router = useRouter();
-  const { isAuthenticated, token, login, org, user } = useAuth();
+  const { isAuthenticated, token } = useAuth();
   const { addToast } = useToast();
   const [subOrgs, setSubOrgs] = useState<SubOrg[]>([]);
   const [total, setTotal] = useState(0);
@@ -38,7 +38,6 @@ export default function SubOrgsPage() {
   const [editSubOrg, setEditSubOrg] = useState<SubOrg | null>(null);
   const [newName, setNewName] = useState("");
   const [saveLoading, setSaveLoading] = useState(false);
-  const [impersonateId, setImpersonateId] = useState<string | null>(null);
 
   // Go-to sub-org input
   const [gotoSubOrgId, setGotoSubOrgId] = useState("");
@@ -80,21 +79,6 @@ export default function SubOrgsPage() {
     if (!/^[a-f0-9-]{36}$/i.test(trimmed)) { setGotoError("Invalid UUID format"); return; }
     setGotoError("");
     router.push(`/sub-orgs/${trimmed}`);
-  };
-
-  const viewSubOrg = async (subOrg: SubOrg) => {
-    setImpersonateId(subOrg.id);
-    try {
-      const res: any = await apiFetch(`/sub-orgs/${subOrg.id}/impersonate`, { method: "POST", token: token! });
-      localStorage.setItem("wrankey_parent_token", token!);
-      localStorage.setItem("wrankey_parent_user", JSON.stringify(user));
-      localStorage.setItem("wrankey_parent_org", JSON.stringify(org));
-      localStorage.setItem("wrankey_parent_org_name", org?.name || "");
-      login(res.sessionToken, { id: res.user.id, email: res.user.email, role: res.user.role }, { id: res.org.id, name: res.org.name });
-      addToast(`Switched to "${subOrg.name}"`, "success");
-      router.push("/");
-    } catch (err: any) { addToast(err.message || "Failed to switch", "error"); }
-    finally { setImpersonateId(null); }
   };
 
   if (!isAuthenticated) return null;
@@ -154,9 +138,6 @@ export default function SubOrgsPage() {
                   { key: "createdAt", header: "Created", render: (s: SubOrg) => <span className="text-xs text-slate-500">{new Date(s.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span> },
                   { key: "actions", header: "", render: (s: SubOrg) => (
                     <div className="flex items-center gap-1">
-                      <Button size="sm" variant="secondary" className="h-7 text-[11px] px-2" onClick={() => viewSubOrg(s)} disabled={impersonateId === s.id}>
-                        <ExternalLink className="w-3 h-3 mr-1" /> {impersonateId === s.id ? "..." : "Go to sub-org"}
-                      </Button>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditSubOrg(s); setNewName(s.name); setShowEdit(true); }}><Pencil className="w-3 h-3" /></Button>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => deleteSubOrg(s.id)}><Trash2 className="w-3 h-3 text-red-400" /></Button>
                     </div>

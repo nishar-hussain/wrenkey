@@ -58,7 +58,8 @@ export async function subOrgRoutes(app: FastifyInstance) {
     try {
       const { name, rootUserEmail } = request.body as { name: string; rootUserEmail?: string };
       if (!name || !name.trim()) throw new ValidationError("Sub-organization name required");
-      if (request.auth.role !== "ORG_ADMIN") throw new ForbiddenError("Only org admins can create sub-organizations");
+      const isApiKey = request.auth.type === "api_key";
+      if (request.auth.role !== "ORG_ADMIN" && !isApiKey) throw new ForbiddenError("Only org admins can create sub-organizations");
 
       const subOrg = await prisma.organization.create({
         data: { name: name.trim(), parentOrgId: request.orgId },
@@ -123,11 +124,13 @@ export async function subOrgRoutes(app: FastifyInstance) {
     try {
       const { id } = request.params as { id: string };
       const subOrg = await verifyParentOrg(request, id);
-      const [rootUser, userCount, walletCount, policyCount, wallets] = await Promise.all([
+      const [rootUser, userCount, walletCount, policyCount, privateKeyCount, activityCount, wallets] = await Promise.all([
         prisma.user.findFirst({ where: { orgId: id, role: "ORG_ADMIN" }, select: { id: true, email: true, name: true } }),
         prisma.user.count({ where: { orgId: id } }),
         prisma.wallet.count({ where: { orgId: id } }),
         prisma.policy.count({ where: { orgId: id } }),
+        prisma.privateKey.count({ where: { orgId: id } }),
+        prisma.auditLog.count({ where: { orgId: id } }),
         prisma.wallet.findMany({
           where: { orgId: id },
           include: { accounts: { select: { id: true, chainId: true, address: true, derivationPath: true, index: true } } },
@@ -137,7 +140,7 @@ export async function subOrgRoutes(app: FastifyInstance) {
       return sendSuccess(reply, {
         id: subOrg.id, name: subOrg.name, createdAt: subOrg.createdAt,
         rootUser: rootUser || null,
-        userCount, walletCount, policyCount,
+        userCount, walletCount, policyCount, privateKeyCount, activityCount,
         parentOrgId: subOrg.parentOrgId,
         wallets: wallets.map(w => ({
           walletId: w.id,
@@ -187,6 +190,53 @@ export async function subOrgRoutes(app: FastifyInstance) {
       const [data, total] = await Promise.all([
         prisma.policy.findMany({ where: { orgId: id }, orderBy: { priority: "desc" }, take: limit, skip: offset }),
         prisma.policy.count({ where: { orgId: id } }),
+      ]);
+      return sendSuccess(reply, { data, total, limit, offset });
+    } catch (err) { return sendError(reply, err); }
+  });
+
+  // List sub-org's private keys
+  app.get("/sub-orgs/:id/private-keys", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await verifyParentOrg(request, id);
+      const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const [data, total] = await Promise.all([
+        prisma.privateKey.findMany({
+          where: { orgId: id },
+          orderBy: { createdAt: "desc" },
+          take: limit, skip: offset,
+          select: {
+            id: true, name: true, curve: true, tags: true, exported: true,
+            publicKey: true, derivationIndex: true, status: true,
+            walletId: true, createdAt: true,
+            addresses: { select: { chainId: true, address: true } },
+          },
+        }),
+        prisma.privateKey.count({ where: { orgId: id } }),
+      ]);
+      return sendSuccess(reply, { data, total, limit, offset });
+    } catch (err) { return sendError(reply, err); }
+  });
+
+  // List sub-org's activities (audit logs)
+  app.get("/sub-orgs/:id/activities", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await verifyParentOrg(request, id);
+      const { limit, offset } = parsePagination(request.query as { limit?: string; offset?: string });
+      const [data, total] = await Promise.all([
+        prisma.auditLog.findMany({
+          where: { orgId: id },
+          orderBy: { createdAt: "desc" },
+          take: limit, skip: offset,
+          select: {
+            id: true, action: true, resource: true, details: true,
+            userId: true, ip: true, createdAt: true,
+            user: { select: { id: true, email: true, name: true } },
+          },
+        }),
+        prisma.auditLog.count({ where: { orgId: id } }),
       ]);
       return sendSuccess(reply, { data, total, limit, offset });
     } catch (err) { return sendError(reply, err); }
@@ -251,6 +301,60 @@ export async function subOrgRoutes(app: FastifyInstance) {
       await prisma.organization.delete({ where: { id } });
       await createAuditLog(request.orgId, "SUBORG_DELETE", { subOrgId: id }, request.userId, request);
       return sendSuccess(reply, { message: "Sub-organization deleted" });
+    } catch (err) { return sendError(reply, err); }
+  });
+
+  // Sign a message using a sub-org's wallet (for embedded wallet flows like Bullet).
+  // Accepts X-Api-Key auth (API keys from the parent org can sign for sub-orgs).
+  app.post("/sub-orgs/:id/sign-message", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { message, chain } = request.body as { message: string; chain?: string };
+
+      if (!message) throw new ValidationError("Message required");
+
+      // API key from parent org can sign for child sub-orgs
+      const subOrg = request.auth.type === "api_key"
+        ? await prisma.organization.findFirst({ where: { id, parentOrgId: request.orgId } })
+        : await verifyParentOrg(request, id);
+
+      if (!subOrg) throw new NotFoundError("Sub-organization not found or not a child of your organization");
+
+      // Find the wallet provisioned for this sub-org
+      const wallet = await prisma.wallet.findFirst({
+        where: { orgId: id },
+        orderBy: { createdAt: "asc" },
+      });
+      if (!wallet) throw new NotFoundError("No wallet found in sub-organization");
+
+      // Find the Stellar account
+      const account = await prisma.walletAccount.findFirst({
+        where: { walletId: wallet.id, address: { startsWith: "G" } },
+      });
+      if (!account) throw new NotFoundError("No Stellar account found in sub-org wallet");
+
+      // Decrypt wallet seed and derive Stellar keypair, then sign
+      const { decryptSeedFromStorage } = await import("../../utils/enclave.js");
+      const { deriveStellarAccount, signStellarMessage } = await import("../../utils/stellar.js");
+      const { getChainByName } = await import("../../services/chain.js");
+
+      const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
+      const chainInfo = await getChainByName(chain || "stellar-testnet");
+      const stellarAccount = deriveStellarAccount(mnemonic, 0, chainInfo.derivationPath);
+      const signature = signStellarMessage(stellarAccount.secret, message);
+
+      await createAuditLog(
+        request.orgId,
+        "WALLET_SIGN_MESSAGE",
+        { subOrgId: id, walletId: wallet.id, address: account.address },
+        request.userId,
+        request,
+      );
+
+      return sendSuccess(reply, {
+        signature,
+        address: account.address,
+      });
     } catch (err) { return sendError(reply, err); }
   });
 }

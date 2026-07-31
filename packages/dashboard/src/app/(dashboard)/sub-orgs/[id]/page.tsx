@@ -11,7 +11,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Layers, Users, Shield, Building2, ExternalLink, Copy, ArrowLeft, Wallet } from "lucide-react";
+import { Users, Shield, Wallet, Key, Activity, Copy, ArrowLeft, CheckCircle2 } from "lucide-react";
 
 interface SubOrgDetail {
   id: string;
@@ -20,19 +20,22 @@ interface SubOrgDetail {
   userCount: number;
   walletCount: number;
   policyCount: number;
+  privateKeyCount: number;
+  activityCount: number;
   createdAt: string;
   parentOrgId: string;
+  wallets?: { walletId: string; name: string; status: string; tags: string[]; accounts: any[] }[];
 }
 
 export default function SubOrgDetailPage() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
-  const { isAuthenticated, token, login, org, user } = useAuth();
+  const { isAuthenticated, token } = useAuth();
   const { addToast } = useToast();
 
   const [detail, setDetail] = useState<SubOrgDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "wallets" | "users" | "policies">("overview");
+  const [activeTab, setActiveTab] = useState<"users" | "wallets" | "privateKeys" | "activities" | "policies">("users");
 
   const [wallets, setWallets] = useState<any[]>([]);
   const [walletsTotal, setWalletsTotal] = useState(0);
@@ -44,12 +47,20 @@ export default function SubOrgDetailPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersOffset, setUsersOffset] = useState(0);
 
+  const [privateKeys, setPrivateKeys] = useState<any[]>([]);
+  const [privateKeysTotal, setPrivateKeysTotal] = useState(0);
+  const [privateKeysLoading, setPrivateKeysLoading] = useState(false);
+  const [privateKeysOffset, setPrivateKeysOffset] = useState(0);
+
+  const [activities, setActivities] = useState<any[]>([]);
+  const [activitiesTotal, setActivitiesTotal] = useState(0);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [activitiesOffset, setActivitiesOffset] = useState(0);
+
   const [policies, setPolicies] = useState<any[]>([]);
   const [policiesTotal, setPoliciesTotal] = useState(0);
   const [policiesLoading, setPoliciesLoading] = useState(false);
   const [policiesOffset, setPoliciesOffset] = useState(0);
-
-  const [impersonating, setImpersonating] = useState(false);
 
   useEffect(() => { if (!isAuthenticated) { router.push("/login"); return; } }, [isAuthenticated, router]);
 
@@ -81,6 +92,22 @@ export default function SubOrgDetailPage() {
     } catch { addToast("Failed to load users", "error"); } finally { setUsersLoading(false); }
   };
 
+  const fetchPrivateKeys = async () => {
+    setPrivateKeysLoading(true);
+    try {
+      const res: any = await apiFetch(`/sub-orgs/${id}/private-keys?limit=20&offset=${privateKeysOffset}`, { token: token! });
+      setPrivateKeys(res.data || []); setPrivateKeysTotal(res.total || 0);
+    } catch { addToast("Failed to load private keys", "error"); } finally { setPrivateKeysLoading(false); }
+  };
+
+  const fetchActivities = async () => {
+    setActivitiesLoading(true);
+    try {
+      const res: any = await apiFetch(`/sub-orgs/${id}/activities?limit=20&offset=${activitiesOffset}`, { token: token! });
+      setActivities(res.data || []); setActivitiesTotal(res.total || 0);
+    } catch { addToast("Failed to load activities", "error"); } finally { setActivitiesLoading(false); }
+  };
+
   const fetchPolicies = async () => {
     setPoliciesLoading(true);
     try {
@@ -89,33 +116,11 @@ export default function SubOrgDetailPage() {
     } catch { addToast("Failed to load policies", "error"); } finally { setPoliciesLoading(false); }
   };
 
-  useEffect(() => {
-    if (activeTab === "wallets") fetchWallets();
-  }, [activeTab, walletsOffset]);
-
-  useEffect(() => {
-    if (activeTab === "users") fetchUsers();
-  }, [activeTab, usersOffset]);
-
-  useEffect(() => {
-    if (activeTab === "policies") fetchPolicies();
-  }, [activeTab, policiesOffset]);
-
-  const impersistSubOrg = async () => {
-    setImpersonating(true);
-    try {
-      const res: any = await apiFetch(`/sub-orgs/${id}/impersonate`, { method: "POST", token: token! });
-      // Save parent org info before switching
-      localStorage.setItem("wrankey_parent_token", token!);
-      localStorage.setItem("wrankey_parent_user", JSON.stringify(user));
-      localStorage.setItem("wrankey_parent_org", JSON.stringify(org));
-      // Switch to sub-org
-      login(res.sessionToken, { id: res.user.id, email: res.user.email, role: res.user.role }, { id: res.org.id, name: res.org.name });
-      addToast("Switched to sub-org", "success");
-      router.push("/");
-    } catch (err: any) { addToast(err.message || "Failed to switch", "error"); }
-    finally { setImpersonating(false); }
-  };
+  useEffect(() => { if (activeTab === "wallets") fetchWallets(); }, [activeTab, walletsOffset]);
+  useEffect(() => { if (activeTab === "users") fetchUsers(); }, [activeTab, usersOffset]);
+  useEffect(() => { if (activeTab === "privateKeys") fetchPrivateKeys(); }, [activeTab, privateKeysOffset]);
+  useEffect(() => { if (activeTab === "activities") fetchActivities(); }, [activeTab, activitiesOffset]);
+  useEffect(() => { if (activeTab === "policies") fetchPolicies(); }, [activeTab, policiesOffset]);
 
   if (!isAuthenticated || loading) {
     return <div className="p-6 space-y-3"><Skeleton className="h-8 w-64" /><Skeleton className="h-32 w-full" /></div>;
@@ -124,11 +129,16 @@ export default function SubOrgDetailPage() {
   if (!detail) return null;
 
   const tabs = [
-    { key: "overview" as const, label: "Overview" },
-    { key: "wallets" as const, label: `Wallets (${detail.walletCount})` },
     { key: "users" as const, label: `Users (${detail.userCount})` },
+    { key: "wallets" as const, label: `Wallets (${detail.walletCount})` },
+    { key: "privateKeys" as const, label: `Private Keys (${detail.privateKeyCount})` },
+    { key: "activities" as const, label: `Activities (${detail.activityCount})` },
     { key: "policies" as const, label: `Policies (${detail.policyCount})` },
   ];
+
+  const formatAction = (action: string) => {
+    return action.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  };
 
   return (
     <div className="space-y-6">
@@ -136,27 +146,45 @@ export default function SubOrgDetailPage() {
         <Button variant="ghost" size="sm" onClick={() => router.push("/sub-orgs")}><ArrowLeft className="w-4 h-4 mr-1" /> Back</Button>
       </div>
 
+      {/* Header — matches Turnkey's sub-org header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold">{detail.name}</h1>
           <p className="text-sm text-slate-500 mt-0.5">Sub-organization detail</p>
         </div>
-        <Button onClick={impersistSubOrg} disabled={impersonating}>
-          <ExternalLink className="w-4 h-4 mr-1.5" /> {impersonating ? "Switching..." : "Go to Sub-Org"}
-        </Button>
       </div>
 
       <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
         <CardContent className="p-5">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div><p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sub-Org ID</p><div className="flex items-center gap-1 mt-1"><code className="text-sm font-mono text-slate-600 select-all">{detail.id.slice(0, 8)}...</code><button onClick={() => { navigator.clipboard.writeText(detail.id); addToast("Copied", "success"); }} className="text-slate-400 hover:text-slate-600"><Copy className="w-3 h-3" /></button></div></div>
-            <div><p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Root User</p><p className="text-sm text-slate-700 mt-1">{detail.rootUser?.email || "—"}</p></div>
-            <div><p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Created</p><p className="text-sm text-slate-700 mt-1">{new Date(detail.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div>
-            <div><p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Parent Org</p><p className="text-sm text-slate-700 mt-1 font-mono">{detail.parentOrgId?.slice(0, 8)}...</p></div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sub-Org ID</p>
+              <div className="flex items-center gap-1 mt-1">
+                <code className="text-sm font-mono text-slate-600 select-all">{detail.id.slice(0, 8)}…{detail.id.slice(-4)}</code>
+                <button onClick={() => { navigator.clipboard.writeText(detail.id); addToast("Copied", "success"); }} className="text-slate-400 hover:text-slate-600"><Copy className="w-3 h-3" /></button>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Root User</p>
+              <p className="text-sm text-slate-700 mt-1">{detail.rootUser?.email || "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Created</p>
+              <p className="text-sm text-slate-700 mt-1">{new Date(detail.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Parent Org</p>
+              <p className="text-sm text-slate-700 mt-1 font-mono">{detail.parentOrgId?.slice(0, 8)}…</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</p>
+              <p className="text-sm text-emerald-600 mt-1 font-medium">Active</p>
+            </div>
           </div>
         </CardContent>
       </Card>
 
+      {/* Tabs — matches Turnkey's tab layout */}
       <div className="flex gap-1 border-b border-slate-200 dark:border-slate-800">
         {tabs.map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
@@ -166,50 +194,7 @@ export default function SubOrgDetailPage() {
         ))}
       </div>
 
-      {activeTab === "overview" && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[
-            { label: "Users", value: detail.userCount, icon: Users, color: "bg-blue-50 border-blue-100 text-blue-600" },
-            { label: "Wallets", value: detail.walletCount, icon: Wallet, color: "bg-violet-50 border-violet-100 text-violet-600" },
-            { label: "Policies", value: detail.policyCount, icon: Shield, color: "bg-emerald-50 border-emerald-100 text-emerald-600" },
-          ].map(s => (
-            <Card key={s.label} className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-lg border ${s.color} flex items-center justify-center`}><s.icon className="w-4 h-4" /></div>
-                  <div>
-                    <p className="text-xl font-bold text-slate-900 dark:text-white">{s.value}</p>
-                    <p className="text-xs text-slate-500">{s.label}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {activeTab === "wallets" && (
-        <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
-          <CardContent className="p-0">
-            {walletsLoading ? <div className="p-6"><Skeleton className="h-24 w-full" /></div> : (
-              <>
-                <Table
-                  columns={[
-                    { key: "name", header: "Name", render: (w: any) => <span className="font-medium text-sm">{w.name}</span> },
-                    { key: "type", header: "Type", render: (w: any) => <span className="text-xs text-slate-500 capitalize">{w.ownerType}</span> },
-                    { key: "accounts", header: "Accounts", render: (w: any) => <span className="text-sm">{w._count?.accounts || 0}</span> },
-                    { key: "status", header: "Status", render: (w: any) => <StatusBadge status={w.status} /> },
-                    { key: "createdAt", header: "Created", render: (w: any) => <span className="text-xs text-slate-500">{new Date(w.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span> },
-                  ]}
-                  data={wallets} loading={false} emptyMessage="No wallets in this sub-organization."
-                />
-                <Pagination limit={20} offset={walletsOffset} total={walletsTotal} onPageChange={(_, o) => setWalletsOffset(o)} />
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
+      {/* Users tab */}
       {activeTab === "users" && (
         <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
           <CardContent className="p-0">
@@ -217,10 +202,22 @@ export default function SubOrgDetailPage() {
               <>
                 <Table
                   columns={[
-                    { key: "name", header: "User", render: (u: any) => <div><p className="text-sm font-medium">{u.email || u.name || "—"}</p></div> },
-                    { key: "role", header: "Role", render: (u: any) => <span className="text-xs capitalize text-slate-500">{u.role === "ORG_ADMIN" ? "Root User" : u.role?.replace(/_/g, " ").toLowerCase()}</span> },
-                    { key: "status", header: "Status", render: (u: any) => <span className={`inline-flex text-[11px] font-medium px-2 py-0.5 rounded-full border ${(u._count?.sessions || 0) > 0 ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-amber-50 text-amber-700 border-amber-100"}`}>{(u._count?.sessions || 0) > 0 ? "Active" : "Invited"}</span> },
-                    { key: "createdAt", header: "Created", render: (u: any) => <span className="text-xs text-slate-500">{new Date(u.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span> },
+                    { key: "name", header: "User", render: (u: any) => (
+                      <div>
+                        <p className="text-sm font-medium">{u.name || u.email?.split("@")[0] || "—"}</p>
+                        {u.email && <p className="text-xs text-slate-500">{u.email}</p>}
+                      </div>
+                    ) },
+                    { key: "userId", header: "User ID", render: (u: any) => (
+                      <code className="text-xs font-mono text-slate-500">{u.id?.slice(0, 8)}…{u.id?.slice(-4)}</code>
+                    ) },
+                    { key: "role", header: "Access Level", render: (u: any) => (
+                      <span className="text-xs capitalize text-slate-500">{u.role === "ORG_ADMIN" ? "Root" : u.role?.replace(/_/g, " ").toLowerCase()}</span>
+                    ) },
+                    { key: "status", header: "Status", render: (u: any) => (
+                      <span className={`inline-flex text-[11px] font-medium px-2 py-0.5 rounded-full border ${(u._count?.sessions || 0) > 0 ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-amber-50 text-amber-700 border-amber-100"}`}>{(u._count?.sessions || 0) > 0 ? "Active" : "Invited"}</span>
+                    ) },
+                    { key: "createdAt", header: "Created", render: (u: any) => <span className="text-xs text-slate-500">{new Date(u.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span> },
                   ]}
                   data={users} loading={false} emptyMessage="No users in this sub-organization."
                 />
@@ -231,6 +228,94 @@ export default function SubOrgDetailPage() {
         </Card>
       )}
 
+      {/* Wallets tab */}
+      {activeTab === "wallets" && (
+        <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+          <CardContent className="p-0">
+            {walletsLoading ? <div className="p-6"><Skeleton className="h-24 w-full" /></div> : (
+              <>
+                <Table
+                  columns={[
+                    { key: "name", header: "Wallet", render: (w: any) => (
+                      <div>
+                        <p className="text-sm font-medium">{w.name}</p>
+                        {w.tags?.length > 0 && <div className="flex gap-1 mt-0.5">{w.tags.filter((t: string) => !t.startsWith("wvc-") && !t.startsWith("sub-org-")).map((t: string) => <span key={t} className="text-[10px] text-slate-400 bg-slate-50 px-1 rounded">{t}</span>)}</div>}
+                      </div>
+                    ) },
+                    { key: "id", header: "Wallet ID", render: (w: any) => <code className="text-xs font-mono text-slate-500">{w.id?.slice(0, 8)}…{w.id?.slice(-4)}</code> },
+                    { key: "accounts", header: "Accounts", render: (w: any) => <span className="text-sm">{w._count?.accounts || 0}</span> },
+                    { key: "status", header: "Status", render: (w: any) => <StatusBadge status={w.status} /> },
+                    { key: "createdAt", header: "Created", render: (w: any) => <span className="text-xs text-slate-500">{new Date(w.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span> },
+                  ]}
+                  data={wallets} loading={false} emptyMessage="This sub-org doesn't have wallets yet."
+                />
+                <Pagination limit={20} offset={walletsOffset} total={walletsTotal} onPageChange={(_, o) => setWalletsOffset(o)} />
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Private Keys tab — matches Turnkey's private keys view */}
+      {activeTab === "privateKeys" && (
+        <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+          <CardContent className="p-0">
+            {privateKeysLoading ? <div className="p-6"><Skeleton className="h-24 w-full" /></div> : (
+              <>
+                <Table
+                  columns={[
+                    { key: "name", header: "Key", render: (k: any) => <span className="text-sm font-medium">{k.name}</span> },
+                    { key: "id", header: "Private ID", render: (k: any) => <code className="text-xs font-mono text-slate-500">{k.id?.slice(0, 8)}…{k.id?.slice(-4)}</code> },
+                    { key: "tags", header: "Tags", render: (k: any) => (
+                      <div className="flex gap-1">
+                        {(k.tags || []).filter((t: string) => !t.startsWith("sub-org-")).map((t: string) => <span key={t} className="text-[10px] text-slate-400 bg-slate-50 px-1 rounded">{t}</span>)}
+                        {(!k.tags || k.tags.length === 0) && <span className="text-xs text-slate-300">—</span>}
+                      </div>
+                    ) },
+                    { key: "exported", header: "Exported", render: (k: any) => <span className={`text-xs ${k.exported ? "text-amber-600" : "text-slate-400"}`}>{k.exported ? "Yes" : "No"}</span> },
+                    { key: "curve", header: "Curve Type", render: (k: any) => <span className="text-xs font-mono text-slate-500">{k.curve}</span> },
+                    { key: "createdAt", header: "Created", render: (k: any) => <span className="text-xs text-slate-500">{new Date(k.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span> },
+                  ]}
+                  data={privateKeys} loading={false} emptyMessage="No private keys in this sub-organization."
+                />
+                <Pagination limit={20} offset={privateKeysOffset} total={privateKeysTotal} onPageChange={(_, o) => setPrivateKeysOffset(o)} />
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Activities tab — matches Turnkey's activity view */}
+      {activeTab === "activities" && (
+        <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+          <CardContent className="p-0">
+            {activitiesLoading ? <div className="p-6"><Skeleton className="h-24 w-full" /></div> : (
+              <>
+                <Table
+                  columns={[
+                    { key: "action", header: "Type", render: (a: any) => <span className="text-sm font-medium">{formatAction(a.action)}</span> },
+                    { key: "id", header: "ID", render: (a: any) => <code className="text-xs font-mono text-slate-500">{a.id?.slice(0, 8)}…{a.id?.slice(-4)}</code> },
+                    { key: "user", header: "Initiator", render: (a: any) => (
+                      <div>
+                        <p className="text-xs font-medium">{a.user?.name || a.user?.email?.split("@")[0] || "—"}</p>
+                        {a.user?.email && <p className="text-[11px] text-slate-400">{a.user.email}</p>}
+                      </div>
+                    ) },
+                    { key: "status", header: "Status", render: (a: any) => (
+                      <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 className="w-3 h-3" /> Completed</span>
+                    ) },
+                    { key: "createdAt", header: "Date Created", render: (a: any) => <span className="text-xs text-slate-500">{new Date(a.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span> },
+                  ]}
+                  data={activities} loading={false} emptyMessage="No activities in this sub-organization."
+                />
+                <Pagination limit={20} offset={activitiesOffset} total={activitiesTotal} onPageChange={(_, o) => setActivitiesOffset(o)} />
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Policies tab */}
       {activeTab === "policies" && (
         <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
           <CardContent className="p-0">
@@ -238,7 +323,12 @@ export default function SubOrgDetailPage() {
               <>
                 <Table
                   columns={[
-                    { key: "name", header: "Policy", render: (p: any) => <div className="flex items-center gap-2"><span className="font-medium text-sm">{p.name}</span><span className={`inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${p.effect === "EFFECT_ALLOW" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-red-50 text-red-700 border-red-100"}`}>{p.effect === "EFFECT_ALLOW" ? "ALLOW" : "DENY"}</span></div> },
+                    { key: "name", header: "Policy", render: (p: any) => (
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">{p.name}</span>
+                        <span className={`inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${p.effect === "EFFECT_ALLOW" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-red-50 text-red-700 border-red-100"}`}>{p.effect === "EFFECT_ALLOW" ? "ALLOW" : "DENY"}</span>
+                      </div>
+                    ) },
                     { key: "consensus", header: "Consensus", render: (p: any) => <span className="text-xs text-slate-500">{p.consensus}</span> },
                     { key: "priority", header: "Priority", render: (p: any) => <span className="text-sm font-mono">{p.priority}</span> },
                     { key: "active", header: "Active", render: (p: any) => <span className={`text-xs ${p.active !== false ? "text-emerald-600" : "text-slate-400"}`}>{p.active !== false ? "Yes" : "No"}</span> },

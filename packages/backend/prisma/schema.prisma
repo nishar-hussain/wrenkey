@@ -98,6 +98,7 @@ model ApiKey {
   name        String
   keyHash     String    @unique @map("key_hash")
   keyPrefix   String    @map("key_prefix")
+  publicKey   String?   @map("public_key")
   permissions String[]  @default([])
   allowedIps  String[]  @default([]) @map("allowed_ips")
   expiresAt   DateTime? @map("expires_at")
