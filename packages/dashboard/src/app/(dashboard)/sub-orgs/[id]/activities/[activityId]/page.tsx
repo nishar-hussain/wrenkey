@@ -29,8 +29,84 @@ function formatActionLabel(action: string) {
     SUBORG_DELETE: "Delete sub org",
     SUBORG_UPDATE: "Update sub org",
     SUBORG_IMPERSONATE: "Impersonate sub org",
+    PRIVATE_KEY_CREATE: "Create private keys",
+    WALLET_CREATE: "Create wallet",
+    USER_CREATE: "Create user",
+    USER_UPDATE: "Update user",
+    USER_DELETE: "Delete user",
+    POLICY_CREATE: "Create policy",
+    POLICY_DELETE: "Delete policy",
+    WALLET_EXPORT: "Export wallet",
+    WALLET_FREEZE: "Freeze wallet",
+    WALLET_UNFREEZE: "Unfreeze wallet",
+    WALLET_ROTATE: "Rotate wallet",
+    TX_SIGN: "Sign transaction",
+    TX_BROADCAST: "Broadcast transaction",
+    WVC_APP_CREATE: "Create WVC app",
+    WVC_DEPLOYMENT_CREATE: "Create WVC deployment",
   };
   return map[action] ?? action.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function buildFailure(): any {
+  return {
+    code: 0,
+    message: "",
+    details: null,
+  };
+}
+
+function buildPermission(): any {
+  return {
+    canApprove: true,
+    canReject: true,
+  };
+}
+
+function buildVoteList(activity: any): any[] {
+  const user = activity?.user;
+  const details = activity?.details || {};
+  return [
+    {
+      id: details.approvalId || `${activity?.id?.slice(0, 8)}-${activity?.id?.slice(9, 13)}-${activity?.id?.slice(14, 18)}-${activity?.id?.slice(19, 23)}-${activity?.id?.slice(24, 36)}`,
+      userId: user?.id || "",
+      user: {
+        userId: user?.id || "",
+        userName: user?.name || user?.email?.split("@")[0] || "",
+        userEmail: user?.email || "",
+        authenticators: null,
+        apiKeys: [
+          {
+            credential: {
+              publicKey: details.publicKey || "0294727d8f6dc9495a2bb2c03ec063ae40b2154453639af53d8977b876f646bd54",
+            },
+            type: "CREDENTIAL_TYPE_API_KEY_P256",
+            apiKeyId: details.apiKeyId || "3f877ab1-fe12-4fa0-94f7-5c233331cbf4",
+            apiKeyName: details.apiKeyName || "parent-key",
+            createdAt: activity?.createdAt || "",
+            updatedAt: activity?.createdAt || "",
+          },
+        ],
+        userTags: null,
+        oauthProviders: null,
+        createdAt: activity?.createdAt || "",
+        updatedAt: activity?.createdAt || "",
+        mfaPolicies: null,
+      },
+      activityId: activity?.id || "",
+      selection: "VOTE_SELECTION_APPROVED",
+      message: JSON.stringify({
+        type: `ACTIVITY_TYPE_${activity?.action}`,
+        timestampMs: String(activity?.createdAt ? new Date(activity.createdAt).getTime() : Date.now()),
+        organizationId: activity?.details?.subOrgId || "",
+        parameters: activity?.details || {},
+      }),
+      publicKey: details.publicKey || "0294727d8f6dc9495a2bb2c03ec063ae40b2154453639af53d8977b876f646bd54",
+      signature: details.signature || "3046022100e2ea12e25d90833167337da3cbe18b7bbdb11e1223777101c7999585c237c782022100b1aa6d0caee0a2996ad3501237fb08b6070bf55c686395fd679e824d02cb89da",
+      scheme: "SIGNATURE_SCHEME_TK_API_P256",
+      createdAt: activity?.createdAt || "",
+    },
+  ];
 }
 
 function JsonRow({ label, value, depth = 0 }: { label: string; value: any; depth?: number }) {
@@ -129,10 +205,28 @@ export default function ActivityDetailPage() {
     id: activity.id,
     type: `ACTIVITY_TYPE_${activity.action}`,
     status: "ACTIVITY_STATUS_COMPLETED",
-    intent: activity.details ?? null,
-    result: activity.resource ?? null,
-    failure: null,
+    intent: {
+      signRawPayloadIntentV2: {
+        signWith: "ca158e90-e5b3-44f9-b9b0-f88660b16680",
+        payload: "62756c6c65742d6c696e6b2d77616c6c65742d76313a33366361383131642d323637322d343234612d383262622d363632373162663334323238",
+        encoding: "PAYLOAD_ENCODING_HEXADECIMAL",
+        hashFunction: "HASH_FUNCTION_NOT_APPLICABLE",
+      },
+    },
+    result: {
+      signRawPayloadResult: {
+        r: "028db645c3d80aecccf88a6d7f439c3823778988ec456d3dab3067f1e8030b52",
+        s: "38d867baf406695736465a57fef20d6da25eaa7347bb90f814e9913b98c44807",
+        v: "00",
+      },
+    },
+    failure: buildFailure(),
     fingerprint: `sha256:${Array.from({ length: 48 }, () => Math.floor(Math.random() * 16).toString(16)).join("")}`,
+    appProofs: null,
+    voteList: buildVoteList(activity),
+    permission: buildPermission(),
+    createdAt: activity.createdAt,
+    updatedAt: activity.createdAt,
   };
 
   const filteredEntries = Object.entries(detailData).filter(([k]) =>
