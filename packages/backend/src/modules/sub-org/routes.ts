@@ -257,6 +257,24 @@ export async function subOrgRoutes(app: FastifyInstance) {
     } catch (err) { return sendError(reply, err); }
   });
 
+  // Get single activity detail
+  app.get("/sub-orgs/:id/activities/:activityId", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id, activityId } = request.params as { id: string; activityId: string };
+      await verifyParentOrg(request, id);
+      const activity = await prisma.auditLog.findFirst({
+        where: { id: activityId, orgId: id },
+        select: {
+          id: true, action: true, resource: true, details: true,
+          userId: true, ip: true, createdAt: true,
+          user: { select: { id: true, email: true, name: true } },
+        },
+      });
+      if (!activity) throw new NotFoundError("Activity not found");
+      return sendSuccess(reply, activity);
+    } catch (err) { return sendError(reply, err); }
+  });
+
   // Impersonate — generate session token for sub-org
   app.post("/sub-orgs/:id/impersonate", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {

@@ -6,6 +6,7 @@ interface Column<T> {
   header: string;
   render?: (item: T) => React.ReactNode;
   className?: string;
+  sortable?: boolean;
 }
 
 interface TableProps<T> {
@@ -14,6 +15,7 @@ interface TableProps<T> {
   keyField?: string;
   loading?: boolean;
   emptyMessage?: string;
+  onRowClick?: (item: T) => void;
 }
 
 export function Table<T>({
@@ -22,6 +24,7 @@ export function Table<T>({
   keyField = "id",
   loading,
   emptyMessage = "No data found",
+  onRowClick,
 }: TableProps<T>) {
   if (loading) {
     return (
@@ -72,7 +75,11 @@ export function Table<T>({
         </thead>
         <tbody className="[&_tr:last-child]:border-0">
           {data.map((item) => (
-            <tr key={String((item as any)[keyField])} className="border-b transition-colors hover:bg-muted/50">
+            <tr
+              key={String((item as any)[keyField])}
+              className={cn("border-b transition-colors hover:bg-muted/50", onRowClick && "cursor-pointer")}
+              onClick={() => onRowClick?.(item)}
+            >
               {columns.map((col) => (
                 <td key={col.key} className={cn("p-4 align-middle", col.className)}>
                   {col.render ? col.render(item) : String((item as any)[col.key] ?? "")}

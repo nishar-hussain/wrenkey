@@ -5,13 +5,12 @@ import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Users, Shield, Wallet, Key, Activity, Copy, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { Layers, Copy, ChevronRight, Users, Wallet, Key, Activity, Shield, Clock } from "lucide-react";
 
 interface SubOrgDetail {
   id: string;
@@ -63,6 +62,13 @@ export default function SubOrgDetailPage() {
   const [policiesOffset, setPoliciesOffset] = useState(0);
 
   useEffect(() => { if (!isAuthenticated) { router.push("/login"); return; } }, [isAuthenticated, router]);
+  // Read URL hash on mount to activate the correct tab (e.g. #activities)
+  useEffect(() => {
+    const hash = window.location.hash.replace("#", "") as typeof activeTab;
+    const validTabs: Array<typeof activeTab> = ["users", "wallets", "privateKeys", "activities", "policies"];
+    if (validTabs.includes(hash)) setActiveTab(hash);
+  }, []);
+
 
   const fetchDetail = useCallback(async () => {
     if (!token) return;
@@ -128,70 +134,90 @@ export default function SubOrgDetailPage() {
 
   if (!detail) return null;
 
-  const tabs = [
-    { key: "users" as const, label: `Users (${detail.userCount})` },
-    { key: "wallets" as const, label: `Wallets (${detail.walletCount})` },
-    { key: "privateKeys" as const, label: `Private Keys (${detail.privateKeyCount})` },
-    { key: "activities" as const, label: `Activities (${detail.activityCount})` },
-    { key: "policies" as const, label: `Policies (${detail.policyCount})` },
-  ];
+  const formatId = (rawId: string) => `${rawId.slice(0, 4)}\u00b7\u00b7\u00b7\u00b7${rawId.slice(-4)}`;
 
-  const formatAction = (action: string) => {
-    return action.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const formatActivityType = (action: string) =>
+    action.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit", hour: "numeric", minute: "2-digit" });
   };
+
+  const tabs = [
+    { key: "users" as const, label: "Users", count: detail.userCount, icon: Users },
+    { key: "wallets" as const, label: "Wallets", count: detail.walletCount, icon: Wallet },
+    { key: "privateKeys" as const, label: "Private Keys", count: detail.privateKeyCount, icon: Key },
+    { key: "activities" as const, label: "Activities", count: detail.activityCount, icon: Activity },
+    { key: "policies" as const, label: "Policies", count: detail.policyCount, icon: Shield },
+  ];
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => router.push("/sub-orgs")}><ArrowLeft className="w-4 h-4 mr-1" /> Back</Button>
-      </div>
+      {/* Breadcrumb */}
+      <nav className="flex items-center gap-2 text-sm text-slate-500">
+        <button onClick={() => router.push("/sub-orgs")} className="hover:text-slate-700 transition-colors">
+          Sub-Orgs
+        </button>
+        <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+        <span className="text-slate-700 font-medium">{detail.name}</span>
+      </nav>
 
-      {/* Header — matches Turnkey's sub-org header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{detail.name}</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Sub-organization detail</p>
-        </div>
-      </div>
+      {/* Header Card */}
+      <Card className="border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-2 text-slate-500 mb-2 text-sm">
+            <Layers className="w-4 h-4" />
+            <span>Sub-Org</span>
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-5">{detail.name}</h1>
 
-      <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
-        <CardContent className="p-5">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {/* Info row */}
+          <div className="flex items-start gap-10 pt-4 border-t border-slate-100 dark:border-slate-800">
             <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sub-Org ID</p>
-              <div className="flex items-center gap-1 mt-1">
-                <code className="text-sm font-mono text-slate-600 select-all">{detail.id.slice(0, 8)}…{detail.id.slice(-4)}</code>
-                <button onClick={() => { navigator.clipboard.writeText(detail.id); addToast("Copied", "success"); }} className="text-slate-400 hover:text-slate-600"><Copy className="w-3 h-3" /></button>
+              <p className="text-xs text-slate-400 mb-1">ID</p>
+              <div className="flex items-center gap-1">
+                <code className="text-sm font-mono text-slate-600 dark:text-slate-300">{formatId(detail.id)}</code>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(detail.id); addToast("Copied", "success"); }}
+                  className="text-slate-400 hover:text-slate-600 ml-0.5"
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
               </div>
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Root User</p>
-              <p className="text-sm text-slate-700 mt-1">{detail.rootUser?.email || "—"}</p>
+              <p className="text-xs text-slate-400 mb-1">Root User</p>
+              <p className="text-sm text-slate-700 dark:text-slate-200">{detail.rootUser?.email || "—"}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Created</p>
-              <p className="text-sm text-slate-700 mt-1">{new Date(detail.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Parent Org</p>
-              <p className="text-sm text-slate-700 mt-1 font-mono">{detail.parentOrgId?.slice(0, 8)}…</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</p>
-              <p className="text-sm text-emerald-600 mt-1 font-medium">Active</p>
+              <p className="text-xs text-slate-400 mb-1">Approval Threshold</p>
+              <p className="text-sm text-slate-700 dark:text-slate-200">1</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Tabs — matches Turnkey's tab layout */}
-      <div className="flex gap-1 border-b border-slate-200 dark:border-slate-800">
-        {tabs.map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-[1px] ${activeTab === tab.key ? "border-brand-600 text-brand-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
-            {tab.label}
-          </button>
-        ))}
+      {/* Tabs */}
+      <div className="flex gap-0 border-b border-slate-200 dark:border-slate-800">
+        {tabs.map(tab => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-[1px] flex items-center gap-1.5 ${
+                activeTab === tab.key
+                  ? "border-brand-600 text-brand-600"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {tab.label}
+              <span className={`text-xs ml-0.5 ${activeTab === tab.key ? "text-brand-500" : "text-slate-400"}`}>{tab.count}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Users tab */}
@@ -209,13 +235,15 @@ export default function SubOrgDetailPage() {
                       </div>
                     ) },
                     { key: "userId", header: "User ID", render: (u: any) => (
-                      <code className="text-xs font-mono text-slate-500">{u.id?.slice(0, 8)}…{u.id?.slice(-4)}</code>
+                      <code className="text-xs font-mono text-slate-500">{formatId(u.id || "0000000000000000")}</code>
                     ) },
                     { key: "role", header: "Access Level", render: (u: any) => (
                       <span className="text-xs capitalize text-slate-500">{u.role === "ORG_ADMIN" ? "Root" : u.role?.replace(/_/g, " ").toLowerCase()}</span>
                     ) },
                     { key: "status", header: "Status", render: (u: any) => (
-                      <span className={`inline-flex text-[11px] font-medium px-2 py-0.5 rounded-full border ${(u._count?.sessions || 0) > 0 ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-amber-50 text-amber-700 border-amber-100"}`}>{(u._count?.sessions || 0) > 0 ? "Active" : "Invited"}</span>
+                      <span className={`inline-flex text-[11px] font-medium px-2 py-0.5 rounded-full border ${(u._count?.sessions || 0) > 0 ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-amber-50 text-amber-700 border-amber-100"}`}>
+                        {(u._count?.sessions || 0) > 0 ? "Active" : "Invited"}
+                      </span>
                     ) },
                     { key: "createdAt", header: "Created", render: (u: any) => <span className="text-xs text-slate-500">{new Date(u.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span> },
                   ]}
@@ -242,7 +270,7 @@ export default function SubOrgDetailPage() {
                         {w.tags?.length > 0 && <div className="flex gap-1 mt-0.5">{w.tags.filter((t: string) => !t.startsWith("wvc-") && !t.startsWith("sub-org-")).map((t: string) => <span key={t} className="text-[10px] text-slate-400 bg-slate-50 px-1 rounded">{t}</span>)}</div>}
                       </div>
                     ) },
-                    { key: "id", header: "Wallet ID", render: (w: any) => <code className="text-xs font-mono text-slate-500">{w.id?.slice(0, 8)}…{w.id?.slice(-4)}</code> },
+                    { key: "id", header: "Wallet ID", render: (w: any) => <code className="text-xs font-mono text-slate-500">{formatId(w.id || "0000000000000000")}</code> },
                     { key: "accounts", header: "Accounts", render: (w: any) => <span className="text-sm">{w._count?.accounts || 0}</span> },
                     { key: "status", header: "Status", render: (w: any) => <StatusBadge status={w.status} /> },
                     { key: "createdAt", header: "Created", render: (w: any) => <span className="text-xs text-slate-500">{new Date(w.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span> },
@@ -256,7 +284,7 @@ export default function SubOrgDetailPage() {
         </Card>
       )}
 
-      {/* Private Keys tab — matches Turnkey's private keys view */}
+      {/* Private Keys tab */}
       {activeTab === "privateKeys" && (
         <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
           <CardContent className="p-0">
@@ -265,7 +293,7 @@ export default function SubOrgDetailPage() {
                 <Table
                   columns={[
                     { key: "name", header: "Key", render: (k: any) => <span className="text-sm font-medium">{k.name}</span> },
-                    { key: "id", header: "Private ID", render: (k: any) => <code className="text-xs font-mono text-slate-500">{k.id?.slice(0, 8)}…{k.id?.slice(-4)}</code> },
+                    { key: "id", header: "Private ID", render: (k: any) => <code className="text-xs font-mono text-slate-500">{formatId(k.id || "0000000000000000")}</code> },
                     { key: "tags", header: "Tags", render: (k: any) => (
                       <div className="flex gap-1">
                         {(k.tags || []).filter((t: string) => !t.startsWith("sub-org-")).map((t: string) => <span key={t} className="text-[10px] text-slate-400 bg-slate-50 px-1 rounded">{t}</span>)}
@@ -285,7 +313,7 @@ export default function SubOrgDetailPage() {
         </Card>
       )}
 
-      {/* Activities tab — matches Turnkey's activity view */}
+      {/* Activities tab */}
       {activeTab === "activities" && (
         <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
           <CardContent className="p-0">
@@ -293,20 +321,52 @@ export default function SubOrgDetailPage() {
               <>
                 <Table
                   columns={[
-                    { key: "action", header: "Type", render: (a: any) => <span className="text-sm font-medium">{formatAction(a.action)}</span> },
-                    { key: "id", header: "ID", render: (a: any) => <code className="text-xs font-mono text-slate-500">{a.id?.slice(0, 8)}…{a.id?.slice(-4)}</code> },
-                    { key: "user", header: "Initiator", render: (a: any) => (
+                    { key: "type", header: "Type", render: (a: any) => (
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                        <span className="text-sm font-medium text-slate-700">{formatActivityType(a.action)}</span>
+                      </div>
+                    ) },
+                    { key: "id", header: "ID", render: (a: any) => (
+                      <div className="flex items-center gap-1">
+                        <span className="font-mono text-[11px] text-slate-500">{formatId(a.id || "0000000000000000")}</span>
+                        <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(a.id); addToast("Copied", "success"); }} className="text-slate-400 hover:text-slate-600">
+                          <Copy className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) },
+                    { key: "initiator", header: "Initiator", render: (a: any) => (
                       <div>
-                        <p className="text-xs font-medium">{a.user?.name || a.user?.email?.split("@")[0] || "—"}</p>
+                        <p className="text-xs font-medium text-slate-700">{a.user?.name || a.user?.email?.split("@")[0] || "—"}</p>
                         {a.user?.email && <p className="text-[11px] text-slate-400">{a.user.email}</p>}
                       </div>
                     ) },
-                    { key: "status", header: "Status", render: (a: any) => (
-                      <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 className="w-3 h-3" /> Completed</span>
+                    { key: "approvals", header: "Approvals", render: (_a: any) => (
+                      <span className="text-sm text-slate-600">1/1</span>
                     ) },
-                    { key: "createdAt", header: "Date Created", render: (a: any) => <span className="text-xs text-slate-500">{new Date(a.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span> },
+                    { key: "createdAt", header: "Date Created", sortable: true, render: (a: any) => (
+                      <span className="text-xs text-slate-500 whitespace-nowrap">{formatDate(a.createdAt)}</span>
+                    ) },
+                    { key: "yourAction", header: "Your Action", render: (_a: any) => (
+                      <span className="text-sm text-slate-400">—</span>
+                    ) },
+                    { key: "status", header: "Status", render: (_a: any) => (
+                      <span className="inline-flex items-center gap-1.5 text-sm text-emerald-600">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                        Completed
+                      </span>
+                    ) },
+                    { key: "chevron", header: "", render: (a: any) => (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); router.push(`/sub-orgs/${id}/activities/${a.id}`); }}
+                        className="text-slate-400 hover:text-slate-600"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    ) },
                   ]}
                   data={activities} loading={false} emptyMessage="No activities in this sub-organization."
+                  onRowClick={(a: any) => router.push(`/sub-orgs/${id}/activities/${a.id}`)}
                 />
                 <Pagination limit={20} offset={activitiesOffset} total={activitiesTotal} onPageChange={(_, o) => setActivitiesOffset(o)} />
               </>
@@ -326,7 +386,9 @@ export default function SubOrgDetailPage() {
                     { key: "name", header: "Policy", render: (p: any) => (
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-sm">{p.name}</span>
-                        <span className={`inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${p.effect === "EFFECT_ALLOW" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-red-50 text-red-700 border-red-100"}`}>{p.effect === "EFFECT_ALLOW" ? "ALLOW" : "DENY"}</span>
+                        <span className={`inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${p.effect === "EFFECT_ALLOW" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-red-50 text-red-700 border-red-100"}`}>
+                          {p.effect === "EFFECT_ALLOW" ? "ALLOW" : "DENY"}
+                        </span>
                       </div>
                     ) },
                     { key: "consensus", header: "Consensus", render: (p: any) => <span className="text-xs text-slate-500">{p.consensus}</span> },

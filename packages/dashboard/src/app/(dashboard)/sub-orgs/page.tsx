@@ -12,7 +12,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Layers, Copy, Trash2, Pencil, ChevronRight, ArrowRight } from "lucide-react";
+import { Layers, Copy, ChevronRight, ArrowRight } from "lucide-react";
 
 interface SubOrg {
   id: string;
@@ -76,47 +76,49 @@ export default function SubOrgsPage() {
   const handleGoToSubOrg = () => {
     const trimmed = gotoSubOrgId.trim();
     if (!trimmed) { setGotoError("Enter a Sub-org ID"); return; }
-    if (!/^[a-f0-9-]{36}$/i.test(trimmed)) { setGotoError("Invalid UUID format"); return; }
     setGotoError("");
     router.push(`/sub-orgs/${trimmed}`);
+  };
+
+  const formatId = (id: string) => `${id.slice(0, 4)}\u00b7\u00b7\u00b7\u00b7${id.slice(-4)}`;
+
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
   };
 
   if (!isAuthenticated) return null;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Sub-Orgs</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Each sub-org is a user container with their own isolated wallets, users, and policies. User wallets live here.</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold">Sub-Orgs</h1>
       </div>
 
-      {/* Go to Sub-Org ID */}
-      <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+      {/* Go to Sub-Org ID — flat input bar matching image */}
+      <Card className="border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900">
         <CardContent className="p-4">
           <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <label className="text-xs font-semibold text-slate-700 mb-1 block">Sub-org ID</label>
-              <div className="flex gap-2">
-                <Input
-                  value={gotoSubOrgId}
-                  onChange={e => { setGotoSubOrgId(e.target.value); setGotoError(""); }}
-                  placeholder="Paste a sub-org UUID to navigate directly..."
-                  className="flex-1 h-10 text-xs font-mono"
-                  onKeyDown={e => e.key === "Enter" && handleGoToSubOrg()}
-                />
-                <Button onClick={handleGoToSubOrg} className="h-10 px-4">
-                  <ArrowRight className="w-4 h-4 mr-1.5" /> Go to sub-org
-                </Button>
-              </div>
-              {gotoError && <p className="text-[11px] text-red-500 mt-1">{gotoError}</p>}
-            </div>
+            <Input
+              value={gotoSubOrgId}
+              onChange={e => { setGotoSubOrgId(e.target.value); setGotoError(""); }}
+              placeholder="Sub-org ID"
+              className="flex-1 h-10 text-sm bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+              onKeyDown={e => e.key === "Enter" && handleGoToSubOrg()}
+            />
+            <Button
+              onClick={handleGoToSubOrg}
+              variant="secondary"
+              className="h-10 px-4 whitespace-nowrap flex items-center gap-1.5"
+            >
+              Go to sub-org <ArrowRight className="w-3.5 h-3.5" />
+            </Button>
           </div>
+          {gotoError && <p className="text-[11px] text-red-500 mt-1">{gotoError}</p>}
         </CardContent>
       </Card>
 
-      <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+      <Card className="border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900">
         <CardContent className="p-0">
           {loading ? (
             <div className="p-6 space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div>
@@ -124,23 +126,41 @@ export default function SubOrgsPage() {
             <>
               <Table
                 columns={[
-                  { key: "name", header: "Name", render: (s: SubOrg) => (
-                    <button onClick={() => router.push(`/sub-orgs/${s.id}`)} className="font-medium text-sm text-brand-600 hover:text-brand-700 text-left">
-                      {s.name} <ChevronRight className="w-3 h-3 inline" />
+                  { key: "name", header: "Name", sortable: true, render: (s: SubOrg) => (
+                    <button
+                      onClick={() => router.push(`/sub-orgs/${s.id}`)}
+                      className="flex items-center gap-2 font-medium text-sm text-slate-800 dark:text-slate-100 hover:text-brand-600 text-left"
+                    >
+                      <span className="flex items-center justify-center w-6 h-6 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 flex-shrink-0">
+                        <Layers className="w-3.5 h-3.5" />
+                      </span>
+                      {s.name}
                     </button>
                   )},
                   { key: "id", header: "ID", render: (s: SubOrg) => (
-                    <div className="flex items-center gap-1"><span className="font-mono text-[11px]">{s.id.slice(0, 8)}...{s.id.slice(-4)}</span><button onClick={() => { navigator.clipboard.writeText(s.id); addToast("Copied", "success"); }} className="text-slate-400 hover:text-slate-600"><Copy className="w-3 h-3" /></button></div>
-                  )},
-                  { key: "rootUser", header: "Root User", render: (s: SubOrg) => <span className="text-xs">{s.rootUserEmail || "—"}</span> },
-                  { key: "users", header: "Users", render: (s: SubOrg) => <span className="text-sm font-medium">{s.userCount}</span> },
-                  { key: "wallets", header: "Wallets", render: (s: SubOrg) => <span className="text-sm font-medium">{s.walletCount}</span> },
-                  { key: "createdAt", header: "Created", render: (s: SubOrg) => <span className="text-xs text-slate-500">{new Date(s.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span> },
-                  { key: "actions", header: "", render: (s: SubOrg) => (
                     <div className="flex items-center gap-1">
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditSubOrg(s); setNewName(s.name); setShowEdit(true); }}><Pencil className="w-3 h-3" /></Button>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => deleteSubOrg(s.id)}><Trash2 className="w-3 h-3 text-red-400" /></Button>
+                      <span className="font-mono text-[11px] text-slate-500">{formatId(s.id)}</span>
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(s.id); addToast("Copied", "success"); }}
+                        className="text-slate-400 hover:text-slate-600"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
                     </div>
+                  )},
+                  { key: "rootUser", header: "Root User", render: (s: SubOrg) => <span className="text-sm text-slate-600">{s.rootUserEmail || "—"}</span> },
+                  { key: "users", header: "Users", render: (s: SubOrg) => <span className="text-sm font-medium text-slate-700">{s.userCount}</span> },
+                  { key: "wallets", header: "Wallets", render: (s: SubOrg) => <span className="text-sm font-medium text-slate-700">{s.walletCount}</span> },
+                  { key: "createdAt", header: "Created", sortable: true, render: (s: SubOrg) => (
+                    <span className="text-xs text-slate-500 whitespace-nowrap">{formatDate(s.createdAt)}</span>
+                  )},
+                  { key: "chevron", header: "", render: (s: SubOrg) => (
+                    <button
+                      onClick={() => router.push(`/sub-orgs/${s.id}`)}
+                      className="text-slate-400 hover:text-slate-600"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
                   )},
                 ]}
                 data={subOrgs} loading={false} emptyMessage="No sub-organizations found. Create your first one to isolate customer data."
