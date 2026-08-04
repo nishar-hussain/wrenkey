@@ -5,12 +5,15 @@ import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/components/providers/Providers";
 import { apiFetch } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Table } from "@/components/ui/Table";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { Layers, Copy, ChevronRight, Users, Wallet, Key, Activity, Shield, Clock } from "lucide-react";
+import { Layers, Copy, ChevronRight, Users, Wallet, Key, Activity, Shield, Clock, Plus, Edit3, Trash2 } from "lucide-react";
 
 interface SubOrgDetail {
   id: string;
@@ -60,6 +63,15 @@ export default function SubOrgDetailPage() {
   const [policiesTotal, setPoliciesTotal] = useState(0);
   const [policiesLoading, setPoliciesLoading] = useState(false);
   const [policiesOffset, setPoliciesOffset] = useState(0);
+
+  // Policy create/edit modal state
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
+  const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
+  const [policyName, setPolicyName] = useState("");
+  const [policyDescription, setPolicyDescription] = useState("");
+  const [policyActive, setPolicyActive] = useState(true);
+  const [policyJson, setPolicyJson] = useState("");
+  const [policySaving, setPolicySaving] = useState(false);
 
   useEffect(() => { if (!isAuthenticated) { router.push("/login"); return; } }, [isAuthenticated, router]);
   // Read URL hash on mount to activate the correct tab (e.g. #activities)
@@ -120,6 +132,71 @@ export default function SubOrgDetailPage() {
       const res: any = await apiFetch(`/sub-orgs/${id}/policies?limit=20&offset=${policiesOffset}`, { token: token! });
       setPolicies(res.data || []); setPoliciesTotal(res.total || 0);
     } catch { addToast("Failed to load policies", "error"); } finally { setPoliciesLoading(false); }
+  };
+
+  const resetPolicyForm = () => {
+    setPolicyName(""); setPolicyDescription(""); setPolicyActive(true); setPolicyJson(""); setEditingPolicyId(null);
+  };
+
+  const openCreatePolicy = () => {
+    resetPolicyForm();
+    setPolicyJson(JSON.stringify({ effect: "EFFECT_ALLOW" }, null, 2));
+    setShowPolicyModal(true);
+  };
+
+  const openEditPolicy = (p: any) => {
+    setEditingPolicyId(p.id);
+    setPolicyName(p.name);
+    setPolicyActive(p.active !== false);
+    setPolicyDescription((p.conditions as any)?.description || "");
+    const body: any = { effect: p.effect };
+    if (p.consensus && p.consensus !== "ANY") body.consensus = p.consensus;
+    const cond = (p.conditions as any)?.condition;
+    if (cond) body.condition = cond;
+    setPolicyJson(JSON.stringify(body, null, 2));
+    setShowPolicyModal(true);
+  };
+
+  const savePolicy = async () => {
+    if (!policyName.trim()) { addToast("Name required", "error"); return; }
+    setPolicySaving(true);
+    try {
+      let parsed: any;
+      try { parsed = JSON.parse(policyJson); } catch { throw new Error("Invalid JSON"); }
+      if (!parsed.effect) throw new Error("effect required");
+
+      const body: any = {
+        name: policyName.trim(),
+        active: policyActive,
+        priority: 0,
+        effect: parsed.effect,
+        consensus: parsed.consensus || "ANY",
+        conditions: {
+          condition: parsed.condition || "",
+          description: policyDescription.trim(),
+          isTurnkey: true,
+        },
+        description: policyDescription.trim(),
+      };
+
+      if (editingPolicyId) {
+        await apiFetch(`/sub-orgs/${id}/policies/${editingPolicyId}`, { method: "PATCH", body: JSON.stringify(body), token: token! });
+        addToast("Policy updated", "success");
+      } else {
+        await apiFetch(`/sub-orgs/${id}/policies`, { method: "POST", body: JSON.stringify(body), token: token! });
+        addToast("Policy created", "success");
+      }
+      setShowPolicyModal(false);
+      resetPolicyForm();
+      fetchPolicies();
+    } catch (err: any) { addToast(err.message || "Failed", "error"); } finally { setPolicySaving(false); }
+  };
+
+  const deletePolicy = async (policyId: string) => {
+    try {
+      await apiFetch(`/sub-orgs/${id}/policies/${policyId}`, { method: "DELETE", token: token! });
+      addToast("Policy deleted", "success"); fetchPolicies();
+    } catch (err: any) { addToast(err.message || "Failed", "error"); }
   };
 
   useEffect(() => { if (activeTab === "wallets") fetchWallets(); }, [activeTab, walletsOffset]);
@@ -377,32 +454,95 @@ export default function SubOrgDetailPage() {
 
       {/* Policies tab */}
       {activeTab === "policies" && (
-        <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
-          <CardContent className="p-0">
-            {policiesLoading ? <div className="p-6"><Skeleton className="h-24 w-full" /></div> : (
-              <>
-                <Table
-                  columns={[
-                    { key: "name", header: "Policy", render: (p: any) => (
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm">{p.name}</span>
-                        <span className={`inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${p.effect === "EFFECT_ALLOW" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-red-50 text-red-700 border-red-100"}`}>
-                          {p.effect === "EFFECT_ALLOW" ? "ALLOW" : "DENY"}
-                        </span>
-                      </div>
-                    ) },
-                    { key: "consensus", header: "Consensus", render: (p: any) => <span className="text-xs text-slate-500">{p.consensus}</span> },
-                    { key: "priority", header: "Priority", render: (p: any) => <span className="text-sm font-mono">{p.priority}</span> },
-                    { key: "active", header: "Active", render: (p: any) => <span className={`text-xs ${p.active !== false ? "text-emerald-600" : "text-slate-400"}`}>{p.active !== false ? "Yes" : "No"}</span> },
-                  ]}
-                  data={policies} loading={false} emptyMessage="No policies in this sub-organization."
-                />
-                <Pagination limit={20} offset={policiesOffset} total={policiesTotal} onPageChange={(_, o) => setPoliciesOffset(o)} />
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          <div className="flex items-center justify-end">
+            <Button onClick={openCreatePolicy}><Plus className="w-4 h-4 mr-1.5" /> New Policy</Button>
+          </div>
+          <Card className="border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+            <CardContent className="p-0">
+              {policiesLoading ? <div className="p-6"><Skeleton className="h-24 w-full" /></div> : (
+                <>
+                  <Table
+                    columns={[
+                      { key: "name", header: "Policy", render: (p: any) => (
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">{p.name}</span>
+                          <span className={`inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${p.effect === "EFFECT_ALLOW" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-red-50 text-red-700 border-red-100"}`}>
+                            {p.effect === "EFFECT_ALLOW" ? "ALLOW" : "DENY"}
+                          </span>
+                          {p.active === false && (
+                            <span className="inline-flex text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-100">Inactive</span>
+                          )}
+                        </div>
+                      ) },
+                      { key: "consensus", header: "Consensus", render: (p: any) => <span className="text-xs text-slate-500">{p.consensus}</span> },
+                      { key: "priority", header: "Priority", render: (p: any) => <span className="text-sm font-mono">{p.priority}</span> },
+                      { key: "active", header: "Active", render: (p: any) => <span className={`text-xs ${p.active !== false ? "text-emerald-600" : "text-slate-400"}`}>{p.active !== false ? "Yes" : "No"}</span> },
+                      { key: "actions", header: "", render: (p: any) => (
+                        <div className="flex items-center gap-0.5">
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditPolicy(p)}><Edit3 className="w-3 h-3 text-slate-400" /></Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => deletePolicy(p.id)}><Trash2 className="w-3 h-3 text-red-400" /></Button>
+                        </div>
+                      ) },
+                    ]}
+                    data={policies} loading={false} emptyMessage="No policies in this sub-organization."
+                  />
+                  <Pagination limit={20} offset={policiesOffset} total={policiesTotal} onPageChange={(_, o) => setPoliciesOffset(o)} />
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
+
+      {/* Policy create/edit modal */}
+      <Modal open={showPolicyModal} onClose={() => { setShowPolicyModal(false); resetPolicyForm(); }} title={editingPolicyId ? "Edit Policy" : "New Policy"}>
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Name</label>
+            <Input value={policyName} onChange={e => setPolicyName(e.target.value)} placeholder="e.g. Daily Spending Limit" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Description</label>
+            <Input value={policyDescription} onChange={e => setPolicyDescription(e.target.value)} placeholder="Human-readable summary (optional)" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Policy JSON</label>
+            <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-900 shadow-inner">
+              <textarea
+                value={policyJson}
+                onChange={e => setPolicyJson(e.target.value)}
+                rows={12}
+                className="w-full bg-transparent p-3 outline-none resize-none font-mono text-xs leading-relaxed text-emerald-400 focus:ring-0"
+                placeholder='{"effect":"EFFECT_ALLOW","consensus":"approvers.any(user, user.id == &apos;<ID>&apos;)","condition":"activity.action == &apos;SIGN&apos;"}'
+              />
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Fields: <code className="text-[11px]">effect</code> (EFFECT_ALLOW | EFFECT_DENY), <code className="text-[11px]">consensus</code> (CEL expression, optional), <code className="text-[11px]">condition</code> (CEL expression, optional)
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">Policy Status</span>
+              <span className="text-xs text-slate-400">Toggle whether this policy is active</span>
+            </div>
+            <button type="button" onClick={() => setPolicyActive(!policyActive)}
+              className={`relative w-9 h-5 rounded-full transition-colors ${policyActive ? "bg-emerald-500" : "bg-slate-300"}`}>
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${policyActive ? "left-4" : "left-0.5"}`} />
+            </button>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Button variant="secondary" onClick={() => { setShowPolicyModal(false); resetPolicyForm(); }} className="flex-1">Cancel</Button>
+            <Button onClick={savePolicy} disabled={policySaving} className="flex-1">
+              {policySaving ? "Saving..." : editingPolicyId ? "Update Policy" : "Create Policy"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

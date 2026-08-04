@@ -458,6 +458,18 @@ export class WranKeyClient {
     return this.request("GET", `/sub-orgs/${id}/policies?limit=${limit}&offset=${offset}`);
   }
 
+  async createSubOrgPolicy(subOrgId: string, data: { name: string; effect: string; conditions?: unknown; consensus?: string; priority?: number; active?: boolean; description?: string }): Promise<Policy> {
+    return this.request("POST", `/sub-orgs/${subOrgId}/policies`, data);
+  }
+
+  async updateSubOrgPolicy(subOrgId: string, policyId: string, data: Partial<{ name: string; effect: string; conditions: unknown; consensus: string; priority: number; active: boolean; description: string }>): Promise<Policy> {
+    return this.request("PATCH", `/sub-orgs/${subOrgId}/policies/${policyId}`, data);
+  }
+
+  async deleteSubOrgPolicy(subOrgId: string, policyId: string): Promise<{ message: string }> {
+    return this.request("DELETE", `/sub-orgs/${subOrgId}/policies/${policyId}`);
+  }
+
   async impersonateSubOrg(id: string): Promise<ImpersonateResponse> {
     const res = await this.request<ImpersonateResponse>("POST", `/sub-orgs/${id}/impersonate`);
     this.sessionToken = res.sessionToken;

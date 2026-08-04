@@ -7,6 +7,7 @@ import { parsePagination } from "../../utils/pagination.js";
 import { signToken } from "../../utils/jwt.js";
 import { config } from "../../config.js";
 import { provisionSubOrgWallet, provisionSubOrgStandaloneKey } from "../../services/sub-org-wallet.js";
+import { PolicyRuleSchema, evaluatePolicies, type EvaluationContext } from "../policy/engine.js";
 
 async function verifyParentOrg(request: any, subOrgId: string): Promise<any> {
   const subOrg = await prisma.organization.findFirst({ where: { id: subOrgId, parentOrgId: request.orgId } });
@@ -210,7 +211,89 @@ export async function subOrgRoutes(app: FastifyInstance) {
     } catch (err) { return sendError(reply, err); }
   });
 
-  // List sub-org's private keys
+  // Create a policy on a sub-org
+  app.post("/sub-orgs/:id/policies", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await verifyParentOrg(request, id);
+      const { name, effect, conditions, consensus, priority, active, description } = request.body as {
+        name: string; effect: string; conditions?: unknown; consensus?: string; priority?: number; active?: boolean; description?: string;
+      };
+      if (!name || !effect) throw new ValidationError("Name and effect are required");
+
+      const parsed = PolicyRuleSchema.safeParse({
+        effect,
+        conditions: conditions ?? [],
+        consensus: consensus ?? "ANY",
+      });
+      if (!parsed.success) throw new ValidationError("Invalid policy format: " + parsed.error.message);
+
+      // If description provided, wrap conditions into Turnkey-style object
+      let conditionsData: any = conditions ?? [];
+      if (description !== undefined && !Array.isArray(conditions)) {
+        conditionsData = { condition: (conditions as any)?.condition || "", isTurnkey: true, description: description.trim() };
+      }
+
+      const policy = await prisma.policy.create({
+        data: {
+          orgId: id,
+          name,
+          effect,
+          conditions: conditionsData as any,
+          consensus: consensus || "ANY",
+          priority: priority || 0,
+          active: active !== false,
+        },
+      });
+
+      await createAuditLog(request.orgId, "POLICY_CREATE", { subOrgId: id, policyId: policy.id, name }, request.userId, request);
+      return sendSuccess(reply, policy, 201);
+    } catch (err) { return sendError(reply, err); }
+  });
+
+  // Update a policy on a sub-org
+  app.patch("/sub-orgs/:id/policies/:policyId", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id, policyId } = request.params as { id: string; policyId: string };
+      await verifyParentOrg(request, id);
+      const { name, effect, conditions, consensus, priority, active, description } = request.body as any;
+
+      if (effect || conditions || consensus) {
+        const validated = PolicyRuleSchema.safeParse({
+          effect: effect ?? "EFFECT_ALLOW",
+          conditions: conditions ?? [],
+          consensus: consensus ?? "ANY",
+        });
+        if (!validated.success) throw new ValidationError(`Invalid policy: ${validated.error.errors.map((e: any) => e.message).join(", ")}`);
+      }
+
+      let conditionsData: any = conditions;
+      if (description !== undefined && conditions && !Array.isArray(conditions)) {
+        conditionsData = { ...(conditions as any), description: description.trim() };
+      }
+
+      const result = await prisma.policy.updateMany({
+        where: { id: policyId, orgId: id },
+        data: { active, name, effect, conditions: conditionsData, consensus, priority },
+      });
+      if (result.count === 0) throw new NotFoundError("Policy not found in this sub-organization");
+      const updated = await prisma.policy.findUnique({ where: { id: policyId } });
+      await createAuditLog(request.orgId, "POLICY_UPDATE", { subOrgId: id, policyId, name }, request.userId, request);
+      return sendSuccess(reply, updated);
+    } catch (err) { return sendError(reply, err); }
+  });
+
+  // Delete a policy on a sub-org
+  app.delete("/sub-orgs/:id/policies/:policyId", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id, policyId } = request.params as { id: string; policyId: string };
+      await verifyParentOrg(request, id);
+      const result = await prisma.policy.deleteMany({ where: { id: policyId, orgId: id } });
+      if (result.count === 0) throw new NotFoundError("Policy not found in this sub-organization");
+      await createAuditLog(request.orgId, "POLICY_DELETE", { subOrgId: id, policyId }, request.userId, request);
+      return sendSuccess(reply, { message: "Policy deleted" });
+    } catch (err) { return sendError(reply, err); }
+  });
   app.get("/sub-orgs/:id/private-keys", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
@@ -351,6 +434,68 @@ export async function subOrgRoutes(app: FastifyInstance) {
         : await verifyParentOrg(request, id);
 
       if (!subOrg) throw new NotFoundError("Sub-organization not found");
+
+      // ─── Policy enforcement ───
+      // Load the sub-org's active policies (ordered by priority desc) and evaluate
+      // against the current request. We always pass isRootUser=false so that the
+      // parent backend / API-key caller cannot bypass sub-org rules.
+      const subOrgPolicies = await prisma.policy.findMany({
+        where: { orgId: id, active: true },
+        orderBy: { priority: "desc" },
+      });
+
+      if (subOrgPolicies.length > 0) {
+        const policyContext: EvaluationContext = {
+          params: { subOrgId: id, message, chain: chain || "", activityType: "SIGN_RAW_PAYLOAD" },
+          activity: { resource: "WALLET", action: "SIGN", type: "SIGN_RAW_PAYLOAD" },
+          credential: { type: request.auth?.type === "api_key" ? "API_KEY" : "EMAIL" },
+          timestamp: Date.now(),
+        } as any;
+
+        const policyResult = evaluatePolicies(
+          subOrgPolicies.map((p: any) => ({
+            effect: p.effect as any,
+            conditions: p.conditions as any,
+            consensus: p.consensus as any,
+          })),
+          policyContext,
+          false,
+        );
+
+        await createAuditLog(
+          request.orgId,
+          "POLICY_EVAL",
+          { subOrgId: id, message, allowed: policyResult.allowed, reason: policyResult.reason },
+          request.userId,
+          request,
+        );
+
+        if (!policyResult.allowed) {
+          await createAuditLog(
+            request.orgId,
+            "POLICY_DENY",
+            { subOrgId: id, message, reason: policyResult.reason },
+            request.userId,
+            request,
+          );
+          return sendSuccess(reply, {
+            allowed: false,
+            requiresConsensus: policyResult.requiresConsensus,
+            reason: policyResult.reason || "Policy denied",
+          }, 200);
+        }
+
+        // Consensus required — caller must resolve approvals before signing.
+        if (policyResult.requiresConsensus) {
+          return sendSuccess(reply, {
+            allowed: true,
+            requiresConsensus: true,
+            reason: policyResult.reason || "Policy requires consensus approval",
+          }, 200);
+        }
+      }
+
+      // ─── End policy enforcement ───
 
       // Check for standalone private key first
       const standaloneKey = await prisma.privateKey.findFirst({
