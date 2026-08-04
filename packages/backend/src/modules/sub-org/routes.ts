@@ -425,9 +425,12 @@ export async function subOrgRoutes(app: FastifyInstance) {
   app.post("/sub-orgs/:id/sign-message", { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      const { message, chain } = request.body as { message: string; chain?: string };
+      const { message, chain, format } = request.body as { message: string; chain?: string; format?: string };
 
       if (!message) throw new ValidationError("Message required");
+
+      const isHex = format === "hex";
+      const signPayload = isHex ? Buffer.from(message, "hex") : Buffer.from(message, "utf8");
 
       const subOrg = request.auth.type === "api_key"
         ? await prisma.organization.findFirst({ where: { id, parentOrgId: request.orgId } })
@@ -514,12 +517,14 @@ export async function subOrgRoutes(app: FastifyInstance) {
         if (standaloneKey.curve === "ED25519") {
           const { Keypair: StellarKeypair } = await import("@stellar/stellar-sdk");
           const kp = StellarKeypair.fromSecret(secret);
-          signature = Buffer.from(kp.sign(Buffer.from(message, "utf8"))).toString("hex");
+          signature = Buffer.from(kp.sign(signPayload)).toString("hex");
           address = kp.publicKey();
         } else {
           const { ethers } = await import("ethers");
           const wallet = new ethers.Wallet(secret);
-          signature = await wallet.signMessage(message);
+          signature = isHex
+            ? await wallet.signMessage(new Uint8Array(signPayload))
+            : await wallet.signMessage(message);
           address = wallet.address;
         }
       } else {
@@ -542,7 +547,7 @@ export async function subOrgRoutes(app: FastifyInstance) {
         if (!account) throw new NotFoundError("No account found in sub-org wallet");
 
         const { decryptSeedFromStorage } = await import("../../utils/enclave.js");
-        const { deriveStellarAccount, signStellarMessage } = await import("../../utils/stellar.js");
+        const { deriveStellarAccount } = await import("../../utils/stellar.js");
         const { getChainByName } = await import("../../services/chain.js");
         const { signMessage } = await import("../../utils/enclave.js");
 
@@ -551,9 +556,17 @@ export async function subOrgRoutes(app: FastifyInstance) {
         if (isStellar) {
           const chainInfo = await getChainByName(chain || "stellar-testnet");
           const stellarAccount = deriveStellarAccount(mnemonic, 0, chainInfo.derivationPath);
-          signature = signStellarMessage(stellarAccount.secret, message);
+          const { Keypair: StellarKeypair } = await import("@stellar/stellar-sdk");
+          const kp = StellarKeypair.fromSecret(stellarAccount.secret);
+          signature = Buffer.from(kp.sign(signPayload)).toString("hex");
         } else {
-          signature = await signMessage(mnemonic, message);
+          if (isHex) {
+            const { ethers } = await import("ethers");
+            const wallet = ethers.Wallet.fromPhrase(mnemonic);
+            signature = await wallet.signMessage(new Uint8Array(signPayload));
+          } else {
+            signature = await signMessage(mnemonic, message);
+          }
         }
         address = account.address;
       }
