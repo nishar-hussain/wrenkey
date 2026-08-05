@@ -582,4 +582,135 @@ export async function subOrgRoutes(app: FastifyInstance) {
       return sendSuccess(reply, { signature, address });
     } catch (err) { return sendError(reply, err); }
   });
+
+  // ─── Sign full transaction (Stellar XDR) ────────────────────────────
+  // Unlike sign-message (raw payload), this endpoint parses the
+  // transaction XDR, derives the correct keypair, and uses the SDK's
+  // built-in Transaction.sign() which correctly handles FeeBump,
+  // Soroban resource data, and all envelope types.
+  app.post("/sub-orgs/:id/sign-transaction", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { unsignedXdr, chain, networkPassphrase, amount, tokenId } = request.body as {
+        unsignedXdr: string;
+        chain?: string;
+        networkPassphrase?: string;
+        amount?: string;
+        tokenId?: number;
+      };
+
+      if (!unsignedXdr) throw new ValidationError("unsignedXdr required");
+
+      const subOrg = request.auth.type === "api_key"
+        ? await prisma.organization.findFirst({ where: { id, parentOrgId: request.orgId } })
+        : await verifyParentOrg(request, id);
+
+      if (!subOrg) throw new NotFoundError("Sub-organization not found");
+
+      // ─── Policy enforcement ───
+      const subOrgPolicies = await prisma.policy.findMany({
+        where: { orgId: id, active: true },
+        orderBy: { priority: "desc" },
+      });
+
+      if (subOrgPolicies.length > 0) {
+        const policyContext: EvaluationContext = {
+          params: {
+            subOrgId: id,
+            chain: chain || "",
+            ...(amount !== undefined ? { amount: Number(amount) } : {}),
+            ...(tokenId !== undefined ? { tokenId } : {}),
+            activityType: "SIGN_TRANSACTION",
+          },
+          activity: { resource: "WALLET", action: "SIGN", type: "SIGN_TRANSACTION" },
+          credential: { type: request.auth?.type === "api_key" ? "API_KEY" : "EMAIL" },
+          timestamp: Date.now(),
+        } as any;
+
+        const policyResult = evaluatePolicies(
+          subOrgPolicies.map((p: any) => ({
+            effect: p.effect as any,
+            conditions: p.conditions as any,
+            consensus: p.consensus as any,
+          })),
+          policyContext,
+          false,
+        );
+
+        await createAuditLog(
+          request.orgId,
+          "POLICY_EVAL",
+          { subOrgId: id, amount, tokenId, allowed: policyResult.allowed, reason: policyResult.reason },
+          request.userId,
+          request,
+        );
+
+        if (!policyResult.allowed) {
+          await createAuditLog(
+            request.orgId,
+            "POLICY_DENY",
+            { subOrgId: id, amount, tokenId, reason: policyResult.reason },
+            request.userId,
+            request,
+          );
+          return sendSuccess(reply, {
+            allowed: false,
+            requiresConsensus: policyResult.requiresConsensus,
+            reason: policyResult.reason || "Policy denied",
+          }, 200);
+        }
+
+        if (policyResult.requiresConsensus) {
+          return sendSuccess(reply, {
+            allowed: true,
+            requiresConsensus: true,
+            reason: policyResult.reason || "Policy requires consensus approval",
+          }, 200);
+        }
+      }
+
+      // ─── End policy enforcement ───
+
+      const netPassphrase = networkPassphrase || "Test SDF Network ; September 2015";
+
+      // Find the wallet
+      const wallet = await prisma.wallet.findFirst({
+        where: { orgId: id, tags: { has: "sub-org-managed" } },
+        orderBy: { createdAt: "asc" },
+      });
+      if (!wallet) throw new NotFoundError("No wallet found in sub-organization");
+
+      const { decryptSeedFromStorage } = await import("../../utils/enclave.js");
+      const { deriveStellarAccount } = await import("../../utils/stellar.js");
+      const { getChainByName } = await import("../../services/chain.js");
+      const mnemonic = decryptSeedFromStorage(wallet.encryptedSeed);
+
+      // Parse the transaction envelope
+      const {
+        TransactionBuilder,
+        Keypair: StellarKeypair,
+      } = await import("@stellar/stellar-sdk");
+
+      const envelope = TransactionBuilder.fromXDR(unsignedXdr, netPassphrase);
+
+      // Derive the signing keypair
+      const chainInfo = await getChainByName(chain || "stellar-testnet");
+      const stellarAccount = deriveStellarAccount(mnemonic, 0, chainInfo.derivationPath);
+      const kp = StellarKeypair.fromSecret(stellarAccount.secret);
+
+      // Use the SDK's native sign() which handles all edge cases
+      envelope.sign(kp);
+      const signedXdr = envelope.toXDR();
+
+      await createAuditLog(
+        request.orgId,
+        "TX_SIGN",
+        { subOrgId: id, address: stellarAccount.address },
+        request.userId,
+        request,
+      );
+
+      return sendSuccess(reply, { signedXdr, address: stellarAccount.address });
+    } catch (err) { return sendError(reply, err); }
+  });
 }
