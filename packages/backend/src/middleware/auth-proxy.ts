@@ -20,10 +20,10 @@ export async function authProxyMiddleware(
 
   let orgConfigRow;
   try {
-    const rows = await prisma.$queryRawUnsafe<Array<{ org_id: string; config: any }>>(
+    const rows = (await prisma.$queryRawUnsafe(
       `SELECT org_id, config FROM org_configs WHERE config->>'configId' = $1 LIMIT 1`,
       configId,
-    );
+    )) as Array<{ org_id: string; config: any }>;
     orgConfigRow = rows[0];
   } catch {
     reply.status(500).send({ error: { message: "Failed to look up organization" } });

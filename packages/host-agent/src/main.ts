@@ -13,7 +13,8 @@
  * In local dev, it uses Unix domain sockets as a vsock stand-in.
  */
 
-import { createServer, Socket } from "net";
+import { createConnection, Socket } from "net";
+import { createServer, IncomingMessage, ServerResponse } from "http";
 import { readFileSync, existsSync } from "fs";
 
 const ENCLAVE_CID = parseInt(process.env.WVC_ENCLAVE_CID || "16", 10);
@@ -139,9 +140,9 @@ function checkEgressAllowed(host: string): boolean {
 
 // ─── HTTP Server ──────────────────────────────────────────────────────────────
 
-const server = createServer((req, res) => {
+const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   const chunks: Buffer[] = [];
-  req.on("data", (chunk) => chunks.push(chunk));
+  req.on("data", (chunk: Buffer) => chunks.push(chunk));
   req.on("end", async () => {
     const body = Buffer.concat(chunks);
     const url = req.url || "/";

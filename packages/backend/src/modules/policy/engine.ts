@@ -146,7 +146,7 @@ export function evaluateCel(expression: string, context: EvaluationContext): any
 
   function tokenize(str: string): string[] {
     const regex = /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|\d+|\b[a-zA-Z_][a-zA-Z0-9_]*\b|==|!=|>=|<=|>|<|&&|\|\||[\[\]\(\),\.]/g;
-    const matches = [];
+    const matches: string[] = [];
     let match;
     while ((match = regex.exec(str)) !== null) {
       matches.push(match[0]);

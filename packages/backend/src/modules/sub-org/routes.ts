@@ -41,7 +41,7 @@ export async function subOrgRoutes(app: FastifyInstance) {
           where: { orgId: { in: data.map(o => o.id) }, role: "ORG_ADMIN" },
           select: { id: true, email: true, orgId: true },
         });
-        const rootMap = new Map(rootUsers.map(u => [u.orgId, u]));
+        const rootMap: Map<string, any> = new Map(rootUsers.map(u => [u.orgId, u] as [string, any]));
         for (const org of result) {
           const root = rootMap.get(org.id);
           if (root) { org.rootUserId = root.id; org.rootUserEmail = root.email || ""; }

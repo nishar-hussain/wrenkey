@@ -378,7 +378,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       await createAuditLog(request.orgId, "TX_SIGN", { transactionId: transaction.id, walletId, to, value, nonce, riskScore: risk.score }, request.userId, request);
 
       if (lockId) {
-        await releaseNonceLock(lockedAddress, lockId);
+        await releaseNonceLock(lockedAddress!, lockId);
         lockId = null;
       }
 

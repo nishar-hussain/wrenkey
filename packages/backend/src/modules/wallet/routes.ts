@@ -625,7 +625,7 @@ export async function walletRoutes(app: FastifyInstance) {
       const { mnemonic } = generateHdWallet();
       const newEncryptedSeed = encryptSeedForStorage(mnemonic);
 
-      const newAccounts = [];
+      const newAccounts: Array<{ chainId: string; address: string; derivationPath: string; index: number }> = [];
       for (const account of wallet.accounts) {
         const chainInfo = await prisma.chain.findUnique({ where: { id: account.chainId } });
         const derivationPath = chainInfo?.derivationPath || "m/44'/60'/0'/0";

@@ -1,0 +1,39 @@
+{
+  "name": "@bullet/frontend",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bullet frontend: Next.js + TS + Tailwind, stellar-sdk + Freighter.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@stellar/freighter-api": "^6.0.1",
+    "@stellar/stellar-base": "^15.0.0",
+    "@stellar/stellar-sdk": "^16.0.1",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.110.0",
+    "@zeekpay/shared": "workspace:*",
+    "buffer": "^6.0.3",
+    "ed2curve": "^0.3.0",
+    "ffjavascript": "0.3.1",
+    "next": "15",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "snarkjs": "0.7.5",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.2",
+    "@types/ed2curve": "^0.2.4",
+    "@types/node": "^26.0.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.5.2",
+    "postcss": "^8.5.16",
+    "tailwindcss": "^4.3.2",
+    "typescript": "^6.0.3"
+  }
+}

@@ -71,7 +71,7 @@ export async function orgRoutes(app: FastifyInstance) {
       if (!email && !phone) throw new ValidationError("Email or phone required");
 
       // Check if user already exists
-      let existingUser = null;
+      let existingUser: any = null;
       if (email) {
         existingUser = await prisma.user.findUnique({
           where: { email },
@@ -300,7 +300,7 @@ export async function orgRoutes(app: FastifyInstance) {
         prisma.approvalRequest.findMany({ where: { orgId: request.orgId }, select: { id: true, status: true } }),
       ]);
 
-      const userMap = new Map(users.map(u => [u.id, u]));
+      const userMap: Map<string, any> = new Map(users.map(u => [u.id, u] as [string, any]));
       const pendingApprovals = approvals.filter(a => a.status === "PENDING").length;
 
       const data = logs.map(log => {
