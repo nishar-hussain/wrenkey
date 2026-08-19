@@ -34,8 +34,8 @@ export async function approvalRoutes(app: FastifyInstance) {
 
       const enrichedData = await Promise.all(
         data.map(async (r) => {
-          let wallet = null;
-          let transaction = null;
+          let wallet: any = null;
+          let transaction: any = null;
           if (r.actionType !== "TRANSACTION" && r.targetId) {
             wallet = await prisma.wallet.findFirst({
               where: { id: r.targetId },
@@ -65,7 +65,7 @@ export async function approvalRoutes(app: FastifyInstance) {
       });
       if (!req) throw new NotFoundError("Approval request");
 
-      let transaction = null;
+      let transaction: any = null;
       if (req.transactionId) {
         transaction = await prisma.transaction.findUnique({
           where: { id: req.transactionId },
@@ -73,7 +73,7 @@ export async function approvalRoutes(app: FastifyInstance) {
         });
       }
 
-      let wallet = null;
+      let wallet: any = null;
       if (req.actionType !== "TRANSACTION" && req.targetId) {
         wallet = await prisma.wallet.findFirst({
           where: { id: req.targetId },
