@@ -34,7 +34,7 @@ export async function buildApp(opts: { disableRateLimit?: boolean } = {}) {
 
   await app.register(cors, {
     origin: (origin, cb) => {
-      if (!origin || config.corsOrigin.includes(origin)) {
+      if (!origin || config.corsOrigin.includes(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
         cb(null, true);
       } else {
         cb(new Error("Not allowed by CORS"), false);

@@ -22,6 +22,10 @@ const app = express();
 // env var can't CORS-block the real site; env vars add to (not replace) these.
 const DEFAULT_ORIGINS = [
   "http://localhost:3000",
+  "http://localhost:3001",
+  "http://localhost:3002",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3001",
   "https://sendbullet.xyz",
   "https://bullet-frontend.vercel.app",
 ];
@@ -37,13 +41,19 @@ const ALLOWED_ORIGINS = Array.from(
       .filter((o): o is string => !!o)
   )
 );
+const LOCALHOST_ORIGIN_RE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
 app.use(
   cors({
     origin(origin, cb) {
       // Non-browser clients (curl, server-to-server) send no Origin; allow.
       // Disallowed browser origins get no ACAO header (the browser blocks the
       // response). Return false rather than throwing, which would 500.
-      cb(null, !origin || ALLOWED_ORIGINS.includes(origin));
+      const isAllowed =
+        !origin ||
+        ALLOWED_ORIGINS.includes(origin) ||
+        LOCALHOST_ORIGIN_RE.test(origin);
+      cb(null, isAllowed);
     },
     credentials: true,
   })

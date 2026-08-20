@@ -141,3 +141,25 @@ describe("rateLimit (M1)", () => {
     assert.equal(hitLimiter(limiter, "userB"), 0); // B: independent
   });
 });
+
+describe("CORS configuration", () => {
+  it("allows requests from http://localhost:3001", async () => {
+    const res = await fetch(`http://localhost:${port}/health`, {
+      headers: { Origin: "http://localhost:3001" },
+    });
+    assert.equal(res.headers.get("access-control-allow-origin"), "http://localhost:3001");
+  });
+
+  it("handles OPTIONS preflight from http://localhost:3001", async () => {
+    const res = await fetch(`http://localhost:${port}/resolve?q=test`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://localhost:3001",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+    assert.equal(res.headers.get("access-control-allow-origin"), "http://localhost:3001");
+    assert.equal(res.status, 204);
+  });
+});
+
