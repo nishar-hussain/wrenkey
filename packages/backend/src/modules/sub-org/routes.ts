@@ -66,70 +66,69 @@ export async function subOrgRoutes(app: FastifyInstance) {
         data: { name: name.trim(), parentOrgId: request.orgId },
       });
 
-      let rootUser: any = null;
-      if (rootUserEmail) {
-        // If a user with this email already exists anywhere (unique constraint),
-        // append a suffix so sub-org provisioning doesn't fail on duplicates.
-        const existing = await prisma.user.findUnique({
-          where: { email: rootUserEmail },
-          select: { id: true },
-        });
-        const email = existing
-          ? `${rootUserEmail.split("@")[0]}+${subOrg.name.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}@${rootUserEmail.split("@")[1]}`
-          : rootUserEmail;
+      // Always create a root user (with the provided email, or a generated
+      // placeholder if none was supplied) and provision an embedded wallet, so
+      // the caller always receives a Stellar account to sign with.
+      // If a user with this email already exists anywhere (unique constraint),
+      // append a suffix so sub-org provisioning doesn't fail on duplicates.
+      const existing = rootUserEmail
+        ? await prisma.user.findUnique({ where: { email: rootUserEmail }, select: { id: true } })
+        : null;
+      const rootEmail = rootUserEmail
+        ? (existing
+            ? `${rootUserEmail.split("@")[0]}+${subOrg.name.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}@${rootUserEmail.split("@")[1]}`
+            : rootUserEmail)
+        : `suborg-${subOrg.id}@bullet.local`;
 
-        rootUser = await prisma.user.create({
-          data: { orgId: subOrg.id, email, role: "ORG_ADMIN", name: rootUserEmail.split("@")[0] },
-        });
-        // Send invitation if SMTP configured
-        if (config.smtp.host && config.smtp.user && config.smtp.pass) {
-          try {
-            const { randomBytes } = await import("crypto");
-            const { getRedis } = await import("../../redis.js");
-            const { createTransport } = await import("nodemailer");
-            const redis = getRedis();
-            const inviteToken = randomBytes(32).toString("hex");
-            await redis.setex(`invite:${inviteToken}`, 7 * 24 * 3600, JSON.stringify({ userId: rootUser.id, email: rootUserEmail, orgId: subOrg.id, orgName: subOrg.name }));
-            const baseUrl = config.corsOrigin[0] || "http://localhost:5173";
-            const transport = createTransport({ host: config.smtp.host, port: config.smtp.port, secure: config.smtp.port === 465, auth: { user: config.smtp.user, pass: config.smtp.pass }, tls: { rejectUnauthorized: !config.isDev } });
-            await transport.sendMail({
-              from: config.smtp.from, to: rootUserEmail,
-              subject: `You've been invited to ${subOrg.name}`,
-              text: `Accept: ${baseUrl}/accept-invitation?token=${inviteToken}`,
-              html: `<p>You've been invited to join <strong>${subOrg.name}</strong>.</p><p><a href="${baseUrl}/accept-invitation?token=${inviteToken}">Accept Invitation</a></p>`,
-            });
-          } catch { /* email optional */ }
-        }
+      const rootUser = await prisma.user.create({
+        data: { orgId: subOrg.id, email: rootEmail, role: "ORG_ADMIN", name: rootUserEmail ? rootUserEmail.split("@")[0] : subOrg.name.trim() },
+      });
 
-        // Auto-provision an embedded wallet for the sub-org's root user.
-        // keyType: "hd" = BIP-39 mnemonic (default), "standalone" = single keypair.
-        const keyType = (request.body as any).keyType === "standalone" ? "standalone" : "hd";
-        let provisionedWallet: any = null;
+      // Send invitation if SMTP configured
+      if (config.smtp.host && config.smtp.user && config.smtp.pass && rootUserEmail) {
         try {
-          if (keyType === "standalone") {
-            provisionedWallet = await provisionSubOrgStandaloneKey(subOrg.id, rootUser.id, "ED25519", `${name.trim()} Key`);
-          } else {
-            provisionedWallet = await provisionSubOrgWallet(subOrg.id, rootUser.id, `${name.trim()} Wallet`);
-          }
-        } catch (e) {
-          console.error("[SubOrg] Wallet provisioning failed:", e instanceof Error ? e.message : e);
-        }
-
-        await createAuditLog(request.orgId, "SUBORG_CREATE", { subOrgId: subOrg.id, name, parentOrgId: request.orgId, walletId: provisionedWallet?.walletId, walletAddresses: provisionedWallet?.accounts?.map((a: any) => ({ chainId: a.chainId, address: a.address })) }, request.userId, request);
-        return sendSuccess(reply, {
-          ...subOrg,
-          rootUserId: rootUser?.id,
-          rootUserEmail: rootUser?.email,
-          wallet: provisionedWallet ? {
-            walletId: provisionedWallet.walletId,
-            name: provisionedWallet.name,
-            accounts: provisionedWallet.accounts,
-          } : null,
-        }, 201);
+          const { randomBytes } = await import("crypto");
+          const { getRedis } = await import("../../redis.js");
+          const { createTransport } = await import("nodemailer");
+          const redis = getRedis();
+          const inviteToken = randomBytes(32).toString("hex");
+          await redis.setex(`invite:${inviteToken}`, 7 * 24 * 3600, JSON.stringify({ userId: rootUser.id, email: rootUserEmail, orgId: subOrg.id, orgName: subOrg.name }));
+          const baseUrl = config.corsOrigin[0] || "http://localhost:5173";
+          const transport = createTransport({ host: config.smtp.host, port: config.smtp.port, secure: config.smtp.port === 465, auth: { user: config.smtp.user, pass: config.smtp.pass }, tls: { rejectUnauthorized: !config.isDev } });
+          await transport.sendMail({
+            from: config.smtp.from, to: rootUserEmail,
+            subject: `You've been invited to ${subOrg.name}`,
+            text: `Accept: ${baseUrl}/accept-invitation?token=${inviteToken}`,
+            html: `<p>You've been invited to join <strong>${subOrg.name}</strong>.</p><p><a href="${baseUrl}/accept-invitation?token=${inviteToken}">Accept Invitation</a></p>`,
+          });
+        } catch { /* email optional */ }
       }
 
-      await createAuditLog(request.orgId, "SUBORG_CREATE", { subOrgId: subOrg.id, name, parentOrgId: request.orgId }, request.userId, request);
-      return sendSuccess(reply, { ...subOrg, rootUserId: null, rootUserEmail: null, wallet: null }, 201);
+      // Auto-provision an embedded wallet for the sub-org's root user.
+      // keyType: "hd" = BIP-39 mnemonic (default), "standalone" = single keypair.
+      const keyType = (request.body as any).keyType === "standalone" ? "standalone" : "hd";
+      let provisionedWallet: any = null;
+      try {
+        if (keyType === "standalone") {
+          provisionedWallet = await provisionSubOrgStandaloneKey(subOrg.id, rootUser.id, "ED25519", `${name.trim()} Key`);
+        } else {
+          provisionedWallet = await provisionSubOrgWallet(subOrg.id, rootUser.id, `${name.trim()} Wallet`);
+        }
+      } catch (e) {
+        console.error("[SubOrg] Wallet provisioning failed:", e instanceof Error ? e.message : e);
+      }
+
+      await createAuditLog(request.orgId, "SUBORG_CREATE", { subOrgId: subOrg.id, name, parentOrgId: request.orgId, walletId: provisionedWallet?.walletId, walletAddresses: provisionedWallet?.accounts?.map((a: any) => ({ chainId: a.chainId, address: a.address })) }, request.userId, request);
+      return sendSuccess(reply, {
+        ...subOrg,
+        rootUserId: rootUser.id,
+        rootUserEmail: rootUser.email,
+        wallet: provisionedWallet ? {
+          walletId: provisionedWallet.walletId,
+          name: provisionedWallet.name,
+          accounts: provisionedWallet.accounts,
+        } : null,
+      }, 201);
     } catch (err) {
       return sendError(reply, err);
     }

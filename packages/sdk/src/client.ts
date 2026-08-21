@@ -434,7 +434,7 @@ export class WranKeyClient {
 
   // ─── Sub-Organizations ─────────────────────────────
 
-  async createSubOrg(data: { name: string; rootUserEmail?: string }): Promise<SubOrg> {
+  async createSubOrg(data: { name: string; rootUserEmail?: string; keyType?: "hd" | "standalone" }): Promise<SubOrg> {
     return this.request("POST", "/sub-orgs", data);
   }
 
@@ -482,6 +482,14 @@ export class WranKeyClient {
 
   async deleteSubOrg(id: string): Promise<{ message: string }> {
     return this.request("DELETE", `/sub-orgs/${id}`);
+  }
+
+  async signSubOrgMessage(id: string, params: { message: string; chain?: string; format?: "utf8" | "hex" }): Promise<{ signature: string; address: string }> {
+    return this.request("POST", `/sub-orgs/${id}/sign-message`, params);
+  }
+
+  async signSubOrgTransaction(id: string, params: { unsignedXdr: string; chain?: string; networkPassphrase?: string; amount?: string; tokenId?: number }): Promise<{ signedXdr: string; address?: string }> {
+    return this.request("POST", `/sub-orgs/${id}/sign-transaction`, params);
   }
 
   // ─── Spending Limits ───────────────────────────────
