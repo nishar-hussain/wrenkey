@@ -71,18 +71,12 @@ export async function subOrgRoutes(app: FastifyInstance) {
       // the caller always receives a Stellar account to sign with.
       // If a user with this email already exists anywhere (unique constraint),
       // append a suffix so sub-org provisioning doesn't fail on duplicates.
-      const existing = rootUserEmail
-        ? await prisma.user.findUnique({ where: { email: rootUserEmail }, select: { id: true } })
-        : null;
-      const rootEmail = rootUserEmail
-        ? (existing
-            ? `${rootUserEmail.split("@")[0]}+${subOrg.name.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}@${rootUserEmail.split("@")[1]}`
-            : rootUserEmail)
-        : `suborg-${subOrg.id}@bullet.local`;
-
-      const rootUser = await prisma.user.create({
-        data: { orgId: subOrg.id, email: rootEmail, role: "ORG_ADMIN", name: rootUserEmail ? rootUserEmail.split("@")[0] : subOrg.name.trim() },
-      });
+      let rootUser: any = null;
+      if (rootUserEmail) {
+        rootUser = await prisma.user.create({
+          data: { orgId: subOrg.id, email: rootUserEmail.trim(), role: "ORG_ADMIN", name: rootUserEmail.split("@")[0] },
+        });
+      }
 
       // Send invitation if SMTP configured
       if (config.smtp.host && config.smtp.user && config.smtp.pass && rootUserEmail) {
@@ -108,21 +102,23 @@ export async function subOrgRoutes(app: FastifyInstance) {
       // keyType: "hd" = BIP-39 mnemonic (default), "standalone" = single keypair.
       const keyType = (request.body as any).keyType === "standalone" ? "standalone" : "hd";
       let provisionedWallet: any = null;
-      try {
-        if (keyType === "standalone") {
-          provisionedWallet = await provisionSubOrgStandaloneKey(subOrg.id, rootUser.id, "ED25519", `${name.trim()} Key`);
-        } else {
-          provisionedWallet = await provisionSubOrgWallet(subOrg.id, rootUser.id, `${name.trim()} Wallet`);
+      if (rootUser) {
+        try {
+          if (keyType === "standalone") {
+            provisionedWallet = await provisionSubOrgStandaloneKey(subOrg.id, rootUser.id, "ED25519", `${name.trim()} Key`);
+          } else {
+            provisionedWallet = await provisionSubOrgWallet(subOrg.id, rootUser.id, `${name.trim()} Wallet`);
+          }
+        } catch (e) {
+          console.error("[SubOrg] Wallet provisioning failed:", e instanceof Error ? e.message : e);
         }
-      } catch (e) {
-        console.error("[SubOrg] Wallet provisioning failed:", e instanceof Error ? e.message : e);
       }
 
       await createAuditLog(request.orgId, "SUBORG_CREATE", { subOrgId: subOrg.id, name, parentOrgId: request.orgId, walletId: provisionedWallet?.walletId, walletAddresses: provisionedWallet?.accounts?.map((a: any) => ({ chainId: a.chainId, address: a.address })) }, request.userId, request);
       return sendSuccess(reply, {
         ...subOrg,
-        rootUserId: rootUser.id,
-        rootUserEmail: rootUser.email,
+        rootUserId: rootUser?.id || null,
+        rootUserEmail: rootUser?.email || null,
         wallet: provisionedWallet ? {
           walletId: provisionedWallet.walletId,
           name: provisionedWallet.name,

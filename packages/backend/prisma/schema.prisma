@@ -56,8 +56,8 @@ model User {
   webhooks       Webhook[]
   authenticators Authenticator[]
 
-  @@unique([email])
-  @@unique([phone])
+  @@unique([orgId, email])
+  @@unique([orgId, phone])
   @@index([email])
   @@index([phone])
   @@index([orgId, role])

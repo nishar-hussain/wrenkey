@@ -73,13 +73,13 @@ export async function orgRoutes(app: FastifyInstance) {
       // Check if user already exists
       let existingUser: any = null;
       if (email) {
-        existingUser = await prisma.user.findUnique({
-          where: { email },
+        existingUser = await prisma.user.findFirst({
+          where: { orgId: request.orgId, email },
           include: { authenticators: true },
         });
       } else if (phone) {
-        existingUser = await prisma.user.findUnique({
-          where: { phone },
+        existingUser = await prisma.user.findFirst({
+          where: { orgId: request.orgId, phone },
           include: { authenticators: true },
         });
       }
