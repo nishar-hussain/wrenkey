@@ -323,8 +323,17 @@ export default function SubOrgDetailPage() {
                       </span>
                     ) },
                     { key: "createdAt", header: "Created", render: (u: any) => <span className="text-xs text-slate-500">{new Date(u.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span> },
+                    { key: "chevron", header: "", render: (u: any) => (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); router.push(`/sub-orgs/${id}/users/${u.id}`); }}
+                        className="text-slate-400 hover:text-slate-600"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    ) },
                   ]}
                   data={users} loading={false} emptyMessage="No users in this sub-organization."
+                  onRowClick={(u: any) => router.push(`/sub-orgs/${id}/users/${u.id}`)}
                 />
                 <Pagination limit={20} offset={usersOffset} total={usersTotal} onPageChange={(_, o) => setUsersOffset(o)} />
               </>

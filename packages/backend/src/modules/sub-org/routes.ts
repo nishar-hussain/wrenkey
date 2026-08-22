@@ -6,6 +6,7 @@ import { createAuditLog } from "../../utils/audit.js";
 import { parsePagination } from "../../utils/pagination.js";
 import { signToken } from "../../utils/jwt.js";
 import { config } from "../../config.js";
+import { hashSha256, generateApiKeyPair } from "../../utils/crypto.js";
 import { provisionSubOrgWallet, provisionSubOrgStandaloneKey } from "../../services/sub-org-wallet.js";
 import { PolicyRuleSchema, evaluatePolicies, type EvaluationContext } from "../policy/engine.js";
 
@@ -114,6 +115,42 @@ export async function subOrgRoutes(app: FastifyInstance) {
         }
       }
 
+      // Auto-provision a scoped API key for the sub-org (a "parent key" that
+      // lets callers act on behalf of the sub-org). The public key is returned
+      // so callers can record it; the raw private key is only shown once here.
+      let provisionedApiKey: any = null;
+      if (rootUser) {
+        try {
+          const pair = generateApiKeyPair();
+          const rawKey = pair.privateKey;
+          const keyPrefix = `wrankey_${rawKey.slice(0, 4)}`;
+          const apiKey = await prisma.apiKey.create({
+            data: {
+              orgId: subOrg.id,
+              name: `${name.trim()} Parent Key`,
+              keyHash: hashSha256(rawKey),
+              keyPrefix,
+              publicKey: pair.publicKey,
+              permissions: ["*"],
+              allowedIps: [],
+              expiresAt: new Date(Date.now() + config.apiKeyExpiryDays * 86400 * 1000),
+            },
+          });
+          provisionedApiKey = {
+            id: apiKey.id,
+            name: apiKey.name,
+            keyPrefix: apiKey.keyPrefix,
+            publicKey: apiKey.publicKey,
+            privateKey: rawKey,
+            apiKey: rawKey,
+            permissions: apiKey.permissions,
+            expiresAt: apiKey.expiresAt,
+          };
+        } catch (e) {
+          console.error("[SubOrg] API key provisioning failed:", e instanceof Error ? e.message : e);
+        }
+      }
+
       await createAuditLog(request.orgId, "SUBORG_CREATE", { subOrgId: subOrg.id, name, parentOrgId: request.orgId, walletId: provisionedWallet?.walletId, walletAddresses: provisionedWallet?.accounts?.map((a: any) => ({ chainId: a.chainId, address: a.address })) }, request.userId, request);
       return sendSuccess(reply, {
         ...subOrg,
@@ -124,6 +161,7 @@ export async function subOrgRoutes(app: FastifyInstance) {
           name: provisionedWallet.name,
           accounts: provisionedWallet.accounts,
         } : null,
+        apiKey: provisionedApiKey,
       }, 201);
     } catch (err) {
       return sendError(reply, err);
@@ -191,6 +229,56 @@ export async function subOrgRoutes(app: FastifyInstance) {
       return sendSuccess(reply, { data, total, limit, offset });
     } catch (err) { return sendError(reply, err); }
   });
+
+  // Get sub-org user detail
+  app.get("/sub-orgs/:id/users/:userId", { preHandler: [authMiddleware] }, async (request, reply) => {
+    try {
+      const { id, userId } = request.params as { id: string; userId: string };
+      await verifyParentOrg(request, id);
+
+      const user = await prisma.user.findFirst({
+        where: { id: userId, orgId: id },
+        include: {
+          authenticators: true,
+          _count: { select: { sessions: true } },
+        },
+      });
+
+      if (!user) throw new NotFoundError("User not found in this sub-organization");
+
+      const apiKeys = await prisma.apiKey.findMany({
+        where: { orgId: id },
+        orderBy: { createdAt: "desc" },
+      });
+
+      return sendSuccess(reply, {
+        id: user.id,
+        name: user.name || user.email?.split("@")[0] || "User",
+        email: user.email,
+        role: user.role,
+        tags: user.tags || [],
+        status: (user._count?.sessions || 0) > 0 ? "Active" : "Invited",
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        authenticators: user.authenticators.map(a => ({
+          id: a.id,
+          name: a.type,
+          credentialId: a.credentialId || "—",
+          createdAt: a.createdAt,
+          lastUsedAt: a.createdAt,
+        })),
+        apiKeys: apiKeys.map(k => ({
+          id: k.id,
+          name: k.name,
+          publicKey: k.publicKey || k.keyPrefix,
+          createdAt: k.createdAt,
+          lastUsedAt: k.createdAt,
+        })),
+        oauthProviders: [],
+      });
+    } catch (err) { return sendError(reply, err); }
+  });
+
 
   // List sub-org's policies
   app.get("/sub-orgs/:id/policies", { preHandler: [authMiddleware] }, async (request, reply) => {
